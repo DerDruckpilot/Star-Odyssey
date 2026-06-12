@@ -1,0 +1,14 @@
+{
+  "name": "star-odyssey",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx serve .",
+    "check": "node --check src/main.js && node --check scripts/check-structure.js",
+    "test": "node scripts/check-structure.js"
+  },
+  "devDependencies": {
+    "serve": "^14.2.6"
+  }
+}
