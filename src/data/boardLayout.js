@@ -1,0 +1,111 @@
+export const boardLayout = {
+  layoutVersion: "starter-15-quadrants-v1",
+  width: 1600,
+  height: 900,
+  spaceQuadrants: [
+    { id: "q-01", x: 410, y: 150, kind: "system", ref: "system-01" },
+    { id: "q-02", x: 690, y: 145, kind: "empty" },
+    { id: "q-03", x: 965, y: 145, kind: "outpost", ref: "outpost-01" },
+    { id: "q-04", x: 1245, y: 145, kind: "system", ref: "system-02" },
+    { id: "q-05", x: 545, y: 325, kind: "outpost", ref: "outpost-02" },
+    { id: "q-06", x: 825, y: 325, kind: "system", ref: "system-03" },
+    { id: "q-07", x: 1105, y: 325, kind: "system", ref: "system-04" },
+    { id: "q-08", x: 1380, y: 325, kind: "empty" },
+    { id: "q-09", x: 410, y: 505, kind: "system", ref: "system-05" },
+    { id: "q-10", x: 690, y: 505, kind: "empty" },
+    { id: "q-11", x: 965, y: 505, kind: "outpost", ref: "outpost-03" },
+    { id: "q-12", x: 1245, y: 505, kind: "system", ref: "system-06" },
+    { id: "q-13", x: 545, y: 685, kind: "system", ref: "system-07" },
+    { id: "q-14", x: 825, y: 685, kind: "outpost", ref: "outpost-04" },
+    { id: "q-15", x: 1105, y: 685, kind: "system", ref: "system-08" }
+  ],
+  startSystems: [
+    { id: "start-01", x: 120, y: 215, resources: ["food", "fuel", "carbon"] },
+    { id: "start-02", x: 120, y: 405, resources: ["ore", "trade", "food"] },
+    { id: "start-03", x: 120, y: 595, resources: ["carbon", "ore", "fuel"] },
+    { id: "start-04", x: 120, y: 775, resources: ["trade", "food", "ore"] }
+  ],
+  planetSystems: [
+    { id: "system-01", x: 410, y: 150, resources: ["carbon", "food", "fuel"], hidden: true },
+    { id: "system-02", x: 1245, y: 145, resources: ["ore", "trade", "carbon"], hidden: true },
+    { id: "system-03", x: 825, y: 325, resources: ["fuel", "ore", "food"], hidden: true },
+    { id: "system-04", x: 1105, y: 325, resources: ["trade", "carbon", "ore"], hidden: true },
+    { id: "system-05", x: 410, y: 505, resources: ["food", "carbon", "trade"], hidden: true },
+    { id: "system-06", x: 1245, y: 505, resources: ["fuel", "food", "ore"], hidden: true },
+    { id: "system-07", x: 545, y: 685, resources: ["carbon", "ore", "trade"], hidden: true },
+    { id: "system-08", x: 1105, y: 685, resources: ["food", "fuel", "carbon"], hidden: true }
+  ],
+  outposts: [
+    { id: "outpost-01", x: 965, y: 145, name: "A" },
+    { id: "outpost-02", x: 545, y: 325, name: "B" },
+    { id: "outpost-03", x: 965, y: 505, name: "C" },
+    { id: "outpost-04", x: 825, y: 685, name: "D" }
+  ],
+  points: [
+    { id: "p01", x: 215, y: 215, type: "spaceport", region: "start" },
+    { id: "p02", x: 300, y: 150, type: "space" },
+    { id: "p03", x: 410, y: 240, type: "colony" },
+    { id: "p04", x: 540, y: 150, type: "space" },
+    { id: "p05", x: 690, y: 210, type: "space" },
+    { id: "p06", x: 840, y: 145, type: "dock" },
+    { id: "p07", x: 965, y: 240, type: "dock" },
+    { id: "p08", x: 1115, y: 160, type: "space" },
+    { id: "p09", x: 1245, y: 240, type: "colony" },
+    { id: "p10", x: 1390, y: 170, type: "space" },
+    { id: "p11", x: 215, y: 405, type: "spaceport", region: "start" },
+    { id: "p12", x: 335, y: 330, type: "space" },
+    { id: "p13", x: 450, y: 415, type: "dock" },
+    { id: "p14", x: 585, y: 340, type: "dock" },
+    { id: "p15", x: 720, y: 405, type: "space" },
+    { id: "p16", x: 825, y: 250, type: "colony" },
+    { id: "p17", x: 940, y: 360, type: "space" },
+    { id: "p18", x: 1105, y: 425, type: "colony" },
+    { id: "p19", x: 1265, y: 345, type: "space" },
+    { id: "p20", x: 1410, y: 420, type: "space" },
+    { id: "p21", x: 215, y: 595, type: "spaceport", region: "start" },
+    { id: "p22", x: 330, y: 515, type: "space" },
+    { id: "p23", x: 410, y: 610, type: "colony" },
+    { id: "p24", x: 560, y: 530, type: "space" },
+    { id: "p25", x: 690, y: 595, type: "space" },
+    { id: "p26", x: 840, y: 520, type: "dock" },
+    { id: "p27", x: 965, y: 600, type: "dock" },
+    { id: "p28", x: 1110, y: 525, type: "space" },
+    { id: "p29", x: 1245, y: 610, type: "colony" },
+    { id: "p30", x: 1390, y: 540, type: "space" },
+    { id: "p31", x: 215, y: 775, type: "spaceport", region: "start" },
+    { id: "p32", x: 335, y: 705, type: "space" },
+    { id: "p33", x: 545, y: 780, type: "colony" },
+    { id: "p34", x: 700, y: 715, type: "dock" },
+    { id: "p35", x: 825, y: 780, type: "dock" },
+    { id: "p36", x: 980, y: 720, type: "space" },
+    { id: "p37", x: 1105, y: 780, type: "colony" },
+    { id: "p38", x: 1280, y: 710, type: "space" }
+  ],
+  links: [
+    ["p01", "p02"], ["p02", "p03"], ["p03", "p04"], ["p04", "p05"], ["p05", "p06"],
+    ["p06", "p07"], ["p07", "p08"], ["p08", "p09"], ["p09", "p10"],
+    ["p11", "p12"], ["p12", "p13"], ["p13", "p14"], ["p14", "p15"], ["p15", "p16"],
+    ["p16", "p17"], ["p17", "p18"], ["p18", "p19"], ["p19", "p20"],
+    ["p21", "p22"], ["p22", "p23"], ["p23", "p24"], ["p24", "p25"], ["p25", "p26"],
+    ["p26", "p27"], ["p27", "p28"], ["p28", "p29"], ["p29", "p30"],
+    ["p31", "p32"], ["p32", "p33"], ["p33", "p34"], ["p34", "p35"], ["p35", "p36"],
+    ["p36", "p37"], ["p37", "p38"],
+    ["p03", "p13"], ["p05", "p15"], ["p07", "p17"], ["p09", "p18"],
+    ["p13", "p23"], ["p15", "p25"], ["p17", "p27"], ["p18", "p28"],
+    ["p23", "p33"], ["p25", "p34"], ["p27", "p35"], ["p29", "p37"],
+    ["p12", "p22"], ["p20", "p30"]
+  ],
+  specialPoints: {
+    colonySites: ["p03", "p09", "p16", "p18", "p23", "p29", "p33", "p37"],
+    spaceports: ["p01", "p11", "p21", "p31"],
+    docks: ["p06", "p07", "p13", "p14", "p26", "p27", "p34", "p35"]
+  }
+};
+
+export const resourceColors = {
+  carbon: "#38bdf8",
+  food: "#22c55e",
+  fuel: "#f59e0b",
+  ore: "#ef4444",
+  trade: "#a855f7"
+};

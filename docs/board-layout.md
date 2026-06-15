@@ -45,3 +45,18 @@ Konkrete Koordinaten sollen spaeter nicht hart im Rendering verteilt werden. Sta
 - Bauplaetze, Andockpunkte und Raumhafenpunkte.
 - Startpositionen fuer Spielerfarben.
 - Sichtbarer oder verdeckter Zustand einzelner Marker.
+
+## Erste digitale Umsetzung
+
+Die erste Board-Shell nutzt `src/data/boardLayout.js` als Datenquelle. Ausgewertet wurden die gerenderten Seiten 2 und 3 der Spielanleitung fuer die grosse Startaufbau-Abbildung sowie Seite 7 fuer Erkundungs-, Kolonie- und Andockpunkte.
+
+Die Anleitung nennt 15 platzierte Raumquadranten, 4 Startsysteme im Startbereich, 8 zu erkundende Planetensysteme und 4 Aussenposten. Diese Zaehlung ist in der ersten digitalen Boardstruktur abgebildet:
+
+- 15 Raumquadranten als grosses Boardraster.
+- 4 Startsysteme links.
+- 8 verdeckte/erkundbare Planetensysteme als Dreiergruppen.
+- 4 Aussenposten als eigene Marker.
+- Ein erstes Netz aus 38 Raumpunkten und Verbindungen.
+- Spezielle Punktarten fuer Raumhafenpunkte, Koloniebauplaetze und Andockpunkte.
+
+Die genaue Anzahl jedes einzelnen Raumpunkts ist in der Anleitung nicht tabellarisch angegeben und der Almanach liegt im aktuellen Projektkontext nicht als eigene Datei vor. Die Raumpunktstruktur ist deshalb eine visuelle Rekonstruktion in passender Groessenordnung und soll spaeter mit einer vollstaendigen Boardreferenz praezisiert werden.

@@ -20,7 +20,23 @@ const translations = {
     boardAreaLabel: "Erste Spielfeld-Ansicht",
     startArea: "Startbereich",
     progressRight: "Fortschritt nach rechts",
-    backToMenu: "Zurück zum Menü"
+    quadrantCount: "15 Raumquadranten · 4 Startsysteme",
+    backToMenu: "Zurück zum Menü",
+    ingameMenu: "Menü",
+    save: "Speichern",
+    saveGame: "Spiel speichern",
+    saveNamePlaceholder: "Name des Spielstands",
+    defaultSaveName: "Spielstand",
+    saveSuccess: "Spiel gespeichert.",
+    load: "Laden",
+    loadSuccess: "Spielstand geladen.",
+    close: "Schließen",
+    delete: "Löschen",
+    noSaves: "Keine Spielstände vorhanden.",
+    savePlayers: "{count} Spieler",
+    unnamedSave: "Spielstand",
+    unknownDate: "Unbekanntes Datum",
+    confirmBackToMenu: "Zum Hauptmenü zurückkehren?"
   },
   en: {
     subtitle: "A digital space board game",
@@ -39,7 +55,23 @@ const translations = {
     boardAreaLabel: "First board view",
     startArea: "Start area",
     progressRight: "Progress to the right",
-    backToMenu: "Back to menu"
+    quadrantCount: "15 space quadrants · 4 start systems",
+    backToMenu: "Back to menu",
+    ingameMenu: "Menu",
+    save: "Save",
+    saveGame: "Save game",
+    saveNamePlaceholder: "Save name",
+    defaultSaveName: "Save game",
+    saveSuccess: "Game saved.",
+    load: "Load",
+    loadSuccess: "Save game loaded.",
+    close: "Close",
+    delete: "Delete",
+    noSaves: "No saved games available.",
+    savePlayers: "{count} players",
+    unnamedSave: "Save game",
+    unknownDate: "Unknown date",
+    confirmBackToMenu: "Return to the main menu?"
   }
 };
 

@@ -5,6 +5,8 @@ const requiredPaths = [
   "package.json",
   "index.html",
   "src",
+  "src/data",
+  "src/data/boardLayout.js",
   "src/main.js",
   "src/i18n.js",
   "src/styles.css",
