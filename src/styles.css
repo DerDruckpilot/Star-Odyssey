@@ -330,6 +330,7 @@ h1 {
 .fleet-summary dt,
 .fleet-summary dd,
 .phase-actions p,
+.flight-controls p,
 .event-log li,
 .selection-panel p {
   margin: 0;
@@ -364,6 +365,13 @@ h1 {
 
 .phase-actions {
   gap: 0.45rem;
+}
+
+.flight-controls {
+  display: grid;
+  gap: 0.3rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  padding-top: 0.45rem;
 }
 
 .phase-actions .small-button {
@@ -503,6 +511,7 @@ h1 {
 .is-selected .planet,
 .planet.is-selected,
 .space-point.is-selected,
+.space-point.is-reachable,
 .outpost.is-selected .outpost-ring,
 .structure.is-selected .structure-shape {
   stroke: #fef08a;
@@ -571,6 +580,21 @@ h1 {
 
 .space-point--spaceport {
   fill: #7f1d1d;
+}
+
+.space-point--launch {
+  fill: #312e81;
+}
+
+.space-point.is-reachable {
+  cursor: pointer;
+  fill: #fef08a;
+  stroke: #f8fafc;
+  filter: drop-shadow(0 0 8px rgba(250, 204, 21, 0.62));
+}
+
+.space-point.is-occupied:not(.is-reachable) {
+  opacity: 0.72;
 }
 
 .structure-shape {

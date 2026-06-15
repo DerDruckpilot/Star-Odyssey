@@ -6,8 +6,11 @@ import {
   buyUpgrade,
   createGameState,
   currentGameStorageKey,
+  determineFlightSpeed,
   endCurrentTurn,
+  getReachableNodes,
   normalizeGameState,
+  moveShip,
   rollProduction,
   touchGameState,
   tradeWithSupply,
@@ -176,6 +179,8 @@ function enableBoardElementSelection(element, type, id) {
 function selectBoardElement(type, id) {
   if (!state.gameState) return;
 
+  if (type === "spacePoint" && moveSelectedShipTo(id)) return;
+
   state.gameState = touchGameState({
     ...state.gameState,
     board: {
@@ -185,6 +190,24 @@ function selectBoardElement(type, id) {
   });
   saveCurrentGameState();
   render();
+}
+
+function determineSpeedForActivePlayer() {
+  if (!state.gameState || state.gameState.phase !== "flight") return;
+
+  state.gameState = determineFlightSpeed(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function moveSelectedShipTo(targetNodeId) {
+  const selectedShip = getSelectedShip();
+  if (!selectedShip || !canMoveSelectedShipTo(targetNodeId)) return false;
+
+  state.gameState = moveShip(state.gameState, boardLayout, selectedShip.id, targetNodeId);
+  saveCurrentGameState();
+  render();
+  return true;
 }
 
 function rollProductionForActivePlayer() {
@@ -438,7 +461,8 @@ function renderTurnSummary() {
     activePlayer?.name ?? t("noActiveGame"),
     `${t("round")} ${gameState?.turnNumber ?? 1}`,
     `${t("phase")}: ${getPhaseLabel(gameState?.phase)}`,
-    `${t("lastRoll")}: ${formatLastRoll(gameState?.lastRoll)}`
+    `${t("lastRoll")}: ${formatLastRoll(gameState?.lastRoll)}`,
+    `${t("flightSpeed")}: ${formatFlightSpeed(gameState)}`
   ];
 
   for (const row of rows) {
@@ -550,9 +574,28 @@ function renderPhaseActions() {
       createButton(t("toFlightPhase"), goToFlightPhase, "small-button")
     );
   } else if (state.gameState.phase === "flight") {
+    if (!state.gameState.hasRolledFlightSpeed) {
+      wrapper.append(createButton(t("determineSpeed"), determineSpeedForActivePlayer, "small-button"));
+    } else {
+      wrapper.append(renderFlightControls());
+    }
     wrapper.append(createButton(t("endTurn"), endTurn, "small-button"));
   }
 
+  return wrapper;
+}
+
+function renderFlightControls() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "flight-controls";
+
+  const selectedShip = getSelectedShip();
+  const summary = document.createElement("p");
+  summary.textContent = selectedShip
+    ? `${getShipTypeLabel(selectedShip.type)} · ${t("remainingMovement")}: ${getShipRemainingMovement(selectedShip.id)}`
+    : t("selectOwnShip");
+
+  wrapper.append(summary);
   return wrapper;
 }
 
@@ -737,6 +780,11 @@ function formatLastRoll(roll) {
   return String(roll.total);
 }
 
+function formatFlightSpeed(gameState) {
+  if (!gameState?.hasRolledFlightSpeed) return t("none");
+  return `${gameState.flightSpeedTotal} (${gameState.flightSpeedBase} + ${getActivePlayer()?.upgrades?.drive ?? 0})`;
+}
+
 function formatLogEntry(entry) {
   const template = entry.messageKey ? t(entry.messageKey) : entry.message;
   if (!template) return entry.message ?? "";
@@ -750,6 +798,7 @@ function formatLogEntry(entry) {
 function formatMessageParam(key, value) {
   if (["resource", "giveResource", "receiveResource"].includes(key)) return getResourceLabel(value);
   if (key === "upgrade") return getUpgradeLabel(value);
+  if (key === "ship") return getShipTypeLabel(value);
   return String(value);
 }
 
@@ -787,10 +836,18 @@ function resolveSelectedBoardElement() {
   if (selectedElement.type === "spacePoint") {
     const point = boardLayout.points.find((candidate) => candidate.id === selectedElement.id);
     if (!point) return null;
+    const occupyingShip = getShipAtLocation(point.id);
+    const occupyingStructure = getStructureAtLocation(point.id);
+    const details = [
+      `${t("type")}: ${point.type}`,
+      `${t("occupied")}: ${occupyingShip || occupyingStructure ? t("yes") : t("no")}`
+    ];
+    if (occupyingShip) details.push(`${t("ship")}: ${getShipTypeLabel(occupyingShip.type)} · ${getOwnerName(occupyingShip.ownerPlayerId)}`);
+    if (occupyingStructure) details.push(`${t("structure")}: ${getStructureTypeLabel(occupyingStructure.type)} · ${getOwnerName(occupyingStructure.ownerPlayerId)}`);
     return {
       id: point.id,
       typeLabel: t("spacePoint"),
-      details: [`${t("type")}: ${point.type}`]
+      details
     };
   }
 
@@ -818,7 +875,8 @@ function resolveSelectedBoardElement() {
         `${t("owner")}: ${getOwnerName(ship.ownerPlayerId)}`,
         `${t("type")}: ${getShipTypeLabel(ship.type)}`,
         `${t("location")}: ${ship.locationId}`,
-        `${t("status")}: ${getShipStatusLabel(ship.status)}`
+        `${t("status")}: ${getShipStatusLabel(ship.status)}`,
+        ...getShipMovementDetails(ship)
       ]
     };
   }
@@ -836,6 +894,14 @@ function getStructureById(structureId) {
 
 function getShipById(shipId) {
   return state.gameState?.board?.ships?.find((ship) => ship.id === shipId);
+}
+
+function getShipAtLocation(locationId) {
+  return state.gameState?.board?.ships?.find((ship) => ship.locationId === locationId);
+}
+
+function getStructureAtLocation(locationId) {
+  return state.gameState?.board?.structures?.find((structure) => structure.locationId === locationId);
 }
 
 function getOwnerName(ownerPlayerId) {
@@ -868,6 +934,46 @@ function getShipStatusLabel(status) {
 
 function getActivePlayer() {
   return state.gameState?.players?.[state.gameState.currentPlayerIndex] ?? null;
+}
+
+function getSelectedShip() {
+  const selectedElement = state.gameState?.board?.selectedElement;
+  if (selectedElement?.type !== "ship") return null;
+  const ship = getShipById(selectedElement.id);
+  return ship?.ownerPlayerId === getActivePlayer()?.id ? ship : null;
+}
+
+function getShipRemainingMovement(shipId) {
+  return state.gameState?.remainingMovementByShipId?.[shipId] ?? 0;
+}
+
+function getShipMovementDetails(ship) {
+  if (
+    state.gameState?.phase !== "flight" ||
+    !state.gameState.hasRolledFlightSpeed ||
+    ship.ownerPlayerId !== getActivePlayer()?.id
+  ) {
+    return [];
+  }
+
+  return [`${t("remainingMovement")}: ${getShipRemainingMovement(ship.id)}`];
+}
+
+function getReachableNodeMap() {
+  const selectedShip = getSelectedShip();
+  if (!selectedShip || state.gameState?.phase !== "flight" || !state.gameState.hasRolledFlightSpeed) return new Map();
+
+  return new Map(getReachableNodes(
+    boardLayout,
+    state.gameState.board?.ships ?? [],
+    selectedShip.id,
+    getShipRemainingMovement(selectedShip.id),
+    state.gameState.board?.structures ?? []
+  ).map((node) => [node.id, node.distance]));
+}
+
+function canMoveSelectedShipTo(targetNodeId) {
+  return getReachableNodeMap().has(targetNodeId);
 }
 
 function getActiveUpgradeLevel(upgradeId) {
@@ -1102,11 +1208,14 @@ function renderOutpost(outpost) {
 
 function renderPointsLayer() {
   const group = createSvgElement("g", { class: "board-points-layer" });
+  const reachableNodes = getReachableNodeMap();
 
   for (const point of boardLayout.points) {
     const selectedClass = isSelectedElement("spacePoint", point.id) ? " is-selected" : "";
+    const reachableClass = reachableNodes.has(point.id) ? " is-reachable" : "";
+    const occupiedClass = getShipAtLocation(point.id) ? " is-occupied" : "";
     const pointElement = createSvgElement("circle", {
-      class: `space-point space-point--${point.type}${selectedClass}`,
+      class: `space-point space-point--${point.type}${selectedClass}${reachableClass}${occupiedClass}`,
       cx: point.x,
       cy: point.y,
       r: point.type === "space" ? 9 : 13
@@ -1166,10 +1275,10 @@ function renderStructuresLayer() {
 
 function renderShipsLayer() {
   const group = createSvgElement("g", { class: "board-ships-layer" });
-  const launchPointsById = new Map((boardLayout.spaceportLaunchPoints ?? []).map((point) => [point.id, point]));
+  const pointsById = new Map((boardLayout.points ?? []).map((point) => [point.id, point]));
 
   for (const ship of state.gameState?.board?.ships ?? []) {
-    const point = launchPointsById.get(ship.locationId);
+    const point = pointsById.get(ship.locationId);
     if (!point) continue;
     const selectedClass = isSelectedElement("ship", ship.id) ? " is-selected" : "";
     const shipGroup = createSvgElement("g", {

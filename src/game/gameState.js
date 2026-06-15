@@ -23,6 +23,10 @@ export function createGameState({ language, playerCount, boardLayout }) {
     turnNumber: 1,
     phase: "production",
     lastRoll: null,
+    flightSpeedBase: null,
+    flightSpeedTotal: null,
+    remainingMovementByShipId: {},
+    hasRolledFlightSpeed: false,
     board: {
       layoutVersion: boardLayout.layoutVersion,
       selectedElement: null,
@@ -82,6 +86,14 @@ export function rollProduction(gameState, boardLayout) {
 export function advanceToFlightPhase(gameState) {
   return updateGameState(gameState, {
     phase: "flight",
+    flightSpeedBase: null,
+    flightSpeedTotal: null,
+    remainingMovementByShipId: {},
+    hasRolledFlightSpeed: false,
+    board: {
+      ...gameState.board,
+      selectedElement: null
+    },
     logEntry: {
       type: "turn",
       messageKey: "logToFlightPhase",
@@ -90,6 +102,126 @@ export function advanceToFlightPhase(gameState) {
       }
     }
   });
+}
+
+export function determineFlightSpeed(gameState) {
+  if (gameState.phase !== "flight" || gameState.hasRolledFlightSpeed) return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  if (!activePlayer) return gameState;
+
+  const baseSpeed = Math.floor(Math.random() * 3) + 3;
+  const driveLevel = activePlayer.upgrades?.drive ?? 0;
+  const totalSpeed = baseSpeed + driveLevel;
+  const remainingMovementByShipId = Object.fromEntries(
+    normalizeShips(gameState.board?.ships)
+      .filter((ship) => ship.ownerPlayerId === activePlayer.id)
+      .map((ship) => [ship.id, totalSpeed])
+  );
+
+  return updateGameState(gameState, {
+    flightSpeedBase: baseSpeed,
+    flightSpeedTotal: totalSpeed,
+    remainingMovementByShipId,
+    hasRolledFlightSpeed: true,
+    logEntry: {
+      type: "flight",
+      messageKey: "logFlightSpeedDetermined",
+      messageParams: {
+        player: activePlayer.name,
+        base: baseSpeed,
+        drive: driveLevel,
+        total: totalSpeed
+      }
+    }
+  });
+}
+
+export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
+  if (gameState.phase !== "flight" || !gameState.hasRolledFlightSpeed) return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const ships = normalizeShips(gameState.board?.ships);
+  const ship = ships.find((candidate) => candidate.id === shipId);
+  const remainingMovement = gameState.remainingMovementByShipId?.[shipId] ?? 0;
+  const pathCost = getShortestPathCost(boardLayout, ship?.locationId, targetNodeId);
+  if (
+    !activePlayer ||
+    !ship ||
+    ship.ownerPlayerId !== activePlayer.id ||
+    targetNodeId === ship.locationId ||
+    pathCost === null ||
+    pathCost > remainingMovement ||
+    isNodeOccupied(ships, gameState.board?.structures, targetNodeId, shipId)
+  ) {
+    return gameState;
+  }
+
+  const updatedShip = {
+    ...ship,
+    locationId: targetNodeId,
+    status: "active"
+  };
+  const updatedShips = ships.map((candidate) => candidate.id === shipId ? updatedShip : candidate);
+  const players = gameState.players.map((player) => ({
+    ...player,
+    ships: updatedShips.filter((candidate) => candidate.ownerPlayerId === player.id)
+  }));
+  const remaining = remainingMovement - pathCost;
+
+  return updateGameState(gameState, {
+    players,
+    remainingMovementByShipId: {
+      ...(gameState.remainingMovementByShipId ?? {}),
+      [shipId]: remaining
+    },
+    board: {
+      ...gameState.board,
+      selectedElement: { type: "ship", id: shipId },
+      ships: updatedShips
+    },
+    logEntry: {
+      type: "flight",
+      messageKey: "logShipMoved",
+      messageParams: {
+        player: activePlayer.name,
+        ship: ship.type,
+        from: ship.locationId,
+        to: targetNodeId,
+        cost: pathCost,
+        remaining
+      }
+    }
+  });
+}
+
+export function getReachableNodes(boardLayout, ships, shipId, maxDistance, structures = []) {
+  const ship = normalizeShips(ships).find((candidate) => candidate.id === shipId);
+  if (!ship || maxDistance <= 0) return [];
+
+  const occupiedNodeIds = new Set(normalizeShips(ships)
+    .filter((candidate) => candidate.id !== shipId)
+    .map((candidate) => candidate.locationId));
+  for (const structure of structures ?? []) {
+    if (structure?.locationId) occupiedNodeIds.add(structure.locationId);
+  }
+  const graph = createConnectionGraph(boardLayout);
+  const queue = [{ id: ship.locationId, distance: 0 }];
+  const visited = new Map([[ship.locationId, 0]]);
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    for (const nextId of graph.get(current.id) ?? []) {
+      const nextDistance = current.distance + 1;
+      if (nextDistance > maxDistance || visited.has(nextId) || occupiedNodeIds.has(nextId)) continue;
+      visited.set(nextId, nextDistance);
+      queue.push({ id: nextId, distance: nextDistance });
+    }
+  }
+
+  return [...visited.entries()]
+    .filter(([id]) => id !== ship.locationId)
+    .map(([id, distance]) => ({ id, distance }));
 }
 
 export function tradeWithSupply(gameState, { fromResource, toResource }) {
@@ -250,6 +382,14 @@ export function endCurrentTurn(gameState) {
     turnNumber: nextTurnNumber,
     phase: "production",
     lastRoll: null,
+    flightSpeedBase: null,
+    flightSpeedTotal: null,
+    remainingMovementByShipId: {},
+    hasRolledFlightSpeed: false,
+    board: {
+      ...gameState.board,
+      selectedElement: null
+    },
     logEntry: {
       type: "turn",
       messageKey: "logTurnEnded",
@@ -291,6 +431,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
   const normalizedCurrentPlayerIndex = Number.isInteger(gameState.currentPlayerIndex)
     ? Math.min(Math.max(gameState.currentPlayerIndex, 0), normalizedPlayerCount - 1)
     : 0;
+  const normalizedPhase = normalizePhase(gameState.phase);
 
   return {
     ...fallback,
@@ -300,8 +441,12 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     players: normalizedPlayers,
     currentPlayerIndex: normalizedCurrentPlayerIndex,
     turnNumber: Number.isInteger(gameState.turnNumber) ? gameState.turnNumber : 1,
-    phase: normalizePhase(gameState.phase),
+    phase: normalizedPhase,
     lastRoll: normalizeRoll(gameState.lastRoll),
+    flightSpeedBase: normalizedPhase === "flight" && Number.isInteger(gameState.flightSpeedBase) ? gameState.flightSpeedBase : null,
+    flightSpeedTotal: normalizedPhase === "flight" && Number.isInteger(gameState.flightSpeedTotal) ? gameState.flightSpeedTotal : null,
+    remainingMovementByShipId: normalizedPhase === "flight" ? normalizeRemainingMovement(gameState.remainingMovementByShipId) : {},
+    hasRolledFlightSpeed: normalizedPhase === "flight" && Boolean(gameState.hasRolledFlightSpeed),
     board: {
       ...fallback.board,
       ...(gameState.board || {}),
@@ -478,6 +623,14 @@ function normalizeShips(ships = []) {
     : [];
 }
 
+function normalizeRemainingMovement(remainingMovementByShipId = {}) {
+  if (!remainingMovementByShipId || typeof remainingMovementByShipId !== "object") return {};
+
+  return Object.fromEntries(Object.entries(remainingMovementByShipId)
+    .filter(([shipId, movement]) => shipId && Number.isFinite(Number(movement)))
+    .map(([shipId, movement]) => [shipId, Math.max(0, Number(movement))]));
+}
+
 function findFreeLaunchPoint(gameState, boardLayout, ownerPlayerId) {
   const occupiedLaunchPointIds = new Set(normalizeShips(gameState.board?.ships).map((ship) => ship.locationId));
   const ownerStructures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout)
@@ -504,6 +657,52 @@ function findUpgradeableColony(gameState, ownerPlayerId) {
 
 function updatePlayerById(players, playerId, updatePlayer) {
   return players.map((player) => player.id === playerId ? updatePlayer(player) : player);
+}
+
+function getShortestPathCost(boardLayout, fromNodeId, toNodeId) {
+  if (!fromNodeId || !toNodeId) return null;
+  if (fromNodeId === toNodeId) return 0;
+
+  const graph = createConnectionGraph(boardLayout);
+  const queue = [{ id: fromNodeId, distance: 0 }];
+  const visited = new Set([fromNodeId]);
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    for (const nextId of graph.get(current.id) ?? []) {
+      if (visited.has(nextId)) continue;
+      if (nextId === toNodeId) return current.distance + 1;
+      visited.add(nextId);
+      queue.push({ id: nextId, distance: current.distance + 1 });
+    }
+  }
+
+  return null;
+}
+
+function createConnectionGraph(boardLayout) {
+  const graph = new Map();
+  const addEdge = (from, to) => {
+    if (!graph.has(from)) graph.set(from, new Set());
+    graph.get(from).add(to);
+  };
+
+  for (const point of boardLayout.points ?? []) {
+    graph.set(point.id, graph.get(point.id) ?? new Set());
+  }
+
+  for (const connection of boardLayout.connections ?? []) {
+    addEdge(connection.from, connection.to);
+    addEdge(connection.to, connection.from);
+  }
+
+  return graph;
+}
+
+function isNodeOccupied(ships, structures, targetNodeId, ignoredShipId) {
+  if ((structures ?? []).some((structure) => structure?.locationId === targetNodeId)) return true;
+  return normalizeShips(ships)
+    .some((ship) => ship.id !== ignoredShipId && ship.locationId === targetNodeId);
 }
 
 function distributeProduction(gameState, boardLayout, rollTotal) {

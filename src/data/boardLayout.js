@@ -303,6 +303,38 @@ boardLayout.spaceportLaunchPoints = [
   { id: "p37-launch-a", x: 1144, y: 822, spaceportLocationId: "p37" }
 ];
 
+const launchPointConnectionTargets = {
+  "start-01-spaceport": "p01",
+  "start-01-colony-a": "p01",
+  "start-01-colony-b": "p01",
+  "start-02-spaceport": "p11",
+  "start-02-colony-a": "p11",
+  "start-02-colony-b": "p11",
+  "start-03-spaceport": "p21",
+  "start-03-colony-a": "p21",
+  "start-03-colony-b": "p21",
+  "start-04-spaceport": "p31",
+  "start-04-colony-a": "p31",
+  "start-04-colony-b": "p31"
+};
+
+for (const launchPoint of boardLayout.spaceportLaunchPoints) {
+  boardLayout.points.push({
+    id: launchPoint.id,
+    x: launchPoint.x,
+    y: launchPoint.y,
+    type: "launch",
+    region: "spaceport"
+  });
+
+  const targetId = launchPointConnectionTargets[launchPoint.spaceportLocationId] ?? launchPoint.spaceportLocationId;
+  boardLayout.connections.push({
+    id: `connection-${boardLayout.connections.length + 1}`,
+    from: launchPoint.id,
+    to: targetId
+  });
+}
+
 const planetProduction = {
   "start-01-planet-01": { number: 5, adjacentSiteIds: ["start-01-colony-a", "start-01-spaceport"] },
   "start-01-planet-02": { number: 8, adjacentSiteIds: ["start-01-colony-a", "start-01-colony-b", "start-01-spaceport"] },
