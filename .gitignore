@@ -1,7 +1,14 @@
 node_modules/
+.venv/
+__pycache__/
+*.pyc
 npm-debug.log*
 dist/
 build/
+.tmp/
+tmp/
+pdf-inspection/
+*.rendered.png
 .DS_Store
 Thumbs.db
 .env

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "npx serve .",
     "check": "node --check src/main.js && node --check scripts/check-structure.js",
-    "test": "node scripts/check-structure.js"
+    "test": "node scripts/check-structure.js",
+    "pdf:inspect": ".\\.venv\\Scripts\\python.exe tools\\pdf\\inspect-pdf.py"
   },
   "devDependencies": {
     "serve": "^14.2.6"
