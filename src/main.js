@@ -35,6 +35,7 @@ const state = {
   tradeFromResource: "ore",
   tradeToResource: "food",
   modal: null,
+  hudPlayerId: null,
   notice: ""
 };
 
@@ -114,18 +115,32 @@ function setLanguage(language) {
 function setView(view) {
   state.view = view;
   state.modal = null;
+  state.hudPlayerId = null;
   state.notice = "";
   render();
 }
 
 function openModal(modal) {
   state.modal = modal;
+  state.hudPlayerId = null;
   state.notice = "";
   render();
 }
 
 function closeModal() {
   state.modal = null;
+  render();
+}
+
+function openPlayerHud(playerId) {
+  state.hudPlayerId = playerId;
+  state.modal = null;
+  state.notice = "";
+  render();
+}
+
+function closePlayerHud() {
+  state.hudPlayerId = null;
   render();
 }
 
@@ -454,7 +469,7 @@ function renderBoardShell() {
   board.setAttribute("aria-label", t("boardAreaLabel"));
   board.append(renderBoardSvg());
 
-  screen.append(hiddenTitle, board, renderBoardHud(), controls, renderNotice());
+  screen.append(hiddenTitle, board, renderBoardHud(), renderPlayerHudButtons(), renderPlayerHudModal(), controls, renderNotice());
   return screen;
 }
 
@@ -473,14 +488,71 @@ function renderBoardHud() {
   return hud;
 }
 
-function renderTurnSummary() {
+function renderPlayerHudButtons() {
+  const players = state.gameState?.players ?? [];
+  const wrapper = document.createElement("div");
+  wrapper.className = "player-hud-launcher";
+
+  for (const player of players) {
+    const isActive = player.id === getActivePlayer()?.id;
+    const button = createButton(player.name, () => openPlayerHud(player.id), `player-hud-button${isActive ? " is-active" : ""}`);
+    button.setAttribute("aria-pressed", String(state.hudPlayerId === player.id));
+    wrapper.append(button);
+  }
+
+  return wrapper;
+}
+
+function renderPlayerHudModal() {
+  if (!state.hudPlayerId || state.view !== "board") return document.createDocumentFragment();
+
+  const player = state.gameState?.players?.find((candidate) => candidate.id === state.hudPlayerId);
+  if (!player) return document.createDocumentFragment();
+
+  const overlay = document.createElement("div");
+  overlay.className = "player-hud-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.addEventListener("click", closePlayerHud);
+
+  const panel = document.createElement("section");
+  panel.className = "player-hud-panel";
+  panel.addEventListener("click", (event) => event.stopPropagation());
+
+  const header = document.createElement("header");
+  header.className = "player-hud-header";
+
+  const title = document.createElement("h2");
+  title.textContent = player.name;
+
+  header.append(title, createButton(t("close"), closePlayerHud, "small-button secondary-small-button"));
+
+  const content = document.createElement("div");
+  content.className = "player-hud-content";
+  content.append(
+    renderTurnSummary(player),
+    renderResourceSummary(player),
+    renderUpgradeSummary(player),
+    renderFleetSummary(player)
+  );
+
+  if (player.id === getActivePlayer()?.id) {
+    content.append(renderPhaseActions(), renderEventLog(), renderSelectionPanel());
+  }
+
+  panel.append(header, content);
+  overlay.append(panel);
+  return overlay;
+}
+
+function renderTurnSummary(player = getActivePlayer()) {
   const wrapper = document.createElement("div");
   wrapper.className = "turn-summary";
 
   const gameState = state.gameState;
   const activePlayer = gameState?.players?.[gameState.currentPlayerIndex];
   const rows = [
-    activePlayer?.name ?? t("noActiveGame"),
+    player?.name ?? activePlayer?.name ?? t("noActiveGame"),
     `${t("round")} ${gameState?.turnNumber ?? 1}`,
     `${t("phase")}: ${getPhaseLabel(gameState?.phase)}`,
     `${t("lastRoll")}: ${formatLastRoll(gameState?.lastRoll)}`,
@@ -496,21 +568,20 @@ function renderTurnSummary() {
   return wrapper;
 }
 
-function renderResourceSummary() {
+function renderResourceSummary(player = getActivePlayer()) {
   const wrapper = document.createElement("div");
   wrapper.className = "resource-summary";
 
   const title = document.createElement("strong");
   title.textContent = t("resources");
 
-  const activePlayer = state.gameState?.players?.[state.gameState.currentPlayerIndex];
   const list = document.createElement("dl");
 
   for (const resource of resourceTypes) {
     const label = document.createElement("dt");
     label.textContent = getResourceLabel(resource);
     const value = document.createElement("dd");
-    value.textContent = String(activePlayer?.resources?.[resource] ?? 0);
+    value.textContent = String(player?.resources?.[resource] ?? 0);
     list.append(label, value);
   }
 
@@ -518,21 +589,20 @@ function renderResourceSummary() {
   return wrapper;
 }
 
-function renderUpgradeSummary() {
+function renderUpgradeSummary(player = getActivePlayer()) {
   const wrapper = document.createElement("div");
   wrapper.className = "upgrade-summary";
 
   const title = document.createElement("strong");
   title.textContent = t("upgrades");
 
-  const activePlayer = state.gameState?.players?.[state.gameState.currentPlayerIndex];
   const list = document.createElement("dl");
 
   for (const upgrade of upgradeDefinitions) {
     const label = document.createElement("dt");
     label.textContent = getUpgradeLabel(upgrade.id);
     const value = document.createElement("dd");
-    value.textContent = `${activePlayer?.upgrades?.[upgrade.id] ?? 0}/${upgrade.limit}`;
+    value.textContent = `${player?.upgrades?.[upgrade.id] ?? 0}/${upgrade.limit}`;
     list.append(label, value);
   }
 
@@ -540,18 +610,17 @@ function renderUpgradeSummary() {
   return wrapper;
 }
 
-function renderFleetSummary() {
+function renderFleetSummary(player = getActivePlayer()) {
   const wrapper = document.createElement("div");
   wrapper.className = "fleet-summary";
 
   const title = document.createElement("strong");
   title.textContent = t("playerAssets");
 
-  const activePlayer = getActivePlayer();
-  const structures = state.gameState?.board?.structures?.filter((structure) => structure.ownerPlayerId === activePlayer?.id) ?? [];
-  const ships = state.gameState?.board?.ships?.filter((ship) => ship.ownerPlayerId === activePlayer?.id) ?? [];
+  const structures = state.gameState?.board?.structures?.filter((structure) => structure.ownerPlayerId === player?.id) ?? [];
+  const ships = state.gameState?.board?.ships?.filter((ship) => ship.ownerPlayerId === player?.id) ?? [];
   const rows = [
-    [t("victoryPoints"), activePlayer?.victoryPoints ?? 0],
+    [t("victoryPoints"), player?.victoryPoints ?? 0],
     [t("colonies"), structures.filter((structure) => structure.type === "colony").length],
     [t("spaceports"), structures.filter((structure) => structure.type === "spaceport").length],
     [t("colonyShips"), ships.filter((ship) => ship.type === "colonyShip").length],
@@ -1187,8 +1256,7 @@ function renderBoardSvg() {
     renderSystemsLayer(),
     renderPointsLayer(),
     renderStructuresLayer(),
-    renderShipsLayer(),
-    renderBoardLabels()
+    renderShipsLayer()
   );
   return svg;
 }
@@ -1452,29 +1520,6 @@ function renderShipsLayer() {
         : `M ${point.x - 14} ${point.y} L ${point.x} ${point.y - 16} L ${point.x + 14} ${point.y} L ${point.x} ${point.y + 16} Z`
     }));
     group.append(shipGroup);
-  }
-
-  return group;
-}
-
-function renderBoardLabels() {
-  const group = createSvgElement("g", { class: "board-label-layer" });
-  const labels = [
-    { x: 58, y: 54, text: t("startArea"), anchor: "start" },
-    { x: 700, y: 850, text: t("frontSector"), anchor: "middle" },
-    { x: 1260, y: 850, text: t("backSector"), anchor: "middle" },
-    { x: 940, y: 460, text: t("starNebula"), anchor: "middle", className: "board-map-label board-map-label--nebula" }
-  ];
-
-  for (const label of labels) {
-    const text = createSvgElement("text", {
-      class: label.className ?? "board-map-label",
-      x: label.x,
-      y: label.y,
-      "text-anchor": label.anchor
-    });
-    text.textContent = label.text;
-    group.append(text);
   }
 
   return group;

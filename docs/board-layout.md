@@ -54,6 +54,8 @@ Das Board nutzt ein `odd-r offset rows` Koordinatensystem. Die sichtbare Brettfo
 
 Die Hexfelder sind die primaere Geometriequelle. Jedes Hexfeld wird ueber eine einheitliche Grid-Formel berechnet. Aus den sechs Hex-Ecken werden anschliessend die Raumpunkte abgeleitet: identische Ecken benachbarter Hexfelder werden dedupliziert, normale Raumpunkte entstehen an gemeinsamen Kreuzungen von drei Hexfeldern, Randpunkte bleiben als Boundary-Nodes erhalten. Verbindungen werden aus den Hexkanten zwischen benachbarten Raumpunkten generiert.
 
+In der letzten Layout-Anpassung war im Arbeitskontext ein Referenzfoto sichtbar. Die Planetensysteme wurden daraus bestmoeglich auf die auffaelligen 3er-Hex-/Sternpositionen gelegt. Die sichtbaren Sektor-Beschriftungen werden im digitalen Board nicht mehr gerendert.
+
 Umgesetzt sind:
 
 - 4 Startsysteme links mit Startkolonien und Raumhaefen.
