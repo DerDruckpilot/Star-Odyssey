@@ -13,7 +13,14 @@ const translations = {
     playersLabel: "{count} Spieler",
     continue: "Weiter",
     back: "Zurück",
-    continuePlaceholder: "Neues Spiel mit {count} Spielern wird später gestartet."
+    connectControllers: "Controller verbinden",
+    playerNumber: "Spieler {number}",
+    qrPlaceholderHint: "QR-Verbindung wird später ergänzt.",
+    startGameNow: "Spiel jetzt starten",
+    boardAreaLabel: "Erste Spielfeld-Ansicht",
+    startArea: "Startbereich",
+    progressRight: "Fortschritt nach rechts",
+    backToMenu: "Zurück zum Menü"
   },
   en: {
     subtitle: "A digital space board game",
@@ -25,7 +32,14 @@ const translations = {
     playersLabel: "{count} players",
     continue: "Continue",
     back: "Back",
-    continuePlaceholder: "New game with {count} players will start later."
+    connectControllers: "Connect controllers",
+    playerNumber: "Player {number}",
+    qrPlaceholderHint: "QR connection will be added later.",
+    startGameNow: "Start game now",
+    boardAreaLabel: "First board view",
+    startArea: "Start area",
+    progressRight: "Progress to the right",
+    backToMenu: "Back to menu"
   }
 };
 

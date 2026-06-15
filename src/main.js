@@ -6,7 +6,7 @@ const app = document.querySelector("#app");
 const state = {
   language: loadLanguage(),
   view: "menu",
-  selectedPlayers: 2,
+  selectedPlayers: null,
   notice: ""
 };
 
@@ -42,6 +42,11 @@ function setView(view) {
   state.view = view;
   state.notice = "";
   render();
+}
+
+function startNewGameSetup() {
+  state.selectedPlayers = null;
+  setView("players");
 }
 
 function showLoadPlaceholder() {
@@ -93,7 +98,7 @@ function renderMenu() {
   const actions = document.createElement("div");
   actions.className = "menu-actions";
   actions.append(
-    createButton(t("newGame"), () => setView("players")),
+    createButton(t("newGame"), startNewGameSetup),
     createButton(t("loadGame"), showLoadPlaceholder)
   );
 
@@ -126,15 +131,106 @@ function renderPlayerSelect() {
 
   const actions = document.createElement("div");
   actions.className = "setup-actions";
+  const continueButton = createButton(t("continue"), () => setView("controllers"), "menu-button");
+  continueButton.disabled = state.selectedPlayers === null;
   actions.append(
     createButton(t("back"), () => setView("menu"), "secondary-button"),
-    createButton(t("continue"), () => {
-      state.notice = t("continuePlaceholder").replace("{count}", state.selectedPlayers);
-      render();
-    }, "menu-button")
+    continueButton
   );
 
   screen.append(renderLanguageToggle(), title, options, actions, renderNotice());
+  return screen;
+}
+
+function renderControllerConnect() {
+  const screen = document.createElement("section");
+  screen.className = "menu-screen controller-screen";
+  screen.setAttribute("aria-labelledby", "screen-title");
+
+  const title = document.createElement("h1");
+  title.id = "screen-title";
+  title.className = "setup-title";
+  title.textContent = t("connectControllers");
+
+  const qrGrid = document.createElement("div");
+  qrGrid.className = "qr-grid";
+
+  for (let index = 1; index <= state.selectedPlayers; index += 1) {
+    qrGrid.append(renderQrPlaceholder(index));
+  }
+
+  const hint = document.createElement("p");
+  hint.className = "subtitle small-subtitle";
+  hint.textContent = t("qrPlaceholderHint");
+
+  const actions = document.createElement("div");
+  actions.className = "setup-actions";
+  actions.append(
+    createButton(t("back"), () => setView("players"), "secondary-button"),
+    createButton(t("startGameNow"), () => setView("board"), "menu-button")
+  );
+
+  screen.append(renderLanguageToggle(), title, qrGrid, hint, actions);
+  return screen;
+}
+
+function renderQrPlaceholder(playerNumber) {
+  const card = document.createElement("article");
+  card.className = "qr-card";
+
+  const label = document.createElement("h2");
+  label.textContent = t("playerNumber").replace("{number}", playerNumber);
+
+  const qrBox = document.createElement("div");
+  qrBox.className = "qr-placeholder";
+  qrBox.setAttribute("aria-hidden", "true");
+
+  card.append(label, qrBox);
+  return card;
+}
+
+function renderBoardShell() {
+  const screen = document.createElement("section");
+  screen.className = "board-screen";
+  screen.setAttribute("aria-labelledby", "board-title");
+
+  const header = document.createElement("header");
+  header.className = "board-header";
+
+  const title = document.createElement("h1");
+  title.id = "board-title";
+  title.textContent = "Star Odyssey";
+
+  header.append(title, renderLanguageToggle());
+
+  const board = document.createElement("div");
+  board.className = "board-placeholder";
+  board.setAttribute("aria-label", t("boardAreaLabel"));
+
+  const startLabel = document.createElement("span");
+  startLabel.className = "board-label start-label";
+  startLabel.textContent = t("startArea");
+
+  const directionLabel = document.createElement("span");
+  directionLabel.className = "board-label direction-label";
+  directionLabel.textContent = t("progressRight");
+
+  const path = document.createElement("div");
+  path.className = "star-board-path";
+
+  for (let index = 0; index < 12; index += 1) {
+    const node = document.createElement("span");
+    node.className = "board-node";
+    path.append(node);
+  }
+
+  board.append(startLabel, directionLabel, path);
+
+  const actions = document.createElement("div");
+  actions.className = "board-actions";
+  actions.append(createButton(t("backToMenu"), () => setView("menu"), "secondary-button"));
+
+  screen.append(header, board, actions);
   return screen;
 }
 
@@ -148,7 +244,16 @@ function renderNotice() {
 
 function render() {
   document.documentElement.lang = state.language;
-  app.replaceChildren(state.view === "players" ? renderPlayerSelect() : renderMenu());
+  app.classList.toggle("app-shell--board", state.view === "board");
+
+  const views = {
+    board: renderBoardShell,
+    controllers: renderControllerConnect,
+    menu: renderMenu,
+    players: renderPlayerSelect
+  };
+
+  app.replaceChildren((views[state.view] ?? renderMenu)());
 }
 
 render();

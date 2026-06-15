@@ -58,6 +58,11 @@ button {
   z-index: 1;
 }
 
+.app-shell--board {
+  width: min(96vw, 1280px);
+  min-height: min(90vh, 780px);
+}
+
 .menu-screen {
   width: 100%;
   display: grid;
@@ -186,6 +191,162 @@ h1 {
   transform: translateY(-1px);
 }
 
+.menu-button:disabled {
+  border-color: rgba(100, 116, 139, 0.28);
+  color: rgba(203, 213, 225, 0.48);
+  background: rgba(15, 23, 42, 0.42);
+  cursor: not-allowed;
+  transform: none;
+}
+
+.small-subtitle {
+  font-size: clamp(1rem, 2vw, 1.2rem);
+}
+
+.qr-grid {
+  width: min(100%, 46rem);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 1rem;
+}
+
+.qr-card {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.qr-card h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.qr-placeholder {
+  width: min(100%, 8.5rem);
+  aspect-ratio: 1;
+  border: 0.5rem solid #f8fafc;
+  background:
+    linear-gradient(90deg, #0f172a 12px, transparent 12px 24px, #0f172a 24px 36px, transparent 36px),
+    linear-gradient(#0f172a 10px, transparent 10px 22px, #0f172a 22px 34px, transparent 34px),
+    radial-gradient(circle at 18% 18%, #0f172a 0 14px, transparent 15px),
+    radial-gradient(circle at 82% 18%, #0f172a 0 14px, transparent 15px),
+    radial-gradient(circle at 18% 82%, #0f172a 0 14px, transparent 15px),
+    #f8fafc;
+  background-size:
+    48px 48px,
+    44px 44px,
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    auto;
+}
+
+.board-screen {
+  width: 100%;
+  display: grid;
+  gap: 1rem;
+}
+
+.board-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.board-header h1 {
+  font-size: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.board-placeholder {
+  min-height: min(64vh, 560px);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  background:
+    linear-gradient(90deg, rgba(56, 189, 248, 0.16), transparent 20%),
+    radial-gradient(circle at 18% 50%, rgba(34, 211, 238, 0.18), transparent 10rem),
+    rgba(2, 6, 23, 0.82);
+}
+
+.board-placeholder::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(30deg, transparent 48%, rgba(148, 163, 184, 0.18) 49%, rgba(148, 163, 184, 0.18) 51%, transparent 52%),
+    linear-gradient(150deg, transparent 48%, rgba(148, 163, 184, 0.16) 49%, rgba(148, 163, 184, 0.16) 51%, transparent 52%);
+  background-size: 7rem 7rem;
+  opacity: 0.55;
+}
+
+.board-placeholder::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 14%;
+  width: 72%;
+  height: 2px;
+  background: linear-gradient(90deg, #7dd3fc, rgba(125, 211, 252, 0.1));
+}
+
+.board-label {
+  position: absolute;
+  z-index: 1;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(125, 211, 252, 0.45);
+  background: rgba(15, 23, 42, 0.82);
+  color: #e0f2fe;
+  font-weight: 700;
+}
+
+.start-label {
+  top: 1rem;
+  left: 1rem;
+}
+
+.direction-label {
+  right: 1rem;
+  top: 1rem;
+}
+
+.star-board-path {
+  position: absolute;
+  inset: 18% 8%;
+  z-index: 1;
+}
+
+.board-node {
+  position: absolute;
+  width: clamp(0.8rem, 1.5vw, 1.2rem);
+  aspect-ratio: 1;
+  border: 2px solid #e0f2fe;
+  border-radius: 50%;
+  background: #082f49;
+  box-shadow: 0 0 18px rgba(125, 211, 252, 0.55);
+}
+
+.board-node:nth-child(1) { left: 4%; top: 48%; }
+.board-node:nth-child(2) { left: 12%; top: 38%; }
+.board-node:nth-child(3) { left: 20%; top: 56%; }
+.board-node:nth-child(4) { left: 28%; top: 44%; }
+.board-node:nth-child(5) { left: 36%; top: 28%; }
+.board-node:nth-child(6) { left: 44%; top: 50%; }
+.board-node:nth-child(7) { left: 53%; top: 36%; }
+.board-node:nth-child(8) { left: 61%; top: 58%; }
+.board-node:nth-child(9) { left: 70%; top: 42%; }
+.board-node:nth-child(10) { left: 78%; top: 26%; }
+.board-node:nth-child(11) { left: 84%; top: 54%; }
+.board-node:nth-child(12) { left: 92%; top: 40%; }
+
+.board-actions {
+  display: flex;
+  justify-content: center;
+}
+
 @keyframes star-pulse {
   from {
     opacity: 0.32;
@@ -216,5 +377,14 @@ h1 {
 
   .setup-actions {
     grid-template-columns: 1fr;
+  }
+
+  .board-header {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .board-placeholder {
+    min-height: 24rem;
   }
 }
