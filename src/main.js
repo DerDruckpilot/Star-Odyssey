@@ -24,6 +24,7 @@ const languageStorageKey = "star-odyssey-language";
 const savesStorageKey = "star-odyssey-saves";
 const svgNamespace = "http://www.w3.org/2000/svg";
 const showBoardDebugLabels = false;
+const showBoardNodeDebugLabels = false;
 const app = document.querySelector("#app");
 
 const state = {
@@ -1198,7 +1199,7 @@ function renderGridLayer() {
   for (const quadrant of boardLayout.spaceQuadrants) {
     group.append(createSvgElement("polygon", {
       class: `quadrant quadrant--${quadrant.kind}`,
-      points: hexPoints(quadrant.x, quadrant.y, boardLayout.hexRadius ?? 96)
+      points: formatSvgPoints(quadrant.corners ?? hexPoints(quadrant.x, quadrant.y, boardLayout.hexRadius ?? 96))
     }));
     if (showBoardDebugLabels) {
       const debugLabel = createSvgElement("text", {
@@ -1218,6 +1219,7 @@ function renderGridLayer() {
 function renderLinksLayer() {
   const group = createSvgElement("g", { class: "board-links-layer" });
   const pointsById = new Map(boardLayout.points.map((point) => [point.id, point]));
+  const hexKindById = new Map((boardLayout.hexes ?? boardLayout.spaceQuadrants ?? []).map((hex) => [hex.id, hex.kind]));
 
   const connections = boardLayout.connections ?? boardLayout.links.map(([from, to], index) => ({
     id: `connection-${index + 1}`,
@@ -1229,8 +1231,11 @@ function renderLinksLayer() {
     const from = pointsById.get(connection.from);
     const to = pointsById.get(connection.to);
     if (!from || !to) continue;
+    const nebulaClass = (connection.hexIds ?? []).some((hexId) => hexKindById.get(hexId) === "nebula")
+      ? " board-link--nebula"
+      : "";
     group.append(createSvgElement("line", {
-      class: "board-link",
+      class: `board-link${nebulaClass}`,
       "data-connection-id": connection.id,
       x1: from.x,
       y1: from.y,
@@ -1351,14 +1356,26 @@ function renderPointsLayer() {
     const reachableClass = reachableNodes.has(point.id) ? " is-reachable" : "";
     const occupiedClass = getShipAtLocation(point.id) ? " is-occupied" : "";
     const foundableClass = isFoundablePoint(point.id) ? " is-foundable" : "";
+    const radius = point.type === "boundary" ? 5 : point.type === "space" ? 7 : 11;
     const pointElement = createSvgElement("circle", {
       class: `space-point space-point--${point.type}${selectedClass}${reachableClass}${occupiedClass}${foundableClass}`,
       cx: point.x,
       cy: point.y,
-      r: point.type === "space" ? 9 : 13
+      r: radius
     });
     enableBoardElementSelection(pointElement, "spacePoint", point.id);
     group.append(pointElement);
+
+    if (showBoardNodeDebugLabels) {
+      const debugLabel = createSvgElement("text", {
+        class: "node-debug-label",
+        x: point.x,
+        y: point.y - 9,
+        "text-anchor": "middle"
+      });
+      debugLabel.textContent = point.id;
+      group.append(debugLabel);
+    }
   }
 
   return group;
@@ -1467,9 +1484,13 @@ function hexPoints(cx, cy, radius) {
   const points = [];
   for (let index = 0; index < 6; index += 1) {
     const angle = (Math.PI / 180) * (60 * index - 30);
-    points.push(`${cx + radius * Math.cos(angle)},${cy + radius * Math.sin(angle)}`);
+    points.push({ x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) });
   }
-  return points.join(" ");
+  return points;
+}
+
+function formatSvgPoints(points) {
+  return points.map((point) => `${point.x},${point.y}`).join(" ");
 }
 
 function renderModal() {

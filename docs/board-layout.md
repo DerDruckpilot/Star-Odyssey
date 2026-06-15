@@ -52,6 +52,8 @@ Die aktuelle Board-Shell nutzt `src/data/boardLayout.js` als Datenquelle. Als Re
 
 Das Board nutzt ein `odd-r offset rows` Koordinatensystem. Die sichtbare Brettform ist kein Rechteck, sondern eine ausgeschnittene Hexform mit 9 Reihen und 126 sichtbaren Hexfeldern. Einzelne Rand- und Aussparungsfelder wurden aus dem Foto visuell angenaehert.
 
+Die Hexfelder sind die primaere Geometriequelle. Jedes Hexfeld wird ueber eine einheitliche Grid-Formel berechnet. Aus den sechs Hex-Ecken werden anschliessend die Raumpunkte abgeleitet: identische Ecken benachbarter Hexfelder werden dedupliziert, normale Raumpunkte entstehen an gemeinsamen Kreuzungen von drei Hexfeldern, Randpunkte bleiben als Boundary-Nodes erhalten. Verbindungen werden aus den Hexkanten zwischen benachbarten Raumpunkten generiert.
+
 Umgesetzt sind:
 
 - 4 Startsysteme links mit Startkolonien und Raumhaefen.
@@ -60,10 +62,10 @@ Umgesetzt sind:
 - Hinterer Sektor rechts des Sternennebels.
 - 8 erkundbare Planetensysteme als Dreiergruppen.
 - 8 Aussenposten/Fraktionsorte an passenden Hexbereichen.
-- Bewegungs-, Kolonie- und Dockpunkte bleiben als stabile IDs erhalten, damit bestehende Interaktionen und Saves robust bleiben.
+- Bewegungs-, Kolonie- und Dockpunkte liegen auf generierten Hex-Ecken. Wichtige bestehende IDs bleiben als semantische Bindungen an diese Ecken erhalten, damit bestehende Interaktionen robust bleiben.
 
 Offen fuer spaeter:
 
 - Exakte Hexzaehlung an einzelnen Randstellen mit einer frontal entzerrten Brettreferenz pruefen.
-- Raumpunktnetz und reale Verbindungsregeln gegen Almanach/Detailgrafiken praezisieren.
+- Finale Platzierung von Planetensystemen, Aussenposten, Koloniepunkten und Docks gegen Almanach/Detailgrafiken weiter praezisieren.
 - Sternennebel-Sonderregeln und Marker erst in spaeteren Regel-PRs ergaenzen.

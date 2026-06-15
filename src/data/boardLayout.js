@@ -4,6 +4,8 @@ const hexRadius = 52;
 const hexHorizontalStep = Math.sqrt(3) * hexRadius;
 const hexVerticalStep = 1.5 * hexRadius;
 const hexOrigin = { x: 155, y: 82 };
+const cornerAngleOffset = -30;
+const coordinatePrecision = 100;
 
 const hexRows = [
   [[0, 1]],
@@ -35,89 +37,93 @@ const nebulaHexes = new Set([
 
 const sectorSplitColumn = 10;
 
-function hexCenter(q, r, offsetX = 0, offsetY = 0) {
-  return {
-    x: Math.round(hexOrigin.x + q * hexHorizontalStep + (r % 2) * (hexHorizontalStep / 2) + offsetX),
-    y: Math.round(hexOrigin.y + r * hexVerticalStep + offsetY)
-  };
-}
-
-function createHexCells() {
-  return hexRows.flatMap((ranges, r) => ranges.flatMap(([startQ, endQ]) => (
-    Array.from({ length: endQ - startQ + 1 }, (_, index) => {
-      const q = startQ + index;
-      const center = hexCenter(q, r);
-      const id = `h-${String(r).padStart(2, "0")}-${String(q).padStart(2, "0")}`;
-
-      return {
-        id,
-        q,
-        r,
-        x: center.x,
-        y: center.y,
-        kind: nebulaHexes.has(id) ? "nebula" : q >= sectorSplitColumn ? "back" : "front"
-      };
-    })
-  )));
-}
-
-function pointFromHex(id, q, r, type = "space", offsetX = 0, offsetY = 0) {
-  return {
-    id,
-    ...hexCenter(q, r, offsetX, offsetY),
-    type
-  };
-}
-
-const spaceQuadrants = createHexCells();
-const points = [
-  pointFromHex("p01", 0, 1, "spaceport"),
-  pointFromHex("p02", 1, 1),
-  pointFromHex("p03", 3, 1, "colony"),
-  pointFromHex("p04", 4, 1),
-  pointFromHex("p05", 5, 1),
-  pointFromHex("p06", 6, 1, "dock"),
-  pointFromHex("p07", 7, 1, "dock"),
-  pointFromHex("p08", 9, 1),
-  pointFromHex("p09", 12, 1, "colony"),
-  pointFromHex("p10", 14, 1),
-  pointFromHex("p11", 0, 3, "spaceport"),
-  pointFromHex("p12", 1, 3),
-  pointFromHex("p13", 3, 3, "dock"),
-  pointFromHex("p14", 4, 3, "dock"),
-  pointFromHex("p15", 5, 3),
-  pointFromHex("p16", 7, 3, "colony"),
-  pointFromHex("p17", 8, 3),
-  pointFromHex("p18", 11, 3, "colony"),
-  pointFromHex("p19", 13, 3),
-  pointFromHex("p20", 15, 3),
-  pointFromHex("p21", 0, 5, "spaceport"),
-  pointFromHex("p22", 1, 5),
-  pointFromHex("p23", 3, 5, "colony"),
-  pointFromHex("p24", 4, 5),
-  pointFromHex("p25", 5, 5),
-  pointFromHex("p26", 7, 5, "dock"),
-  pointFromHex("p27", 8, 5, "dock"),
-  pointFromHex("p28", 10, 5),
-  pointFromHex("p29", 12, 5, "colony"),
-  pointFromHex("p30", 14, 5),
-  pointFromHex("p31", 0, 7, "spaceport"),
-  pointFromHex("p32", 1, 7),
-  pointFromHex("p33", 4, 7, "colony"),
-  pointFromHex("p34", 6, 7, "dock"),
-  pointFromHex("p35", 7, 7, "dock"),
-  pointFromHex("p36", 9, 7),
-  pointFromHex("p37", 12, 7, "colony"),
-  pointFromHex("p38", 14, 7)
+const semanticNodeRequests = [
+  nodeRequest("start-01-launch-a", 0, 1, 0, "launch"),
+  nodeRequest("start-01-launch-b", 0, 1, 1, "launch"),
+  nodeRequest("start-01-launch-c", 1, 1, 1, "launch"),
+  nodeRequest("start-01-colony-a-launch-a", 0, 1, 5, "launch"),
+  nodeRequest("start-01-colony-b-launch-a", 1, 1, 0, "launch"),
+  nodeRequest("start-02-launch-a", 0, 3, 0, "launch"),
+  nodeRequest("start-02-launch-b", 0, 3, 1, "launch"),
+  nodeRequest("start-02-launch-c", 1, 3, 1, "launch"),
+  nodeRequest("start-02-colony-a-launch-a", 0, 3, 5, "launch"),
+  nodeRequest("start-02-colony-b-launch-a", 1, 3, 0, "launch"),
+  nodeRequest("start-03-launch-a", 0, 5, 0, "launch"),
+  nodeRequest("start-03-launch-b", 0, 5, 1, "launch"),
+  nodeRequest("start-03-launch-c", 1, 5, 1, "launch"),
+  nodeRequest("start-03-colony-a-launch-a", 0, 5, 5, "launch"),
+  nodeRequest("start-03-colony-b-launch-a", 1, 5, 0, "launch"),
+  nodeRequest("start-04-launch-a", 0, 7, 0, "launch"),
+  nodeRequest("start-04-launch-b", 0, 7, 1, "launch"),
+  nodeRequest("start-04-launch-c", 1, 7, 1, "launch"),
+  nodeRequest("start-04-colony-a-launch-a", 0, 7, 5, "launch"),
+  nodeRequest("start-04-colony-b-launch-a", 1, 7, 0, "launch"),
+  nodeRequest("p01", 0, 1, 2, "spaceport"),
+  nodeRequest("p02", 1, 1, 2),
+  nodeRequest("p03", 3, 1, 2, "colony"),
+  nodeRequest("p04", 4, 1, 2),
+  nodeRequest("p05", 5, 1, 2),
+  nodeRequest("p06", 6, 1, 2, "dock"),
+  nodeRequest("p07", 7, 1, 2, "dock"),
+  nodeRequest("p08", 9, 1, 2),
+  nodeRequest("p09", 12, 1, 2, "colony"),
+  nodeRequest("p10", 14, 1, 2),
+  nodeRequest("p11", 0, 3, 2, "spaceport"),
+  nodeRequest("p12", 1, 3, 2),
+  nodeRequest("p13", 3, 3, 2, "dock"),
+  nodeRequest("p14", 4, 3, 2, "dock"),
+  nodeRequest("p15", 5, 3, 2),
+  nodeRequest("p16", 7, 3, 2, "colony"),
+  nodeRequest("p17", 8, 3, 2),
+  nodeRequest("p18", 11, 3, 2, "colony"),
+  nodeRequest("p19", 13, 3, 2),
+  nodeRequest("p20", 15, 3, 2),
+  nodeRequest("p21", 0, 5, 2, "spaceport"),
+  nodeRequest("p22", 1, 5, 2),
+  nodeRequest("p23", 3, 5, 2, "colony"),
+  nodeRequest("p24", 4, 5, 2),
+  nodeRequest("p25", 5, 5, 2),
+  nodeRequest("p26", 7, 5, 2, "dock"),
+  nodeRequest("p27", 8, 5, 2, "dock"),
+  nodeRequest("p28", 10, 5, 2),
+  nodeRequest("p29", 12, 5, 2, "colony"),
+  nodeRequest("p30", 14, 5, 2),
+  nodeRequest("p31", 0, 7, 2, "spaceport"),
+  nodeRequest("p32", 1, 7, 2),
+  nodeRequest("p33", 4, 7, 2, "colony"),
+  nodeRequest("p34", 6, 7, 2, "dock"),
+  nodeRequest("p35", 7, 7, 2, "dock"),
+  nodeRequest("p36", 9, 7, 2),
+  nodeRequest("p37", 12, 7, 2, "colony"),
+  nodeRequest("p38", 14, 7, 2),
+  nodeRequest("p03-launch-a", 3, 1, 1, "launch"),
+  nodeRequest("p09-launch-a", 12, 1, 1, "launch"),
+  nodeRequest("p16-launch-a", 7, 3, 1, "launch"),
+  nodeRequest("p18-launch-a", 11, 3, 1, "launch"),
+  nodeRequest("p23-launch-a", 3, 5, 1, "launch"),
+  nodeRequest("p29-launch-a", 12, 5, 1, "launch"),
+  nodeRequest("p33-launch-a", 4, 7, 1, "launch"),
+  nodeRequest("p37-launch-a", 12, 7, 1, "launch")
 ];
 
+const spaceQuadrants = createHexCells();
+const boardGraph = createBoardGraph(spaceQuadrants);
+const boardConnections = boardGraph.connections;
+const pointsById = new Map(boardGraph.points.map((point) => [point.id, point]));
+
 export const boardLayout = {
-  layoutVersion: "reference-offset-hex-v1",
+  layoutVersion: "generated-hex-corner-graph-v1",
   width: boardWidth,
   height: boardHeight,
   hexRadius,
   coordinateSystem: "odd-r offset rows",
-  spaceQuadrants,
+  spaceQuadrants: boardGraph.hexes,
+  hexes: boardGraph.hexes,
+  vertices: boardGraph.points,
+  spaceNodes: boardGraph.points,
+  points: boardGraph.points,
+  connections: boardConnections,
+  links: boardConnections.map((connection) => [connection.from, connection.to]),
   startSystems: [
     createStartSystem("start-01", 82, 116, ["food", "fuel", "carbon"]),
     createStartSystem("start-02", 82, 288, ["ore", "goods", "food"]),
@@ -144,27 +150,14 @@ export const boardLayout = {
     createOutpost("outpost-07", 13, 5, "G"),
     createOutpost("outpost-08", 14, 2, "H")
   ],
-  points,
-  links: [
-    ["p01", "p02"], ["p02", "p03"], ["p03", "p04"], ["p04", "p05"], ["p05", "p06"],
-    ["p06", "p07"], ["p07", "p08"], ["p08", "p09"], ["p09", "p10"],
-    ["p11", "p12"], ["p12", "p13"], ["p13", "p14"], ["p14", "p15"], ["p15", "p16"],
-    ["p16", "p17"], ["p17", "p18"], ["p18", "p19"], ["p19", "p20"],
-    ["p21", "p22"], ["p22", "p23"], ["p23", "p24"], ["p24", "p25"], ["p25", "p26"],
-    ["p26", "p27"], ["p27", "p28"], ["p28", "p29"], ["p29", "p30"],
-    ["p31", "p32"], ["p32", "p33"], ["p33", "p34"], ["p34", "p35"], ["p35", "p36"],
-    ["p36", "p37"], ["p37", "p38"],
-    ["p03", "p13"], ["p05", "p15"], ["p07", "p17"], ["p09", "p18"],
-    ["p13", "p23"], ["p15", "p25"], ["p17", "p27"], ["p18", "p28"],
-    ["p23", "p33"], ["p25", "p34"], ["p27", "p35"], ["p29", "p37"],
-    ["p12", "p22"], ["p20", "p30"], ["p10", "p20"], ["p30", "p38"]
-  ],
   specialPoints: {
     colonySites: ["p03", "p09", "p16", "p18", "p23", "p29", "p33", "p37"],
     spaceports: ["p01", "p11", "p21", "p31"],
     docks: ["p06", "p07", "p13", "p14", "p26", "p27", "p34", "p35"]
   }
 };
+
+export { boardConnections };
 
 export const resourceColors = {
   carbon: "#38bdf8",
@@ -174,14 +167,6 @@ export const resourceColors = {
   goods: "#a855f7",
   trade: "#a855f7"
 };
-
-export const boardConnections = boardLayout.links.map(([from, to], index) => ({
-  id: `connection-${String(index + 1).padStart(2, "0")}`,
-  from,
-  to
-}));
-
-boardLayout.connections = boardConnections;
 
 boardLayout.startSites = [
   createStartSite("start-01-colony-a", 53, 142, "colonySite", ["start-01-planet-01", "start-01-planet-02"]),
@@ -208,67 +193,35 @@ boardLayout.startAssignments = boardLayout.startSystems.map((system, index) => (
 }));
 
 boardLayout.spaceportLaunchPoints = [
-  createLaunchPoint("start-01-launch-a", 142, 186, "start-01-spaceport"),
-  createLaunchPoint("start-01-launch-b", 164, 222, "start-01-spaceport"),
-  createLaunchPoint("start-01-launch-c", 190, 202, "start-01-spaceport"),
-  createLaunchPoint("start-01-colony-a-launch-a", 56, 188, "start-01-colony-a"),
-  createLaunchPoint("start-01-colony-b-launch-a", 124, 188, "start-01-colony-b"),
-  createLaunchPoint("start-02-launch-a", 142, 358, "start-02-spaceport"),
-  createLaunchPoint("start-02-launch-b", 164, 394, "start-02-spaceport"),
-  createLaunchPoint("start-02-launch-c", 190, 374, "start-02-spaceport"),
-  createLaunchPoint("start-02-colony-a-launch-a", 56, 360, "start-02-colony-a"),
-  createLaunchPoint("start-02-colony-b-launch-a", 124, 360, "start-02-colony-b"),
-  createLaunchPoint("start-03-launch-a", 142, 580, "start-03-spaceport"),
-  createLaunchPoint("start-03-launch-b", 164, 616, "start-03-spaceport"),
-  createLaunchPoint("start-03-launch-c", 190, 596, "start-03-spaceport"),
-  createLaunchPoint("start-03-colony-a-launch-a", 56, 582, "start-03-colony-a"),
-  createLaunchPoint("start-03-colony-b-launch-a", 124, 582, "start-03-colony-b"),
-  createLaunchPoint("start-04-launch-a", 142, 806, "start-04-spaceport"),
-  createLaunchPoint("start-04-launch-b", 164, 842, "start-04-spaceport"),
-  createLaunchPoint("start-04-launch-c", 190, 822, "start-04-spaceport"),
-  createLaunchPoint("start-04-colony-a-launch-a", 56, 808, "start-04-colony-a"),
-  createLaunchPoint("start-04-colony-b-launch-a", 124, 808, "start-04-colony-b"),
-  createLaunchPoint("p03-launch-a", 450, 202, "p03"),
-  createLaunchPoint("p09-launch-a", 1280, 202, "p09"),
-  createLaunchPoint("p16-launch-a", 840, 360, "p16"),
-  createLaunchPoint("p18-launch-a", 1195, 360, "p18"),
-  createLaunchPoint("p23-launch-a", 450, 512, "p23"),
-  createLaunchPoint("p29-launch-a", 1280, 512, "p29"),
-  createLaunchPoint("p33-launch-a", 575, 668, "p33"),
-  createLaunchPoint("p37-launch-a", 1280, 668, "p37")
-];
-
-const launchPointConnectionTargets = {
-  "start-01-spaceport": "p01",
-  "start-01-colony-a": "p01",
-  "start-01-colony-b": "p01",
-  "start-02-spaceport": "p11",
-  "start-02-colony-a": "p11",
-  "start-02-colony-b": "p11",
-  "start-03-spaceport": "p21",
-  "start-03-colony-a": "p21",
-  "start-03-colony-b": "p21",
-  "start-04-spaceport": "p31",
-  "start-04-colony-a": "p31",
-  "start-04-colony-b": "p31"
-};
-
-for (const launchPoint of boardLayout.spaceportLaunchPoints) {
-  boardLayout.points.push({
-    id: launchPoint.id,
-    x: launchPoint.x,
-    y: launchPoint.y,
-    type: "launch",
-    region: "spaceport"
-  });
-
-  const targetId = launchPointConnectionTargets[launchPoint.spaceportLocationId] ?? launchPoint.spaceportLocationId;
-  boardLayout.connections.push({
-    id: `connection-${boardLayout.connections.length + 1}`,
-    from: launchPoint.id,
-    to: targetId
-  });
-}
+  createLaunchPoint("start-01-launch-a", "start-01-spaceport"),
+  createLaunchPoint("start-01-launch-b", "start-01-spaceport"),
+  createLaunchPoint("start-01-launch-c", "start-01-spaceport"),
+  createLaunchPoint("start-01-colony-a-launch-a", "start-01-colony-a"),
+  createLaunchPoint("start-01-colony-b-launch-a", "start-01-colony-b"),
+  createLaunchPoint("start-02-launch-a", "start-02-spaceport"),
+  createLaunchPoint("start-02-launch-b", "start-02-spaceport"),
+  createLaunchPoint("start-02-launch-c", "start-02-spaceport"),
+  createLaunchPoint("start-02-colony-a-launch-a", "start-02-colony-a"),
+  createLaunchPoint("start-02-colony-b-launch-a", "start-02-colony-b"),
+  createLaunchPoint("start-03-launch-a", "start-03-spaceport"),
+  createLaunchPoint("start-03-launch-b", "start-03-spaceport"),
+  createLaunchPoint("start-03-launch-c", "start-03-spaceport"),
+  createLaunchPoint("start-03-colony-a-launch-a", "start-03-colony-a"),
+  createLaunchPoint("start-03-colony-b-launch-a", "start-03-colony-b"),
+  createLaunchPoint("start-04-launch-a", "start-04-spaceport"),
+  createLaunchPoint("start-04-launch-b", "start-04-spaceport"),
+  createLaunchPoint("start-04-launch-c", "start-04-spaceport"),
+  createLaunchPoint("start-04-colony-a-launch-a", "start-04-colony-a"),
+  createLaunchPoint("start-04-colony-b-launch-a", "start-04-colony-b"),
+  createLaunchPoint("p03-launch-a", "p03"),
+  createLaunchPoint("p09-launch-a", "p09"),
+  createLaunchPoint("p16-launch-a", "p16"),
+  createLaunchPoint("p18-launch-a", "p18"),
+  createLaunchPoint("p23-launch-a", "p23"),
+  createLaunchPoint("p29-launch-a", "p29"),
+  createLaunchPoint("p33-launch-a", "p33"),
+  createLaunchPoint("p37-launch-a", "p37")
+].filter(Boolean);
 
 const planetProduction = {
   "start-01-planet-01": { number: 5, adjacentSiteIds: ["start-01-colony-a", "start-01-spaceport"] },
@@ -366,6 +319,158 @@ boardLayout.productionPlanets = [...boardLayout.startSystems, ...boardLayout.pla
     systemId: system.id
   })));
 
+function nodeRequest(id, q, r, corner, type = "space") {
+  return { id, q, r, corner, type };
+}
+
+function hexCenter(q, r, offsetX = 0, offsetY = 0) {
+  return {
+    x: hexOrigin.x + q * hexHorizontalStep + (r % 2) * (hexHorizontalStep / 2) + offsetX,
+    y: hexOrigin.y + r * hexVerticalStep + offsetY
+  };
+}
+
+function createHexCells() {
+  return hexRows.flatMap((ranges, r) => ranges.flatMap(([startQ, endQ]) => (
+    Array.from({ length: endQ - startQ + 1 }, (_, index) => {
+      const q = startQ + index;
+      const center = hexCenter(q, r);
+      const id = `h-${String(r).padStart(2, "0")}-${String(q).padStart(2, "0")}`;
+
+      return {
+        id,
+        q,
+        r,
+        x: roundCoordinate(center.x),
+        y: roundCoordinate(center.y),
+        kind: nebulaHexes.has(id) ? "nebula" : q >= sectorSplitColumn ? "back" : "front"
+      };
+    })
+  )));
+}
+
+function createBoardGraph(hexes) {
+  const verticesByKey = new Map();
+  const edgesByKey = new Map();
+
+  for (const hex of hexes) {
+    const corners = getHexCorners(hex.x, hex.y);
+    const cornerKeys = corners.map(cornerKey);
+    hex.corners = corners;
+    hex.cornerKeys = cornerKeys;
+
+    for (const [index, corner] of corners.entries()) {
+      const key = cornerKeys[index];
+      if (!verticesByKey.has(key)) {
+        verticesByKey.set(key, {
+          key,
+          x: corner.x,
+          y: corner.y,
+          hexIds: new Set()
+        });
+      }
+      verticesByKey.get(key).hexIds.add(hex.id);
+    }
+
+    for (let index = 0; index < cornerKeys.length; index += 1) {
+      const fromKey = cornerKeys[index];
+      const toKey = cornerKeys[(index + 1) % cornerKeys.length];
+      const edgeId = createEdgeKey(fromKey, toKey);
+      if (!edgesByKey.has(edgeId)) {
+        edgesByKey.set(edgeId, {
+          id: edgeId,
+          fromKey,
+          toKey,
+          hexIds: new Set()
+        });
+      }
+      edgesByKey.get(edgeId).hexIds.add(hex.id);
+    }
+  }
+
+  const bindingsByKey = createSemanticBindings(hexes);
+  const sortedVertices = [...verticesByKey.values()]
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+  const usedIds = new Set();
+  const keyToId = new Map();
+  const points = sortedVertices.map((vertex, index) => {
+    const binding = bindingsByKey.get(vertex.key);
+    const fallbackId = `n-${String(index + 1).padStart(3, "0")}`;
+    const id = binding && !usedIds.has(binding.id) ? binding.id : fallbackId;
+    const hexIds = [...vertex.hexIds].sort();
+    const isBoundary = hexIds.length < 3;
+    usedIds.add(id);
+    keyToId.set(vertex.key, id);
+
+    return {
+      id,
+      x: roundCoordinate(vertex.x),
+      y: roundCoordinate(vertex.y),
+      type: binding?.type ?? (isBoundary ? "boundary" : "space"),
+      hexIds,
+      isBoundary
+    };
+  });
+
+  const connections = [...edgesByKey.values()]
+    .map((edge, index) => ({
+      id: `edge-${String(index + 1).padStart(3, "0")}`,
+      from: keyToId.get(edge.fromKey),
+      to: keyToId.get(edge.toKey),
+      hexIds: [...edge.hexIds].sort()
+    }))
+    .filter((edge) => edge.from && edge.to && edge.from !== edge.to);
+
+  return {
+    hexes: hexes.map((hex) => ({
+      ...hex,
+      cornerIds: hex.cornerKeys.map((key) => keyToId.get(key)),
+      corners: hex.corners.map((corner) => ({
+        x: roundCoordinate(corner.x),
+        y: roundCoordinate(corner.y)
+      }))
+    })),
+    points,
+    connections
+  };
+}
+
+function createSemanticBindings(hexes) {
+  const hexByCoordinate = new Map(hexes.map((hex) => [`${hex.q},${hex.r}`, hex]));
+  const bindings = new Map();
+
+  for (const request of semanticNodeRequests) {
+    const hex = hexByCoordinate.get(`${request.q},${request.r}`);
+    const key = hex?.cornerKeys?.[request.corner];
+    if (!key || bindings.has(key)) continue;
+    bindings.set(key, request);
+  }
+
+  return bindings;
+}
+
+function getHexCorners(cx, cy) {
+  return Array.from({ length: 6 }, (_, index) => {
+    const angle = (Math.PI / 180) * (60 * index + cornerAngleOffset);
+    return {
+      x: cx + hexRadius * Math.cos(angle),
+      y: cy + hexRadius * Math.sin(angle)
+    };
+  });
+}
+
+function cornerKey(point) {
+  return `${Math.round(point.x * coordinatePrecision)}:${Math.round(point.y * coordinatePrecision)}`;
+}
+
+function createEdgeKey(fromKey, toKey) {
+  return [fromKey, toKey].sort().join("|");
+}
+
+function roundCoordinate(value) {
+  return Number(value.toFixed(3));
+}
+
 function createStartSystem(id, x, y, resources) {
   return {
     id,
@@ -383,8 +488,8 @@ function createPlanetSystem(id, q, r, resources) {
   const center = hexCenter(q, r, 0, -18);
   return {
     id,
-    x: center.x,
-    y: center.y,
+    x: roundCoordinate(center.x),
+    y: roundCoordinate(center.y),
     resources,
     planets: resources.map((resource, index) => ({
       id: `${id}-planet-${String(index + 1).padStart(2, "0")}`,
@@ -396,15 +501,28 @@ function createPlanetSystem(id, q, r, resources) {
 
 function createOutpost(id, q, r, name) {
   const center = hexCenter(q, r, 0, 8);
-  return { id, x: center.x, y: center.y, name };
+  return {
+    id,
+    x: roundCoordinate(center.x),
+    y: roundCoordinate(center.y),
+    name
+  };
 }
 
 function createStartSite(id, x, y, type, adjacentPlanetIds) {
   return { id, x, y, type, adjacentPlanetIds };
 }
 
-function createLaunchPoint(id, x, y, spaceportLocationId) {
-  return { id, x, y, spaceportLocationId };
+function createLaunchPoint(id, spaceportLocationId) {
+  const point = pointsById.get(id);
+  if (!point) return null;
+
+  return {
+    id,
+    x: point.x,
+    y: point.y,
+    spaceportLocationId
+  };
 }
 
 function normalizeResource(resource) {

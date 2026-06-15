@@ -484,33 +484,39 @@ h1 {
 
 .quadrant {
   fill: rgba(15, 23, 42, 0.14);
-  stroke: rgba(125, 211, 252, 0.38);
-  stroke-width: 2;
+  stroke: none;
 }
 
 .quadrant--back {
   fill: rgba(15, 23, 42, 0.1);
-  stroke: rgba(148, 163, 184, 0.34);
 }
 
 .quadrant--nebula {
   fill: rgba(234, 179, 8, 0.12);
-  stroke: rgba(250, 204, 21, 0.9);
-  stroke-width: 4;
   filter: drop-shadow(0 0 7px rgba(250, 204, 21, 0.32));
 }
 
-.hex-debug-label {
+.hex-debug-label,
+.node-debug-label {
   pointer-events: none;
   fill: rgba(226, 232, 240, 0.74);
   font-size: 14px;
   font-weight: 700;
 }
 
+.node-debug-label {
+  font-size: 10px;
+}
+
 .board-link {
-  stroke: rgba(226, 232, 240, 0.48);
-  stroke-width: 4;
+  stroke: rgba(125, 211, 252, 0.38);
+  stroke-width: 2;
   stroke-linecap: round;
+}
+
+.board-link--nebula {
+  stroke: rgba(250, 204, 21, 0.78);
+  stroke-width: 3;
 }
 
 .board-element {
@@ -585,7 +591,13 @@ h1 {
 .space-point {
   fill: #082f49;
   stroke: #e0f2fe;
-  stroke-width: 4;
+  stroke-width: 2;
+}
+
+.space-point--boundary {
+  fill: rgba(8, 47, 73, 0.5);
+  stroke: rgba(224, 242, 254, 0.42);
+  stroke-width: 1.5;
 }
 
 .space-point--colony {
