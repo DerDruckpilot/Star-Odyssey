@@ -6,6 +6,7 @@ const requiredPaths = [
   "index.html",
   "src",
   "src/main.js",
+  "src/i18n.js",
   "src/styles.css",
   "assets",
   "docs",
