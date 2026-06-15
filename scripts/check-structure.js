@@ -7,6 +7,8 @@ const requiredPaths = [
   "src",
   "src/data",
   "src/data/boardLayout.js",
+  "src/game",
+  "src/game/gameState.js",
   "src/main.js",
   "src/i18n.js",
   "src/styles.css",

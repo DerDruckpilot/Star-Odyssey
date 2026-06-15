@@ -36,7 +36,19 @@ const translations = {
     savePlayers: "{count} Spieler",
     unnamedSave: "Spielstand",
     unknownDate: "Unbekanntes Datum",
-    confirmBackToMenu: "Zum Hauptmenü zurückkehren?"
+    confirmBackToMenu: "Zum Hauptmenü zurückkehren?",
+    selected: "Ausgewählt",
+    type: "Typ",
+    id: "ID",
+    planetSystem: "Planetensystem",
+    outpost: "Außenposten",
+    spacePoint: "Raumpunkt",
+    noSelection: "Keine Auswahl",
+    noActiveGame: "Kein aktives Spiel",
+    round: "Runde",
+    phase: "Phase",
+    phasePreparation: "Vorbereitung",
+    logNewGameStarted: "Neues Spiel gestartet."
   },
   en: {
     subtitle: "A digital space board game",
@@ -71,7 +83,19 @@ const translations = {
     savePlayers: "{count} players",
     unnamedSave: "Save game",
     unknownDate: "Unknown date",
-    confirmBackToMenu: "Return to the main menu?"
+    confirmBackToMenu: "Return to the main menu?",
+    selected: "Selected",
+    type: "Type",
+    id: "ID",
+    planetSystem: "Planet system",
+    outpost: "Outpost",
+    spacePoint: "Space point",
+    noSelection: "No selection",
+    noActiveGame: "No active game",
+    round: "Round",
+    phase: "Phase",
+    phasePreparation: "Preparation",
+    logNewGameStarted: "New game started."
   }
 };
 

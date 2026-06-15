@@ -1,4 +1,10 @@
 import { boardLayout, resourceColors } from "./data/boardLayout.js";
+import {
+  createGameState,
+  currentGameStorageKey,
+  normalizeGameState,
+  touchGameState
+} from "./game/gameState.js";
 import { defaultLanguage, getText, languages } from "./i18n.js";
 
 const languageStorageKey = "star-odyssey-language";
@@ -10,6 +16,7 @@ const state = {
   language: loadLanguage(),
   view: "menu",
   selectedPlayers: null,
+  gameState: loadCurrentGameState(),
   modal: null,
   notice: ""
 };
@@ -20,6 +27,31 @@ function loadLanguage() {
     return languages.includes(storedLanguage) ? storedLanguage : defaultLanguage;
   } catch {
     return defaultLanguage;
+  }
+}
+
+function loadCurrentGameState() {
+  try {
+    const parsedGameState = JSON.parse(localStorage.getItem(currentGameStorageKey) ?? "null");
+    if (!parsedGameState) return null;
+
+    return normalizeGameState(parsedGameState, {
+      language: parsedGameState.language || loadLanguage(),
+      playerCount: parsedGameState.playerCount || 2,
+      boardLayout
+    });
+  } catch {
+    return null;
+  }
+}
+
+function saveCurrentGameState() {
+  if (!state.gameState) return;
+
+  try {
+    localStorage.setItem(currentGameStorageKey, JSON.stringify(state.gameState));
+  } catch {
+    // Saving the current game is best-effort for the browser prototype.
   }
 }
 
@@ -51,6 +83,13 @@ function t(key) {
 function setLanguage(language) {
   state.language = language;
   state.notice = "";
+  if (state.gameState) {
+    state.gameState = touchGameState({
+      ...state.gameState,
+      language
+    });
+    saveCurrentGameState();
+  }
   saveLanguage(language);
   render();
 }
@@ -78,6 +117,17 @@ function startNewGameSetup() {
   setView("players");
 }
 
+function startGameNow() {
+  state.gameState = createGameState({
+    language: state.language,
+    playerCount: state.selectedPlayers,
+    boardLayout
+  });
+  state.selectedPlayers = state.gameState.playerCount;
+  saveCurrentGameState();
+  setView("board");
+}
+
 function createButton(label, onClick, className = "menu-button") {
   const button = document.createElement("button");
   button.type = "button";
@@ -93,6 +143,53 @@ function createSvgElement(name, attributes = {}) {
     element.setAttribute(key, String(value));
   }
   return element;
+}
+
+function enableBoardElementSelection(element, type, id) {
+  element.classList.add("board-element");
+  element.setAttribute("role", "button");
+  element.setAttribute("tabindex", "0");
+  element.setAttribute("aria-label", `${getBoardElementTypeLabel(type)} ${id}`);
+  element.addEventListener("click", (event) => {
+    event.stopPropagation();
+    selectBoardElement(type, id);
+  });
+  element.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectBoardElement(type, id);
+    }
+  });
+  return element;
+}
+
+function selectBoardElement(type, id) {
+  if (!state.gameState) return;
+
+  state.gameState = touchGameState({
+    ...state.gameState,
+    board: {
+      ...state.gameState.board,
+      selectedElement: { type, id }
+    }
+  });
+  saveCurrentGameState();
+  render();
+}
+
+function isSelectedElement(type, id) {
+  const selectedElement = state.gameState?.board?.selectedElement;
+  return selectedElement?.type === type && selectedElement?.id === id;
+}
+
+function getBoardElementTypeLabel(type) {
+  const labels = {
+    outpost: t("outpost"),
+    planetSystem: t("planetSystem"),
+    spacePoint: t("spacePoint")
+  };
+
+  return labels[type] ?? type;
 }
 
 function renderLanguageToggle() {
@@ -199,7 +296,7 @@ function renderControllerConnect() {
   actions.className = "setup-actions";
   actions.append(
     createButton(t("back"), () => setView("players"), "secondary-button"),
-    createButton(t("startGameNow"), () => setView("board"), "menu-button")
+    createButton(t("startGameNow"), startGameNow, "menu-button")
   );
 
   screen.append(renderLanguageToggle(), title, qrGrid, hint, actions);
@@ -240,8 +337,87 @@ function renderBoardShell() {
   board.setAttribute("aria-label", t("boardAreaLabel"));
   board.append(renderBoardSvg());
 
-  screen.append(hiddenTitle, board, controls, renderNotice());
+  screen.append(hiddenTitle, board, renderBoardHud(), controls, renderNotice());
   return screen;
+}
+
+function renderBoardHud() {
+  const hud = document.createElement("aside");
+  hud.className = "board-hud";
+  hud.append(renderTurnSummary(), renderSelectionPanel());
+  return hud;
+}
+
+function renderTurnSummary() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "turn-summary";
+
+  const gameState = state.gameState;
+  const activePlayer = gameState?.players?.[gameState.currentPlayerIndex];
+  const rows = [
+    activePlayer?.name ?? t("noActiveGame"),
+    `${t("round")} ${gameState?.turnNumber ?? 1}`,
+    `${t("phase")}: ${getPhaseLabel(gameState?.phase)}`
+  ];
+
+  for (const row of rows) {
+    const item = document.createElement("p");
+    item.textContent = row;
+    wrapper.append(item);
+  }
+
+  return wrapper;
+}
+
+function renderSelectionPanel() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "selection-panel";
+
+  const title = document.createElement("strong");
+  title.textContent = t("selected");
+
+  const selection = resolveSelectedBoardElement();
+  const details = document.createElement("p");
+  details.textContent = selection
+    ? `${t("type")}: ${selection.typeLabel} · ${t("id")}: ${selection.id}`
+    : t("noSelection");
+
+  wrapper.append(title, details);
+  return wrapper;
+}
+
+function getPhaseLabel(phase) {
+  const phaseLabels = {
+    preparation: t("phasePreparation")
+  };
+
+  return phaseLabels[phase] ?? phase ?? t("phasePreparation");
+}
+
+function resolveSelectedBoardElement() {
+  const selectedElement = state.gameState?.board?.selectedElement;
+  if (!selectedElement) return null;
+
+  if (selectedElement.type === "planetSystem") {
+    const system = [...boardLayout.startSystems, ...boardLayout.planetSystems]
+      .find((candidate) => candidate.id === selectedElement.id);
+    if (!system) return null;
+    return { id: system.id, typeLabel: t("planetSystem") };
+  }
+
+  if (selectedElement.type === "outpost") {
+    const outpost = boardLayout.outposts.find((candidate) => candidate.id === selectedElement.id);
+    if (!outpost) return null;
+    return { id: outpost.id, typeLabel: t("outpost") };
+  }
+
+  if (selectedElement.type === "spacePoint") {
+    const point = boardLayout.points.find((candidate) => candidate.id === selectedElement.id);
+    if (!point) return null;
+    return { id: point.id, typeLabel: t("spacePoint") };
+  }
+
+  return null;
 }
 
 function renderBoardSvg() {
@@ -273,12 +449,19 @@ function renderLinksLayer() {
   const group = createSvgElement("g", { class: "board-links-layer" });
   const pointsById = new Map(boardLayout.points.map((point) => [point.id, point]));
 
-  for (const [fromId, toId] of boardLayout.links) {
-    const from = pointsById.get(fromId);
-    const to = pointsById.get(toId);
+  const connections = boardLayout.connections ?? boardLayout.links.map(([from, to], index) => ({
+    id: `connection-${index + 1}`,
+    from,
+    to
+  }));
+
+  for (const connection of connections) {
+    const from = pointsById.get(connection.from);
+    const to = pointsById.get(connection.to);
     if (!from || !to) continue;
     group.append(createSvgElement("line", {
       class: "board-link",
+      "data-connection-id": connection.id,
       x1: from.x,
       y1: from.y,
       x2: to.x,
@@ -308,21 +491,29 @@ function renderSystemsLayer() {
 }
 
 function renderPlanetSystem(system, className) {
-  const group = createSvgElement("g", { class: className });
+  const selectedClass = isSelectedElement("planetSystem", system.id) ? " is-selected" : "";
+  const group = createSvgElement("g", { class: `${className}${selectedClass}` });
+  enableBoardElementSelection(group, "planetSystem", system.id);
   const offsets = [
     { x: -42, y: 34 },
     { x: 0, y: -38 },
     { x: 45, y: 35 }
   ];
 
-  system.resources.forEach((resource, index) => {
+  const planets = system.planets ?? system.resources.map((resource, index) => ({
+    id: `${system.id}-planet-${index + 1}`,
+    resource
+  }));
+
+  planets.forEach((planet, index) => {
     const offset = offsets[index];
     group.append(createSvgElement("circle", {
-      class: `planet planet--${resource}`,
+      class: `planet planet--${planet.resource}`,
+      "data-planet-id": planet.id,
       cx: system.x + offset.x,
       cy: system.y + offset.y,
       r: className === "start-system" ? 32 : 28,
-      fill: resourceColors[resource]
+      fill: resourceColors[planet.resource]
     }));
   });
 
@@ -339,7 +530,9 @@ function renderPlanetSystem(system, className) {
 }
 
 function renderOutpost(outpost) {
-  const group = createSvgElement("g", { class: "outpost" });
+  const selectedClass = isSelectedElement("outpost", outpost.id) ? " is-selected" : "";
+  const group = createSvgElement("g", { class: `outpost${selectedClass}` });
+  enableBoardElementSelection(group, "outpost", outpost.id);
   group.append(createSvgElement("circle", {
     class: "outpost-ring",
     cx: outpost.x,
@@ -368,12 +561,15 @@ function renderPointsLayer() {
   const group = createSvgElement("g", { class: "board-points-layer" });
 
   for (const point of boardLayout.points) {
-    group.append(createSvgElement("circle", {
-      class: `space-point space-point--${point.type}`,
+    const selectedClass = isSelectedElement("spacePoint", point.id) ? " is-selected" : "";
+    const pointElement = createSvgElement("circle", {
+      class: `space-point space-point--${point.type}${selectedClass}`,
       cx: point.x,
       cy: point.y,
       r: point.type === "space" ? 9 : 13
-    }));
+    });
+    enableBoardElementSelection(pointElement, "spacePoint", point.id);
+    group.append(pointElement);
   }
 
   return group;
@@ -532,9 +728,10 @@ function renderSaveItem(save) {
   name.textContent = save.name || t("unnamedSave");
 
   const meta = document.createElement("span");
+  const playerCount = getSavePlayerCount(save);
   meta.textContent = [
     formatSavedAt(save.savedAt),
-    save.playerCount ? t("savePlayers").replace("{count}", save.playerCount) : ""
+    playerCount ? t("savePlayers").replace("{count}", playerCount) : ""
   ].filter(Boolean).join(" · ");
 
   details.append(name, meta);
@@ -551,23 +748,31 @@ function renderSaveItem(save) {
 }
 
 function saveCurrentGame(name) {
+  if (!state.gameState) {
+    state.gameState = createGameState({
+      language: state.language,
+      playerCount: state.selectedPlayers || 2,
+      boardLayout
+    });
+  }
+
   const now = new Date();
+  state.gameState = touchGameState({
+    ...state.gameState,
+    language: state.language
+  });
+  saveCurrentGameState();
+
   const save = {
     id: `save-${now.getTime()}`,
     name: name.trim() || t("defaultSaveName"),
     savedAt: now.toISOString(),
     displayDate: formatSavedAt(now.toISOString()),
     language: state.language,
-    playerCount: state.selectedPlayers,
-    view: state.view,
-    boardState: {
-      layoutVersion: boardLayout.layoutVersion,
-      exploredSystems: [],
-      placeholder: true
-    },
-    gameState: {
-      placeholder: true
-    }
+    playerCount: state.gameState.playerCount,
+    view: "board",
+    boardState: state.gameState.board,
+    gameState: state.gameState
   };
 
   writeSaves([save, ...readSaves()]);
@@ -577,14 +782,31 @@ function saveCurrentGame(name) {
 }
 
 function loadSave(save) {
-  const language = languages.includes(save.language) ? save.language : state.language;
-  const savedView = ["menu", "players", "controllers", "board"].includes(save.view) ? save.view : "board";
+  const sourceGameState = save.gameState && !save.gameState.placeholder
+    ? save.gameState
+    : {
+      language: save.language || state.language,
+      playerCount: getSavePlayerCount(save) || 2,
+      board: save.boardState
+    };
+  const restoredGameState = normalizeGameState(sourceGameState, {
+    language: save.language || state.language,
+    playerCount: getSavePlayerCount(save) || 2,
+    boardLayout
+  });
+  const language = languages.includes(restoredGameState.language) ? restoredGameState.language : state.language;
+
+  state.gameState = touchGameState({
+    ...restoredGameState,
+    language
+  });
   state.language = language;
   saveLanguage(language);
-  state.selectedPlayers = Number.isInteger(save.playerCount) ? save.playerCount : null;
-  state.view = savedView;
+  state.selectedPlayers = state.gameState.playerCount;
+  state.view = "board";
   state.modal = null;
   state.notice = t("loadSuccess");
+  saveCurrentGameState();
   render();
 }
 
@@ -607,6 +829,12 @@ function formatSavedAt(value) {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(date);
+}
+
+function getSavePlayerCount(save) {
+  if (Number.isInteger(save.playerCount)) return save.playerCount;
+  if (Number.isInteger(save.gameState?.playerCount)) return save.gameState.playerCount;
+  return null;
 }
 
 function renderNotice() {

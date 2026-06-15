@@ -20,20 +20,148 @@ export const boardLayout = {
     { id: "q-15", x: 1105, y: 685, kind: "system", ref: "system-08" }
   ],
   startSystems: [
-    { id: "start-01", x: 120, y: 215, resources: ["food", "fuel", "carbon"] },
-    { id: "start-02", x: 120, y: 405, resources: ["ore", "trade", "food"] },
-    { id: "start-03", x: 120, y: 595, resources: ["carbon", "ore", "fuel"] },
-    { id: "start-04", x: 120, y: 775, resources: ["trade", "food", "ore"] }
+    {
+      id: "start-01",
+      x: 120,
+      y: 215,
+      resources: ["food", "fuel", "carbon"],
+      planets: [
+        { id: "start-01-planet-01", resource: "food" },
+        { id: "start-01-planet-02", resource: "fuel" },
+        { id: "start-01-planet-03", resource: "carbon" }
+      ]
+    },
+    {
+      id: "start-02",
+      x: 120,
+      y: 405,
+      resources: ["ore", "trade", "food"],
+      planets: [
+        { id: "start-02-planet-01", resource: "ore" },
+        { id: "start-02-planet-02", resource: "trade" },
+        { id: "start-02-planet-03", resource: "food" }
+      ]
+    },
+    {
+      id: "start-03",
+      x: 120,
+      y: 595,
+      resources: ["carbon", "ore", "fuel"],
+      planets: [
+        { id: "start-03-planet-01", resource: "carbon" },
+        { id: "start-03-planet-02", resource: "ore" },
+        { id: "start-03-planet-03", resource: "fuel" }
+      ]
+    },
+    {
+      id: "start-04",
+      x: 120,
+      y: 775,
+      resources: ["trade", "food", "ore"],
+      planets: [
+        { id: "start-04-planet-01", resource: "trade" },
+        { id: "start-04-planet-02", resource: "food" },
+        { id: "start-04-planet-03", resource: "ore" }
+      ]
+    }
   ],
   planetSystems: [
-    { id: "system-01", x: 410, y: 150, resources: ["carbon", "food", "fuel"], hidden: true },
-    { id: "system-02", x: 1245, y: 145, resources: ["ore", "trade", "carbon"], hidden: true },
-    { id: "system-03", x: 825, y: 325, resources: ["fuel", "ore", "food"], hidden: true },
-    { id: "system-04", x: 1105, y: 325, resources: ["trade", "carbon", "ore"], hidden: true },
-    { id: "system-05", x: 410, y: 505, resources: ["food", "carbon", "trade"], hidden: true },
-    { id: "system-06", x: 1245, y: 505, resources: ["fuel", "food", "ore"], hidden: true },
-    { id: "system-07", x: 545, y: 685, resources: ["carbon", "ore", "trade"], hidden: true },
-    { id: "system-08", x: 1105, y: 685, resources: ["food", "fuel", "carbon"], hidden: true }
+    {
+      id: "system-01",
+      x: 410,
+      y: 150,
+      resources: ["carbon", "food", "fuel"],
+      planets: [
+        { id: "system-01-planet-01", resource: "carbon" },
+        { id: "system-01-planet-02", resource: "food" },
+        { id: "system-01-planet-03", resource: "fuel" }
+      ],
+      hidden: true
+    },
+    {
+      id: "system-02",
+      x: 1245,
+      y: 145,
+      resources: ["ore", "trade", "carbon"],
+      planets: [
+        { id: "system-02-planet-01", resource: "ore" },
+        { id: "system-02-planet-02", resource: "trade" },
+        { id: "system-02-planet-03", resource: "carbon" }
+      ],
+      hidden: true
+    },
+    {
+      id: "system-03",
+      x: 825,
+      y: 325,
+      resources: ["fuel", "ore", "food"],
+      planets: [
+        { id: "system-03-planet-01", resource: "fuel" },
+        { id: "system-03-planet-02", resource: "ore" },
+        { id: "system-03-planet-03", resource: "food" }
+      ],
+      hidden: true
+    },
+    {
+      id: "system-04",
+      x: 1105,
+      y: 325,
+      resources: ["trade", "carbon", "ore"],
+      planets: [
+        { id: "system-04-planet-01", resource: "trade" },
+        { id: "system-04-planet-02", resource: "carbon" },
+        { id: "system-04-planet-03", resource: "ore" }
+      ],
+      hidden: true
+    },
+    {
+      id: "system-05",
+      x: 410,
+      y: 505,
+      resources: ["food", "carbon", "trade"],
+      planets: [
+        { id: "system-05-planet-01", resource: "food" },
+        { id: "system-05-planet-02", resource: "carbon" },
+        { id: "system-05-planet-03", resource: "trade" }
+      ],
+      hidden: true
+    },
+    {
+      id: "system-06",
+      x: 1245,
+      y: 505,
+      resources: ["fuel", "food", "ore"],
+      planets: [
+        { id: "system-06-planet-01", resource: "fuel" },
+        { id: "system-06-planet-02", resource: "food" },
+        { id: "system-06-planet-03", resource: "ore" }
+      ],
+      hidden: true
+    },
+    {
+      id: "system-07",
+      x: 545,
+      y: 685,
+      resources: ["carbon", "ore", "trade"],
+      planets: [
+        { id: "system-07-planet-01", resource: "carbon" },
+        { id: "system-07-planet-02", resource: "ore" },
+        { id: "system-07-planet-03", resource: "trade" }
+      ],
+      hidden: true
+    },
+    {
+      id: "system-08",
+      x: 1105,
+      y: 685,
+      resources: ["food", "fuel", "carbon"],
+      planets: [
+        { id: "system-08-planet-01", resource: "food" },
+        { id: "system-08-planet-02", resource: "fuel" },
+        { id: "system-08-planet-03", resource: "carbon" }
+      ],
+      hidden: true
+    }
   ],
   outposts: [
     { id: "outpost-01", x: 965, y: 145, name: "A" },
@@ -109,3 +237,11 @@ export const resourceColors = {
   ore: "#ef4444",
   trade: "#a855f7"
 };
+
+export const boardConnections = boardLayout.links.map(([from, to], index) => ({
+  id: `connection-${String(index + 1).padStart(2, "0")}`,
+  from,
+  to
+}));
+
+boardLayout.connections = boardConnections;
