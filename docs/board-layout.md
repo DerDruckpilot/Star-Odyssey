@@ -46,17 +46,24 @@ Konkrete Koordinaten sollen spaeter nicht hart im Rendering verteilt werden. Sta
 - Startpositionen fuer Spielerfarben.
 - Sichtbarer oder verdeckter Zustand einzelner Marker.
 
-## Erste digitale Umsetzung
+## Referenznahe digitale Umsetzung
 
-Die erste Board-Shell nutzt `src/data/boardLayout.js` als Datenquelle. Ausgewertet wurden die gerenderten Seiten 2 und 3 der Spielanleitung fuer die grosse Startaufbau-Abbildung sowie Seite 7 fuer Erkundungs-, Kolonie- und Andockpunkte.
+Die aktuelle Board-Shell nutzt `src/data/boardLayout.js` als Datenquelle. Als Referenz wurden das Brettfoto und die Anleitung genutzt. Beschriftungen wurden ignoriert; rekonstruiert wurden Brettform, Startbereich, Vorder-/Hintersektor, Sternennebelzone, Planetensysteme und Aussenposten.
 
-Die Anleitung nennt 15 platzierte Raumquadranten, 4 Startsysteme im Startbereich, 8 zu erkundende Planetensysteme und 4 Aussenposten. Diese Zaehlung ist in der ersten digitalen Boardstruktur abgebildet:
+Das Board nutzt ein `odd-r offset rows` Koordinatensystem. Die sichtbare Brettform ist kein Rechteck, sondern eine ausgeschnittene Hexform mit 9 Reihen und 126 sichtbaren Hexfeldern. Einzelne Rand- und Aussparungsfelder wurden aus dem Foto visuell angenaehert.
 
-- 15 Raumquadranten als grosses Boardraster.
-- 4 Startsysteme links.
-- 8 verdeckte/erkundbare Planetensysteme als Dreiergruppen.
-- 4 Aussenposten als eigene Marker.
-- Ein erstes Netz aus 38 Raumpunkten und Verbindungen.
-- Spezielle Punktarten fuer Raumhafenpunkte, Koloniebauplaetze und Andockpunkte.
+Umgesetzt sind:
 
-Die genaue Anzahl jedes einzelnen Raumpunkts ist in der Anleitung nicht tabellarisch angegeben und der Almanach liegt im aktuellen Projektkontext nicht als eigene Datei vor. Die Raumpunktstruktur ist deshalb eine visuelle Rekonstruktion in passender Groessenordnung und soll spaeter mit einer vollstaendigen Boardreferenz praezisiert werden.
+- 4 Startsysteme links mit Startkolonien und Raumhaefen.
+- Vorderer Sektor als grosser linker/mittlerer Hexbereich.
+- Gelb markierter Sternennebel als zackige Zone mittig/rechts.
+- Hinterer Sektor rechts des Sternennebels.
+- 8 erkundbare Planetensysteme als Dreiergruppen.
+- 8 Aussenposten/Fraktionsorte an passenden Hexbereichen.
+- Bewegungs-, Kolonie- und Dockpunkte bleiben als stabile IDs erhalten, damit bestehende Interaktionen und Saves robust bleiben.
+
+Offen fuer spaeter:
+
+- Exakte Hexzaehlung an einzelnen Randstellen mit einer frontal entzerrten Brettreferenz pruefen.
+- Raumpunktnetz und reale Verbindungsregeln gegen Almanach/Detailgrafiken praezisieren.
+- Sternennebel-Sonderregeln und Marker erst in spaeteren Regel-PRs ergaenzen.

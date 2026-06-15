@@ -23,6 +23,7 @@ import { defaultLanguage, getText, languages } from "./i18n.js";
 const languageStorageKey = "star-odyssey-language";
 const savesStorageKey = "star-odyssey-saves";
 const svgNamespace = "http://www.w3.org/2000/svg";
+const showBoardDebugLabels = false;
 const app = document.querySelector("#app");
 
 const state = {
@@ -1197,8 +1198,18 @@ function renderGridLayer() {
   for (const quadrant of boardLayout.spaceQuadrants) {
     group.append(createSvgElement("polygon", {
       class: `quadrant quadrant--${quadrant.kind}`,
-      points: hexPoints(quadrant.x, quadrant.y, 96)
+      points: hexPoints(quadrant.x, quadrant.y, boardLayout.hexRadius ?? 96)
     }));
+    if (showBoardDebugLabels) {
+      const debugLabel = createSvgElement("text", {
+        class: "hex-debug-label",
+        x: quadrant.x,
+        y: quadrant.y + 5,
+        "text-anchor": "middle"
+      });
+      debugLabel.textContent = `${quadrant.q},${quadrant.r}`;
+      group.append(debugLabel);
+    }
   }
 
   return group;
@@ -1432,14 +1443,15 @@ function renderShipsLayer() {
 function renderBoardLabels() {
   const group = createSvgElement("g", { class: "board-label-layer" });
   const labels = [
-    { x: 64, y: 82, text: t("startArea"), anchor: "start" },
-    { x: 1510, y: 82, text: t("progressRight"), anchor: "end" },
-    { x: 790, y: 850, text: t("quadrantCount"), anchor: "middle" }
+    { x: 58, y: 54, text: t("startArea"), anchor: "start" },
+    { x: 700, y: 850, text: t("frontSector"), anchor: "middle" },
+    { x: 1260, y: 850, text: t("backSector"), anchor: "middle" },
+    { x: 940, y: 460, text: t("starNebula"), anchor: "middle", className: "board-map-label board-map-label--nebula" }
   ];
 
   for (const label of labels) {
     const text = createSvgElement("text", {
-      class: "board-map-label",
+      class: label.className ?? "board-map-label",
       x: label.x,
       y: label.y,
       "text-anchor": label.anchor

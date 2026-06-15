@@ -1,214 +1,150 @@
+const boardWidth = 1680;
+const boardHeight = 900;
+const hexRadius = 52;
+const hexHorizontalStep = Math.sqrt(3) * hexRadius;
+const hexVerticalStep = 1.5 * hexRadius;
+const hexOrigin = { x: 155, y: 82 };
+
+const hexRows = [
+  [[0, 1]],
+  [[0, 15]],
+  [[0, 15]],
+  [[0, 15]],
+  [[0, 15]],
+  [[0, 15]],
+  [[0, 15]],
+  [[0, 14]],
+  [[0, 2], [4, 5], [8, 15]]
+];
+
+const nebulaHexes = new Set([
+  "h-01-09",
+  "h-01-10",
+  "h-02-08",
+  "h-02-09",
+  "h-03-07",
+  "h-03-08",
+  "h-04-07",
+  "h-04-08",
+  "h-05-08",
+  "h-05-09",
+  "h-06-09",
+  "h-07-10",
+  "h-08-11"
+]);
+
+const sectorSplitColumn = 10;
+
+function hexCenter(q, r, offsetX = 0, offsetY = 0) {
+  return {
+    x: Math.round(hexOrigin.x + q * hexHorizontalStep + (r % 2) * (hexHorizontalStep / 2) + offsetX),
+    y: Math.round(hexOrigin.y + r * hexVerticalStep + offsetY)
+  };
+}
+
+function createHexCells() {
+  return hexRows.flatMap((ranges, r) => ranges.flatMap(([startQ, endQ]) => (
+    Array.from({ length: endQ - startQ + 1 }, (_, index) => {
+      const q = startQ + index;
+      const center = hexCenter(q, r);
+      const id = `h-${String(r).padStart(2, "0")}-${String(q).padStart(2, "0")}`;
+
+      return {
+        id,
+        q,
+        r,
+        x: center.x,
+        y: center.y,
+        kind: nebulaHexes.has(id) ? "nebula" : q >= sectorSplitColumn ? "back" : "front"
+      };
+    })
+  )));
+}
+
+function pointFromHex(id, q, r, type = "space", offsetX = 0, offsetY = 0) {
+  return {
+    id,
+    ...hexCenter(q, r, offsetX, offsetY),
+    type
+  };
+}
+
+const spaceQuadrants = createHexCells();
+const points = [
+  pointFromHex("p01", 0, 1, "spaceport"),
+  pointFromHex("p02", 1, 1),
+  pointFromHex("p03", 3, 1, "colony"),
+  pointFromHex("p04", 4, 1),
+  pointFromHex("p05", 5, 1),
+  pointFromHex("p06", 6, 1, "dock"),
+  pointFromHex("p07", 7, 1, "dock"),
+  pointFromHex("p08", 9, 1),
+  pointFromHex("p09", 12, 1, "colony"),
+  pointFromHex("p10", 14, 1),
+  pointFromHex("p11", 0, 3, "spaceport"),
+  pointFromHex("p12", 1, 3),
+  pointFromHex("p13", 3, 3, "dock"),
+  pointFromHex("p14", 4, 3, "dock"),
+  pointFromHex("p15", 5, 3),
+  pointFromHex("p16", 7, 3, "colony"),
+  pointFromHex("p17", 8, 3),
+  pointFromHex("p18", 11, 3, "colony"),
+  pointFromHex("p19", 13, 3),
+  pointFromHex("p20", 15, 3),
+  pointFromHex("p21", 0, 5, "spaceport"),
+  pointFromHex("p22", 1, 5),
+  pointFromHex("p23", 3, 5, "colony"),
+  pointFromHex("p24", 4, 5),
+  pointFromHex("p25", 5, 5),
+  pointFromHex("p26", 7, 5, "dock"),
+  pointFromHex("p27", 8, 5, "dock"),
+  pointFromHex("p28", 10, 5),
+  pointFromHex("p29", 12, 5, "colony"),
+  pointFromHex("p30", 14, 5),
+  pointFromHex("p31", 0, 7, "spaceport"),
+  pointFromHex("p32", 1, 7),
+  pointFromHex("p33", 4, 7, "colony"),
+  pointFromHex("p34", 6, 7, "dock"),
+  pointFromHex("p35", 7, 7, "dock"),
+  pointFromHex("p36", 9, 7),
+  pointFromHex("p37", 12, 7, "colony"),
+  pointFromHex("p38", 14, 7)
+];
+
 export const boardLayout = {
-  layoutVersion: "starter-15-quadrants-v1",
-  width: 1600,
-  height: 900,
-  spaceQuadrants: [
-    { id: "q-01", x: 410, y: 150, kind: "system", ref: "system-01" },
-    { id: "q-02", x: 690, y: 145, kind: "empty" },
-    { id: "q-03", x: 965, y: 145, kind: "outpost", ref: "outpost-01" },
-    { id: "q-04", x: 1245, y: 145, kind: "system", ref: "system-02" },
-    { id: "q-05", x: 545, y: 325, kind: "outpost", ref: "outpost-02" },
-    { id: "q-06", x: 825, y: 325, kind: "system", ref: "system-03" },
-    { id: "q-07", x: 1105, y: 325, kind: "system", ref: "system-04" },
-    { id: "q-08", x: 1380, y: 325, kind: "empty" },
-    { id: "q-09", x: 410, y: 505, kind: "system", ref: "system-05" },
-    { id: "q-10", x: 690, y: 505, kind: "empty" },
-    { id: "q-11", x: 965, y: 505, kind: "outpost", ref: "outpost-03" },
-    { id: "q-12", x: 1245, y: 505, kind: "system", ref: "system-06" },
-    { id: "q-13", x: 545, y: 685, kind: "system", ref: "system-07" },
-    { id: "q-14", x: 825, y: 685, kind: "outpost", ref: "outpost-04" },
-    { id: "q-15", x: 1105, y: 685, kind: "system", ref: "system-08" }
-  ],
+  layoutVersion: "reference-offset-hex-v1",
+  width: boardWidth,
+  height: boardHeight,
+  hexRadius,
+  coordinateSystem: "odd-r offset rows",
+  spaceQuadrants,
   startSystems: [
-    {
-      id: "start-01",
-      x: 120,
-      y: 215,
-      resources: ["food", "fuel", "carbon"],
-      planets: [
-        { id: "start-01-planet-01", resource: "food" },
-        { id: "start-01-planet-02", resource: "fuel" },
-        { id: "start-01-planet-03", resource: "carbon" }
-      ]
-    },
-    {
-      id: "start-02",
-      x: 120,
-      y: 405,
-      resources: ["ore", "goods", "food"],
-      planets: [
-        { id: "start-02-planet-01", resource: "ore" },
-        { id: "start-02-planet-02", resource: "goods" },
-        { id: "start-02-planet-03", resource: "food" }
-      ]
-    },
-    {
-      id: "start-03",
-      x: 120,
-      y: 595,
-      resources: ["carbon", "ore", "fuel"],
-      planets: [
-        { id: "start-03-planet-01", resource: "carbon" },
-        { id: "start-03-planet-02", resource: "ore" },
-        { id: "start-03-planet-03", resource: "fuel" }
-      ]
-    },
-    {
-      id: "start-04",
-      x: 120,
-      y: 775,
-      resources: ["goods", "food", "ore"],
-      planets: [
-        { id: "start-04-planet-01", resource: "goods" },
-        { id: "start-04-planet-02", resource: "food" },
-        { id: "start-04-planet-03", resource: "ore" }
-      ]
-    }
+    createStartSystem("start-01", 82, 116, ["food", "fuel", "carbon"]),
+    createStartSystem("start-02", 82, 288, ["ore", "goods", "food"]),
+    createStartSystem("start-03", 82, 510, ["carbon", "ore", "fuel"]),
+    createStartSystem("start-04", 82, 735, ["goods", "food", "ore"])
   ],
   planetSystems: [
-    {
-      id: "system-01",
-      x: 410,
-      y: 150,
-      resources: ["carbon", "food", "fuel"],
-      planets: [
-        { id: "system-01-planet-01", resource: "carbon" },
-        { id: "system-01-planet-02", resource: "food" },
-        { id: "system-01-planet-03", resource: "fuel" }
-      ],
-      hidden: true
-    },
-    {
-      id: "system-02",
-      x: 1245,
-      y: 145,
-      resources: ["ore", "goods", "carbon"],
-      planets: [
-        { id: "system-02-planet-01", resource: "ore" },
-        { id: "system-02-planet-02", resource: "goods" },
-        { id: "system-02-planet-03", resource: "carbon" }
-      ],
-      hidden: true
-    },
-    {
-      id: "system-03",
-      x: 825,
-      y: 325,
-      resources: ["fuel", "ore", "food"],
-      planets: [
-        { id: "system-03-planet-01", resource: "fuel" },
-        { id: "system-03-planet-02", resource: "ore" },
-        { id: "system-03-planet-03", resource: "food" }
-      ],
-      hidden: true
-    },
-    {
-      id: "system-04",
-      x: 1105,
-      y: 325,
-      resources: ["goods", "carbon", "ore"],
-      planets: [
-        { id: "system-04-planet-01", resource: "goods" },
-        { id: "system-04-planet-02", resource: "carbon" },
-        { id: "system-04-planet-03", resource: "ore" }
-      ],
-      hidden: true
-    },
-    {
-      id: "system-05",
-      x: 410,
-      y: 505,
-      resources: ["food", "carbon", "goods"],
-      planets: [
-        { id: "system-05-planet-01", resource: "food" },
-        { id: "system-05-planet-02", resource: "carbon" },
-        { id: "system-05-planet-03", resource: "goods" }
-      ],
-      hidden: true
-    },
-    {
-      id: "system-06",
-      x: 1245,
-      y: 505,
-      resources: ["fuel", "food", "ore"],
-      planets: [
-        { id: "system-06-planet-01", resource: "fuel" },
-        { id: "system-06-planet-02", resource: "food" },
-        { id: "system-06-planet-03", resource: "ore" }
-      ],
-      hidden: true
-    },
-    {
-      id: "system-07",
-      x: 545,
-      y: 685,
-      resources: ["carbon", "ore", "goods"],
-      planets: [
-        { id: "system-07-planet-01", resource: "carbon" },
-        { id: "system-07-planet-02", resource: "ore" },
-        { id: "system-07-planet-03", resource: "goods" }
-      ],
-      hidden: true
-    },
-    {
-      id: "system-08",
-      x: 1105,
-      y: 685,
-      resources: ["food", "fuel", "carbon"],
-      planets: [
-        { id: "system-08-planet-01", resource: "food" },
-        { id: "system-08-planet-02", resource: "fuel" },
-        { id: "system-08-planet-03", resource: "carbon" }
-      ],
-      hidden: true
-    }
+    createPlanetSystem("system-01", 3, 1, ["carbon", "food", "fuel"]),
+    createPlanetSystem("system-02", 12, 1, ["ore", "goods", "carbon"]),
+    createPlanetSystem("system-03", 7, 3, ["fuel", "ore", "food"]),
+    createPlanetSystem("system-04", 11, 3, ["goods", "carbon", "ore"]),
+    createPlanetSystem("system-05", 3, 5, ["food", "carbon", "goods"]),
+    createPlanetSystem("system-06", 12, 5, ["fuel", "food", "ore"]),
+    createPlanetSystem("system-07", 4, 7, ["carbon", "ore", "goods"]),
+    createPlanetSystem("system-08", 12, 7, ["food", "fuel", "carbon"])
   ],
   outposts: [
-    { id: "outpost-01", x: 965, y: 145, name: "A" },
-    { id: "outpost-02", x: 545, y: 325, name: "B" },
-    { id: "outpost-03", x: 965, y: 505, name: "C" },
-    { id: "outpost-04", x: 825, y: 685, name: "D" }
+    createOutpost("outpost-01", 6, 1, "A"),
+    createOutpost("outpost-02", 3, 3, "B"),
+    createOutpost("outpost-03", 7, 2, "C"),
+    createOutpost("outpost-04", 10, 1, "D"),
+    createOutpost("outpost-05", 6, 5, "E"),
+    createOutpost("outpost-06", 10, 4, "F"),
+    createOutpost("outpost-07", 13, 5, "G"),
+    createOutpost("outpost-08", 14, 2, "H")
   ],
-  points: [
-    { id: "p01", x: 215, y: 215, type: "spaceport", region: "start" },
-    { id: "p02", x: 300, y: 150, type: "space" },
-    { id: "p03", x: 410, y: 240, type: "colony" },
-    { id: "p04", x: 540, y: 150, type: "space" },
-    { id: "p05", x: 690, y: 210, type: "space" },
-    { id: "p06", x: 840, y: 145, type: "dock" },
-    { id: "p07", x: 965, y: 240, type: "dock" },
-    { id: "p08", x: 1115, y: 160, type: "space" },
-    { id: "p09", x: 1245, y: 240, type: "colony" },
-    { id: "p10", x: 1390, y: 170, type: "space" },
-    { id: "p11", x: 215, y: 405, type: "spaceport", region: "start" },
-    { id: "p12", x: 335, y: 330, type: "space" },
-    { id: "p13", x: 450, y: 415, type: "dock" },
-    { id: "p14", x: 585, y: 340, type: "dock" },
-    { id: "p15", x: 720, y: 405, type: "space" },
-    { id: "p16", x: 825, y: 250, type: "colony" },
-    { id: "p17", x: 940, y: 360, type: "space" },
-    { id: "p18", x: 1105, y: 425, type: "colony" },
-    { id: "p19", x: 1265, y: 345, type: "space" },
-    { id: "p20", x: 1410, y: 420, type: "space" },
-    { id: "p21", x: 215, y: 595, type: "spaceport", region: "start" },
-    { id: "p22", x: 330, y: 515, type: "space" },
-    { id: "p23", x: 410, y: 610, type: "colony" },
-    { id: "p24", x: 560, y: 530, type: "space" },
-    { id: "p25", x: 690, y: 595, type: "space" },
-    { id: "p26", x: 840, y: 520, type: "dock" },
-    { id: "p27", x: 965, y: 600, type: "dock" },
-    { id: "p28", x: 1110, y: 525, type: "space" },
-    { id: "p29", x: 1245, y: 610, type: "colony" },
-    { id: "p30", x: 1390, y: 540, type: "space" },
-    { id: "p31", x: 215, y: 775, type: "spaceport", region: "start" },
-    { id: "p32", x: 335, y: 705, type: "space" },
-    { id: "p33", x: 545, y: 780, type: "colony" },
-    { id: "p34", x: 700, y: 715, type: "dock" },
-    { id: "p35", x: 825, y: 780, type: "dock" },
-    { id: "p36", x: 980, y: 720, type: "space" },
-    { id: "p37", x: 1105, y: 780, type: "colony" },
-    { id: "p38", x: 1280, y: 710, type: "space" }
-  ],
+  points,
   links: [
     ["p01", "p02"], ["p02", "p03"], ["p03", "p04"], ["p04", "p05"], ["p05", "p06"],
     ["p06", "p07"], ["p07", "p08"], ["p08", "p09"], ["p09", "p10"],
@@ -221,7 +157,7 @@ export const boardLayout = {
     ["p03", "p13"], ["p05", "p15"], ["p07", "p17"], ["p09", "p18"],
     ["p13", "p23"], ["p15", "p25"], ["p17", "p27"], ["p18", "p28"],
     ["p23", "p33"], ["p25", "p34"], ["p27", "p35"], ["p29", "p37"],
-    ["p12", "p22"], ["p20", "p30"]
+    ["p12", "p22"], ["p20", "p30"], ["p10", "p20"], ["p30", "p38"]
   ],
   specialPoints: {
     colonySites: ["p03", "p09", "p16", "p18", "p23", "p29", "p33", "p37"],
@@ -247,20 +183,19 @@ export const boardConnections = boardLayout.links.map(([from, to], index) => ({
 
 boardLayout.connections = boardConnections;
 
-// Temporary digital start sites until the exact physical start setup is fully mapped.
 boardLayout.startSites = [
-  { id: "start-01-colony-a", x: 66, y: 172, type: "colonySite", adjacentPlanetIds: ["start-01-planet-01", "start-01-planet-02"] },
-  { id: "start-01-colony-b", x: 174, y: 172, type: "colonySite", adjacentPlanetIds: ["start-01-planet-02", "start-01-planet-03"] },
-  { id: "start-01-spaceport", x: 120, y: 284, type: "spaceportSite", adjacentPlanetIds: ["start-01-planet-01", "start-01-planet-02", "start-01-planet-03"] },
-  { id: "start-02-colony-a", x: 66, y: 362, type: "colonySite", adjacentPlanetIds: ["start-02-planet-01", "start-02-planet-02"] },
-  { id: "start-02-colony-b", x: 174, y: 362, type: "colonySite", adjacentPlanetIds: ["start-02-planet-02", "start-02-planet-03"] },
-  { id: "start-02-spaceport", x: 120, y: 474, type: "spaceportSite", adjacentPlanetIds: ["start-02-planet-01", "start-02-planet-02", "start-02-planet-03"] },
-  { id: "start-03-colony-a", x: 66, y: 552, type: "colonySite", adjacentPlanetIds: ["start-03-planet-01", "start-03-planet-02"] },
-  { id: "start-03-colony-b", x: 174, y: 552, type: "colonySite", adjacentPlanetIds: ["start-03-planet-02", "start-03-planet-03"] },
-  { id: "start-03-spaceport", x: 120, y: 664, type: "spaceportSite", adjacentPlanetIds: ["start-03-planet-01", "start-03-planet-02", "start-03-planet-03"] },
-  { id: "start-04-colony-a", x: 66, y: 732, type: "colonySite", adjacentPlanetIds: ["start-04-planet-01", "start-04-planet-02"] },
-  { id: "start-04-colony-b", x: 174, y: 732, type: "colonySite", adjacentPlanetIds: ["start-04-planet-02", "start-04-planet-03"] },
-  { id: "start-04-spaceport", x: 120, y: 844, type: "spaceportSite", adjacentPlanetIds: ["start-04-planet-01", "start-04-planet-02", "start-04-planet-03"] }
+  createStartSite("start-01-colony-a", 53, 142, "colonySite", ["start-01-planet-01", "start-01-planet-02"]),
+  createStartSite("start-01-colony-b", 122, 142, "colonySite", ["start-01-planet-02", "start-01-planet-03"]),
+  createStartSite("start-01-spaceport", 86, 202, "spaceportSite", ["start-01-planet-01", "start-01-planet-02", "start-01-planet-03"]),
+  createStartSite("start-02-colony-a", 53, 314, "colonySite", ["start-02-planet-01", "start-02-planet-02"]),
+  createStartSite("start-02-colony-b", 122, 314, "colonySite", ["start-02-planet-02", "start-02-planet-03"]),
+  createStartSite("start-02-spaceport", 86, 374, "spaceportSite", ["start-02-planet-01", "start-02-planet-02", "start-02-planet-03"]),
+  createStartSite("start-03-colony-a", 53, 536, "colonySite", ["start-03-planet-01", "start-03-planet-02"]),
+  createStartSite("start-03-colony-b", 122, 536, "colonySite", ["start-03-planet-02", "start-03-planet-03"]),
+  createStartSite("start-03-spaceport", 86, 596, "spaceportSite", ["start-03-planet-01", "start-03-planet-02", "start-03-planet-03"]),
+  createStartSite("start-04-colony-a", 53, 762, "colonySite", ["start-04-planet-01", "start-04-planet-02"]),
+  createStartSite("start-04-colony-b", 122, 762, "colonySite", ["start-04-planet-02", "start-04-planet-03"]),
+  createStartSite("start-04-spaceport", 86, 822, "spaceportSite", ["start-04-planet-01", "start-04-planet-02", "start-04-planet-03"])
 ];
 
 boardLayout.startAssignments = boardLayout.startSystems.map((system, index) => ({
@@ -273,34 +208,34 @@ boardLayout.startAssignments = boardLayout.startSystems.map((system, index) => (
 }));
 
 boardLayout.spaceportLaunchPoints = [
-  { id: "start-01-launch-a", x: 214, y: 262, spaceportLocationId: "start-01-spaceport" },
-  { id: "start-01-launch-b", x: 214, y: 306, spaceportLocationId: "start-01-spaceport" },
-  { id: "start-01-launch-c", x: 250, y: 284, spaceportLocationId: "start-01-spaceport" },
-  { id: "start-01-colony-a-launch-a", x: 66, y: 216, spaceportLocationId: "start-01-colony-a" },
-  { id: "start-01-colony-b-launch-a", x: 174, y: 216, spaceportLocationId: "start-01-colony-b" },
-  { id: "start-02-launch-a", x: 214, y: 452, spaceportLocationId: "start-02-spaceport" },
-  { id: "start-02-launch-b", x: 214, y: 496, spaceportLocationId: "start-02-spaceport" },
-  { id: "start-02-launch-c", x: 250, y: 474, spaceportLocationId: "start-02-spaceport" },
-  { id: "start-02-colony-a-launch-a", x: 66, y: 406, spaceportLocationId: "start-02-colony-a" },
-  { id: "start-02-colony-b-launch-a", x: 174, y: 406, spaceportLocationId: "start-02-colony-b" },
-  { id: "start-03-launch-a", x: 214, y: 642, spaceportLocationId: "start-03-spaceport" },
-  { id: "start-03-launch-b", x: 214, y: 686, spaceportLocationId: "start-03-spaceport" },
-  { id: "start-03-launch-c", x: 250, y: 664, spaceportLocationId: "start-03-spaceport" },
-  { id: "start-03-colony-a-launch-a", x: 66, y: 596, spaceportLocationId: "start-03-colony-a" },
-  { id: "start-03-colony-b-launch-a", x: 174, y: 596, spaceportLocationId: "start-03-colony-b" },
-  { id: "start-04-launch-a", x: 214, y: 822, spaceportLocationId: "start-04-spaceport" },
-  { id: "start-04-launch-b", x: 214, y: 866, spaceportLocationId: "start-04-spaceport" },
-  { id: "start-04-launch-c", x: 250, y: 844, spaceportLocationId: "start-04-spaceport" },
-  { id: "start-04-colony-a-launch-a", x: 66, y: 776, spaceportLocationId: "start-04-colony-a" },
-  { id: "start-04-colony-b-launch-a", x: 174, y: 776, spaceportLocationId: "start-04-colony-b" },
-  { id: "p03-launch-a", x: 374, y: 282, spaceportLocationId: "p03" },
-  { id: "p09-launch-a", x: 1286, y: 282, spaceportLocationId: "p09" },
-  { id: "p16-launch-a", x: 860, y: 292, spaceportLocationId: "p16" },
-  { id: "p18-launch-a", x: 1144, y: 468, spaceportLocationId: "p18" },
-  { id: "p23-launch-a", x: 446, y: 652, spaceportLocationId: "p23" },
-  { id: "p29-launch-a", x: 1284, y: 652, spaceportLocationId: "p29" },
-  { id: "p33-launch-a", x: 584, y: 822, spaceportLocationId: "p33" },
-  { id: "p37-launch-a", x: 1144, y: 822, spaceportLocationId: "p37" }
+  createLaunchPoint("start-01-launch-a", 142, 186, "start-01-spaceport"),
+  createLaunchPoint("start-01-launch-b", 164, 222, "start-01-spaceport"),
+  createLaunchPoint("start-01-launch-c", 190, 202, "start-01-spaceport"),
+  createLaunchPoint("start-01-colony-a-launch-a", 56, 188, "start-01-colony-a"),
+  createLaunchPoint("start-01-colony-b-launch-a", 124, 188, "start-01-colony-b"),
+  createLaunchPoint("start-02-launch-a", 142, 358, "start-02-spaceport"),
+  createLaunchPoint("start-02-launch-b", 164, 394, "start-02-spaceport"),
+  createLaunchPoint("start-02-launch-c", 190, 374, "start-02-spaceport"),
+  createLaunchPoint("start-02-colony-a-launch-a", 56, 360, "start-02-colony-a"),
+  createLaunchPoint("start-02-colony-b-launch-a", 124, 360, "start-02-colony-b"),
+  createLaunchPoint("start-03-launch-a", 142, 580, "start-03-spaceport"),
+  createLaunchPoint("start-03-launch-b", 164, 616, "start-03-spaceport"),
+  createLaunchPoint("start-03-launch-c", 190, 596, "start-03-spaceport"),
+  createLaunchPoint("start-03-colony-a-launch-a", 56, 582, "start-03-colony-a"),
+  createLaunchPoint("start-03-colony-b-launch-a", 124, 582, "start-03-colony-b"),
+  createLaunchPoint("start-04-launch-a", 142, 806, "start-04-spaceport"),
+  createLaunchPoint("start-04-launch-b", 164, 842, "start-04-spaceport"),
+  createLaunchPoint("start-04-launch-c", 190, 822, "start-04-spaceport"),
+  createLaunchPoint("start-04-colony-a-launch-a", 56, 808, "start-04-colony-a"),
+  createLaunchPoint("start-04-colony-b-launch-a", 124, 808, "start-04-colony-b"),
+  createLaunchPoint("p03-launch-a", 450, 202, "p03"),
+  createLaunchPoint("p09-launch-a", 1280, 202, "p09"),
+  createLaunchPoint("p16-launch-a", 840, 360, "p16"),
+  createLaunchPoint("p18-launch-a", 1195, 360, "p18"),
+  createLaunchPoint("p23-launch-a", 450, 512, "p23"),
+  createLaunchPoint("p29-launch-a", 1280, 512, "p29"),
+  createLaunchPoint("p33-launch-a", 575, 668, "p33"),
+  createLaunchPoint("p37-launch-a", 1280, 668, "p37")
 ];
 
 const launchPointConnectionTargets = {
@@ -374,7 +309,11 @@ const dockNodesByOutpost = {
   "outpost-01": ["p06", "p07"],
   "outpost-02": ["p13", "p14"],
   "outpost-03": ["p26", "p27"],
-  "outpost-04": ["p34", "p35"]
+  "outpost-04": ["p34", "p35"],
+  "outpost-05": ["p17"],
+  "outpost-06": ["p28"],
+  "outpost-07": ["p30"],
+  "outpost-08": ["p19", "p20"]
 };
 
 for (const system of [...boardLayout.startSystems, ...boardLayout.planetSystems]) {
@@ -426,6 +365,47 @@ boardLayout.productionPlanets = [...boardLayout.startSystems, ...boardLayout.pla
     ...planet,
     systemId: system.id
   })));
+
+function createStartSystem(id, x, y, resources) {
+  return {
+    id,
+    x,
+    y,
+    resources,
+    planets: resources.map((resource, index) => ({
+      id: `${id}-planet-${String(index + 1).padStart(2, "0")}`,
+      resource
+    }))
+  };
+}
+
+function createPlanetSystem(id, q, r, resources) {
+  const center = hexCenter(q, r, 0, -18);
+  return {
+    id,
+    x: center.x,
+    y: center.y,
+    resources,
+    planets: resources.map((resource, index) => ({
+      id: `${id}-planet-${String(index + 1).padStart(2, "0")}`,
+      resource
+    })),
+    hidden: true
+  };
+}
+
+function createOutpost(id, q, r, name) {
+  const center = hexCenter(q, r, 0, 8);
+  return { id, x: center.x, y: center.y, name };
+}
+
+function createStartSite(id, x, y, type, adjacentPlanetIds) {
+  return { id, x, y, type, adjacentPlanetIds };
+}
+
+function createLaunchPoint(id, x, y, spaceportLocationId) {
+  return { id, x, y, spaceportLocationId };
+}
 
 function normalizeResource(resource) {
   return resource === "trade" ? "goods" : resource;
