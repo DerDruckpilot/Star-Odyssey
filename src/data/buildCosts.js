@@ -22,3 +22,18 @@ export const bankTradeRates = {
   default: 3,
   goods: 2
 };
+
+export const buildActionDefinitions = [
+  {
+    id: "colonyShip",
+    cost: { ore: 1, fuel: 1, carbon: 1, food: 1 }
+  },
+  {
+    id: "tradeShip",
+    cost: { ore: 1, fuel: 1, goods: 2 }
+  },
+  {
+    id: "spaceport",
+    cost: { carbon: 3, food: 2 }
+  }
+];

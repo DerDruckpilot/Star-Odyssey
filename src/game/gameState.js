@@ -1,4 +1,4 @@
-import { bankTradeRates, upgradeDefinitions } from "../data/buildCosts.js";
+import { bankTradeRates, buildActionDefinitions, upgradeDefinitions } from "../data/buildCosts.js";
 
 const playerColorKeys = ["red", "blue", "yellow", "white"];
 
@@ -9,6 +9,8 @@ export function createGameState({ language, playerCount, boardLayout }) {
   const now = new Date().toISOString();
   const safePlayerCount = [2, 3, 4].includes(playerCount) ? playerCount : 2;
   const startingStructures = createStartingStructures(safePlayerCount, boardLayout);
+  const startingShips = createStartingShips(safePlayerCount, boardLayout, startingStructures);
+  const players = attachPlayerAssets(createPlayers(safePlayerCount, language), startingStructures, startingShips);
 
   return {
     gameId: createId("game"),
@@ -16,7 +18,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
     updatedAt: now,
     language,
     playerCount: safePlayerCount,
-    players: createPlayers(safePlayerCount, language),
+    players,
     currentPlayerIndex: 0,
     turnNumber: 1,
     phase: "production",
@@ -28,7 +30,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
       structures: startingStructures,
       colonies: startingStructures.filter((structure) => structure.type === "colony"),
       stations: [],
-      ships: []
+      ships: startingShips
     },
     log: [
       {
@@ -163,6 +165,82 @@ export function buyUpgrade(gameState, upgradeId) {
   });
 }
 
+export function buildShip(gameState, boardLayout, shipType) {
+  if (gameState.phase !== "tradeBuild" || !["colonyShip", "tradeShip"].includes(shipType)) return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const definition = buildActionDefinitions.find((action) => action.id === shipType);
+  const launchPoint = findFreeLaunchPoint(gameState, boardLayout, activePlayer?.id);
+  if (!activePlayer || !definition || !launchPoint || !canPay(activePlayer.resources, definition.cost)) {
+    return gameState;
+  }
+
+  const ship = {
+    id: createId(shipType),
+    ownerPlayerId: activePlayer.id,
+    type: shipType,
+    locationId: launchPoint.id,
+    status: "docked"
+  };
+  const ships = [...normalizeShips(gameState.board?.ships), ship];
+  const players = updatePlayerById(gameState.players, activePlayer.id, (player) => ({
+    ...player,
+    resources: payCost(player.resources, definition.cost),
+    ships: [...normalizeShips(player.ships), ship]
+  }));
+
+  return updateGameState(gameState, {
+    players,
+    board: {
+      ...gameState.board,
+      ships
+    },
+    logEntry: {
+      type: "build",
+      messageKey: shipType === "colonyShip" ? "logColonyShipBuilt" : "logTradeShipBuilt",
+      messageParams: {
+        player: activePlayer.name
+      }
+    }
+  });
+}
+
+export function upgradeColonyToSpaceport(gameState) {
+  if (gameState.phase !== "tradeBuild") return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const definition = buildActionDefinitions.find((action) => action.id === "spaceport");
+  const colony = findUpgradeableColony(gameState, activePlayer?.id);
+  if (!activePlayer || !definition || !colony || !canPay(activePlayer.resources, definition.cost)) {
+    return gameState;
+  }
+
+  const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, { startSites: [], startAssignments: [] })
+    .map((structure) => structure.id === colony.id ? { ...structure, type: "spaceport" } : structure);
+  const players = updatePlayerById(gameState.players, activePlayer.id, (player) => ({
+    ...player,
+    victoryPoints: player.victoryPoints + 1,
+    resources: payCost(player.resources, definition.cost),
+    structures: structures.filter((structure) => structure.ownerPlayerId === player.id)
+  }));
+
+  return updateGameState(gameState, {
+    players,
+    board: {
+      ...gameState.board,
+      structures,
+      colonies: structures.filter((structure) => structure.type === "colony")
+    },
+    logEntry: {
+      type: "build",
+      messageKey: "logSpaceportBuilt",
+      messageParams: {
+        player: activePlayer.name
+      }
+    }
+  });
+}
+
 export function endCurrentTurn(gameState) {
   const nextPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.playerCount;
   const nextTurnNumber = nextPlayerIndex === 0 ? gameState.turnNumber + 1 : gameState.turnNumber;
@@ -199,11 +277,17 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     ? gameState.playerCount
     : fallback.playerCount;
   const fallbackPlayers = createPlayers(normalizedPlayerCount, gameState.language || language);
+  const normalizedStructures = normalizeStructures(gameState.board?.structures, normalizedPlayerCount, boardLayout);
+  const normalizedShips = normalizeShips(gameState.board?.ships);
   const normalizedPlayers = fallbackPlayers.map((fallbackPlayer, index) => (
     Array.isArray(gameState.players) && gameState.players[index]
       ? normalizePlayer(gameState.players[index], index, gameState.language || language)
       : fallbackPlayer
-  ));
+  )).map((player) => ({
+    ...player,
+    structures: normalizedStructures.filter((structure) => structure.ownerPlayerId === player.id),
+    ships: normalizedShips.filter((ship) => ship.ownerPlayerId === player.id)
+  }));
   const normalizedCurrentPlayerIndex = Number.isInteger(gameState.currentPlayerIndex)
     ? Math.min(Math.max(gameState.currentPlayerIndex, 0), normalizedPlayerCount - 1)
     : 0;
@@ -222,7 +306,9 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
       ...fallback.board,
       ...(gameState.board || {}),
       layoutVersion: gameState.board?.layoutVersion || boardLayout.layoutVersion,
-      structures: normalizeStructures(gameState.board?.structures, normalizedPlayerCount, boardLayout)
+      structures: normalizedStructures,
+      colonies: normalizedStructures.filter((structure) => structure.type === "colony"),
+      ships: normalizedShips
     },
     log: normalizeLog(gameState.log, fallback.log)
   };
@@ -245,6 +331,7 @@ function createPlayers(playerCount, language) {
     upgrades: createDefaultUpgrades(),
     halfMedals: 0,
     ships: [],
+    structures: [],
     stations: []
   }));
 }
@@ -263,6 +350,7 @@ function normalizePlayer(player, index, language) {
     upgrades: normalizeUpgrades(player.upgrades),
     halfMedals: Number.isInteger(player.halfMedals) ? player.halfMedals : 0,
     ships: Array.isArray(player.ships) ? player.ships : [],
+    structures: Array.isArray(player.structures) ? player.structures : [],
     stations: Array.isArray(player.stations) ? player.stations : []
   };
 }
@@ -326,6 +414,40 @@ function createStartingStructures(playerCount, boardLayout) {
   });
 }
 
+function createStartingShips(playerCount, boardLayout, structures) {
+  const occupiedLaunchPointIds = new Set();
+  const ships = [];
+
+  for (let index = 0; index < playerCount; index += 1) {
+    const ownerPlayerId = `player-${index + 1}`;
+    const launchPoint = findFreeLaunchPointForStructures(
+      boardLayout,
+      structures.filter((structure) => structure.ownerPlayerId === ownerPlayerId),
+      occupiedLaunchPointIds
+    );
+    if (!launchPoint) continue;
+
+    occupiedLaunchPointIds.add(launchPoint.id);
+    ships.push({
+      id: `${ownerPlayerId}-colony-ship-1`,
+      ownerPlayerId,
+      type: "colonyShip",
+      locationId: launchPoint.id,
+      status: "docked"
+    });
+  }
+
+  return ships;
+}
+
+function attachPlayerAssets(players, structures, ships) {
+  return players.map((player) => ({
+    ...player,
+    structures: structures.filter((structure) => structure.ownerPlayerId === player.id),
+    ships: ships.filter((ship) => ship.ownerPlayerId === player.id)
+  }));
+}
+
 function normalizeStructures(structures, playerCount, boardLayout) {
   if (!Array.isArray(structures) || structures.length === 0) {
     return createStartingStructures(playerCount, boardLayout);
@@ -340,6 +462,48 @@ function normalizeStructures(structures, playerCount, boardLayout) {
       locationId: structure.locationId,
       adjacentPlanetIds: Array.isArray(structure.adjacentPlanetIds) ? structure.adjacentPlanetIds : []
     }));
+}
+
+function normalizeShips(ships = []) {
+  return Array.isArray(ships)
+    ? ships
+      .filter((ship) => ship && ship.id && ship.ownerPlayerId && ship.locationId)
+      .map((ship) => ({
+        id: ship.id,
+        ownerPlayerId: ship.ownerPlayerId,
+        type: ship.type === "tradeShip" ? "tradeShip" : "colonyShip",
+        locationId: ship.locationId,
+        status: ship.status === "active" ? "active" : "docked"
+      }))
+    : [];
+}
+
+function findFreeLaunchPoint(gameState, boardLayout, ownerPlayerId) {
+  const occupiedLaunchPointIds = new Set(normalizeShips(gameState.board?.ships).map((ship) => ship.locationId));
+  const ownerStructures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout)
+    .filter((structure) => structure.ownerPlayerId === ownerPlayerId);
+
+  return findFreeLaunchPointForStructures(boardLayout, ownerStructures, occupiedLaunchPointIds);
+}
+
+function findFreeLaunchPointForStructures(boardLayout, structures, occupiedLaunchPointIds) {
+  const ownSpaceportLocationIds = new Set(
+    structures
+      .filter((structure) => structure.type === "spaceport")
+      .map((structure) => structure.locationId)
+  );
+
+  return (boardLayout.spaceportLaunchPoints ?? [])
+    .find((point) => ownSpaceportLocationIds.has(point.spaceportLocationId) && !occupiedLaunchPointIds.has(point.id));
+}
+
+function findUpgradeableColony(gameState, ownerPlayerId) {
+  return normalizeStructures(gameState.board?.structures, gameState.playerCount, { startSites: [], startAssignments: [] })
+    .find((structure) => structure.ownerPlayerId === ownerPlayerId && structure.type === "colony");
+}
+
+function updatePlayerById(players, playerId, updatePlayer) {
+  return players.map((player) => player.id === playerId ? updatePlayer(player) : player);
 }
 
 function distributeProduction(gameState, boardLayout, rollTotal) {

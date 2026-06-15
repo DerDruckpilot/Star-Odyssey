@@ -1,7 +1,8 @@
 import { boardLayout, resourceColors } from "./data/boardLayout.js";
-import { bankTradeRates, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
+import { bankTradeRates, buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
 import {
   advanceToFlightPhase,
+  buildShip,
   buyUpgrade,
   createGameState,
   currentGameStorageKey,
@@ -9,7 +10,8 @@ import {
   normalizeGameState,
   rollProduction,
   touchGameState,
-  tradeWithSupply
+  tradeWithSupply,
+  upgradeColonyToSpaceport
 } from "./game/gameState.js";
 import { defaultLanguage, getText, languages } from "./i18n.js";
 
@@ -220,6 +222,22 @@ function buyActivePlayerUpgrade(upgradeId) {
   render();
 }
 
+function buildActivePlayerShip(shipType) {
+  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+
+  state.gameState = buildShip(state.gameState, boardLayout, shipType);
+  saveCurrentGameState();
+  render();
+}
+
+function buildActivePlayerSpaceport() {
+  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+
+  state.gameState = upgradeColonyToSpaceport(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
 function endTurn() {
   if (!state.gameState || state.gameState.phase !== "flight") return;
 
@@ -238,6 +256,7 @@ function getBoardElementTypeLabel(type) {
     outpost: t("outpost"),
     planet: t("planet"),
     planetSystem: t("planetSystem"),
+    ship: t("ship"),
     spacePoint: t("spacePoint"),
     structure: t("structure")
   };
@@ -401,6 +420,7 @@ function renderBoardHud() {
     renderTurnSummary(),
     renderResourceSummary(),
     renderUpgradeSummary(),
+    renderFleetSummary(),
     renderPhaseActions(),
     renderEventLog(),
     renderSelectionPanel()
@@ -474,6 +494,37 @@ function renderUpgradeSummary() {
   return wrapper;
 }
 
+function renderFleetSummary() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "fleet-summary";
+
+  const title = document.createElement("strong");
+  title.textContent = t("playerAssets");
+
+  const activePlayer = getActivePlayer();
+  const structures = state.gameState?.board?.structures?.filter((structure) => structure.ownerPlayerId === activePlayer?.id) ?? [];
+  const ships = state.gameState?.board?.ships?.filter((ship) => ship.ownerPlayerId === activePlayer?.id) ?? [];
+  const rows = [
+    [t("victoryPoints"), activePlayer?.victoryPoints ?? 0],
+    [t("colonies"), structures.filter((structure) => structure.type === "colony").length],
+    [t("spaceports"), structures.filter((structure) => structure.type === "spaceport").length],
+    [t("colonyShips"), ships.filter((ship) => ship.type === "colonyShip").length],
+    [t("tradeShips"), ships.filter((ship) => ship.type === "tradeShip").length]
+  ];
+  const list = document.createElement("dl");
+
+  for (const [labelText, valueText] of rows) {
+    const label = document.createElement("dt");
+    label.textContent = labelText;
+    const value = document.createElement("dd");
+    value.textContent = String(valueText);
+    list.append(label, value);
+  }
+
+  wrapper.append(title, list);
+  return wrapper;
+}
+
 function renderPhaseActions() {
   const wrapper = document.createElement("div");
   wrapper.className = "phase-actions";
@@ -492,9 +543,42 @@ function renderPhaseActions() {
   if (state.gameState.phase === "production") {
     wrapper.append(createButton(t("rollProduction"), rollProductionForActivePlayer, "small-button"));
   } else if (state.gameState.phase === "tradeBuild") {
-    wrapper.append(renderBankTradeControls(), renderUpgradeControls(), createButton(t("toFlightPhase"), goToFlightPhase, "small-button"));
+    wrapper.append(
+      renderBankTradeControls(),
+      renderBuildControls(),
+      renderUpgradeControls(),
+      createButton(t("toFlightPhase"), goToFlightPhase, "small-button")
+    );
   } else if (state.gameState.phase === "flight") {
     wrapper.append(createButton(t("endTurn"), endTurn, "small-button"));
+  }
+
+  return wrapper;
+}
+
+function renderBuildControls() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "trade-build-section build-controls";
+
+  const title = document.createElement("strong");
+  title.textContent = t("buildShipsStructures");
+  wrapper.append(title);
+
+  for (const action of buildActionDefinitions) {
+    const card = document.createElement("article");
+    card.className = "upgrade-card";
+
+    const label = document.createElement("span");
+    label.textContent = getBuildActionLabel(action.id);
+
+    const cost = document.createElement("small");
+    cost.textContent = `${t("cost")}: ${formatCost(action.cost)}`;
+
+    const button = createButton(t("build"), () => runBuildAction(action.id), "small-button");
+    button.disabled = !canActivePlayerBuild(action);
+
+    card.append(label, cost, button);
+    wrapper.append(card);
   }
 
   return wrapper;
@@ -724,6 +808,21 @@ function resolveSelectedBoardElement() {
     };
   }
 
+  if (selectedElement.type === "ship") {
+    const ship = getShipById(selectedElement.id);
+    if (!ship) return null;
+    return {
+      id: ship.id,
+      typeLabel: t("ship"),
+      details: [
+        `${t("owner")}: ${getOwnerName(ship.ownerPlayerId)}`,
+        `${t("type")}: ${getShipTypeLabel(ship.type)}`,
+        `${t("location")}: ${ship.locationId}`,
+        `${t("status")}: ${getShipStatusLabel(ship.status)}`
+      ]
+    };
+  }
+
   return null;
 }
 
@@ -733,6 +832,10 @@ function getPlanetById(planetId) {
 
 function getStructureById(structureId) {
   return state.gameState?.board?.structures?.find((structure) => structure.id === structureId);
+}
+
+function getShipById(shipId) {
+  return state.gameState?.board?.ships?.find((ship) => ship.id === shipId);
 }
 
 function getOwnerName(ownerPlayerId) {
@@ -749,6 +852,18 @@ function getResourceLabel(resource) {
 
 function getUpgradeLabel(upgrade) {
   return t(`upgrade_${upgrade}`);
+}
+
+function getBuildActionLabel(action) {
+  return t(`build_${action}`);
+}
+
+function getShipTypeLabel(type) {
+  return type === "tradeShip" ? t("tradeShip") : t("colonyShip");
+}
+
+function getShipStatusLabel(status) {
+  return status === "active" ? t("shipStatusActive") : t("shipStatusDocked");
 }
 
 function getActivePlayer() {
@@ -778,6 +893,44 @@ function canActivePlayerBuyUpgrade(upgrade) {
     .every(([resource, amount]) => (player.resources?.[resource] ?? 0) >= amount);
 }
 
+function runBuildAction(actionId) {
+  if (actionId === "spaceport") {
+    buildActivePlayerSpaceport();
+  } else {
+    buildActivePlayerShip(actionId);
+  }
+}
+
+function canActivePlayerBuild(action) {
+  const player = getActivePlayer();
+  if (!player || !canPlayerPay(player, action.cost)) return false;
+  if (action.id === "spaceport") return hasUpgradeableColony(player.id);
+  if (["colonyShip", "tradeShip"].includes(action.id)) return Boolean(findFreeLaunchPointForActivePlayer(player.id));
+  return false;
+}
+
+function canPlayerPay(player, cost) {
+  return Object.entries(cost)
+    .every(([resource, amount]) => (player.resources?.[resource] ?? 0) >= amount);
+}
+
+function hasUpgradeableColony(playerId) {
+  return (state.gameState?.board?.structures ?? [])
+    .some((structure) => structure.ownerPlayerId === playerId && structure.type === "colony");
+}
+
+function findFreeLaunchPointForActivePlayer(playerId) {
+  const occupiedLocationIds = new Set((state.gameState?.board?.ships ?? []).map((ship) => ship.locationId));
+  const ownSpaceportLocationIds = new Set(
+    (state.gameState?.board?.structures ?? [])
+      .filter((structure) => structure.ownerPlayerId === playerId && structure.type === "spaceport")
+      .map((structure) => structure.locationId)
+  );
+
+  return (boardLayout.spaceportLaunchPoints ?? [])
+    .find((point) => ownSpaceportLocationIds.has(point.spaceportLocationId) && !occupiedLocationIds.has(point.id));
+}
+
 function formatCost(cost) {
   return Object.entries(cost)
     .map(([resource, amount]) => `${amount} ${getResourceLabel(resource)}`)
@@ -802,6 +955,7 @@ function renderBoardSvg() {
     renderSystemsLayer(),
     renderPointsLayer(),
     renderStructuresLayer(),
+    renderShipsLayer(),
     renderBoardLabels()
   );
   return svg;
@@ -972,6 +1126,7 @@ function renderStructuresLayer() {
     const site = sitesById.get(structure.locationId);
     if (!site) continue;
     const selectedClass = isSelectedElement("structure", structure.id) ? " is-selected" : "";
+    const ownerIndex = Number.parseInt(structure.ownerPlayerId.replace("player-", ""), 10);
     const structureGroup = createSvgElement("g", {
       class: `structure structure--${structure.type}${selectedClass}`
     });
@@ -979,7 +1134,7 @@ function renderStructuresLayer() {
 
     if (structure.type === "spaceport") {
       structureGroup.append(createSvgElement("rect", {
-        class: "structure-shape",
+        class: `structure-shape player-color-${ownerIndex}`,
         x: site.x - 16,
         y: site.y - 16,
         width: 32,
@@ -988,7 +1143,7 @@ function renderStructuresLayer() {
       }));
     } else {
       structureGroup.append(createSvgElement("circle", {
-        class: "structure-shape",
+        class: `structure-shape player-color-${ownerIndex}`,
         cx: site.x,
         cy: site.y,
         r: 15
@@ -1004,6 +1159,32 @@ function renderStructuresLayer() {
     label.textContent = structure.ownerPlayerId.replace("player-", "");
     structureGroup.append(label);
     group.append(structureGroup);
+  }
+
+  return group;
+}
+
+function renderShipsLayer() {
+  const group = createSvgElement("g", { class: "board-ships-layer" });
+  const launchPointsById = new Map((boardLayout.spaceportLaunchPoints ?? []).map((point) => [point.id, point]));
+
+  for (const ship of state.gameState?.board?.ships ?? []) {
+    const point = launchPointsById.get(ship.locationId);
+    if (!point) continue;
+    const selectedClass = isSelectedElement("ship", ship.id) ? " is-selected" : "";
+    const shipGroup = createSvgElement("g", {
+      class: `ship ship--${ship.type}${selectedClass}`
+    });
+    enableBoardElementSelection(shipGroup, "ship", ship.id);
+
+    const ownerIndex = Number.parseInt(ship.ownerPlayerId.replace("player-", ""), 10) - 1;
+    shipGroup.append(createSvgElement("path", {
+      class: `ship-shape player-color-${ownerIndex + 1}`,
+      d: ship.type === "tradeShip"
+        ? `M ${point.x - 14} ${point.y + 13} L ${point.x} ${point.y - 15} L ${point.x + 14} ${point.y + 13} Z`
+        : `M ${point.x - 14} ${point.y} L ${point.x} ${point.y - 16} L ${point.x + 14} ${point.y} L ${point.x} ${point.y + 16} Z`
+    }));
+    group.append(shipGroup);
   }
 
   return group;

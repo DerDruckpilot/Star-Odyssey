@@ -272,6 +272,37 @@ boardLayout.startAssignments = boardLayout.startSystems.map((system, index) => (
   ]
 }));
 
+boardLayout.spaceportLaunchPoints = [
+  { id: "start-01-launch-a", x: 214, y: 262, spaceportLocationId: "start-01-spaceport" },
+  { id: "start-01-launch-b", x: 214, y: 306, spaceportLocationId: "start-01-spaceport" },
+  { id: "start-01-launch-c", x: 250, y: 284, spaceportLocationId: "start-01-spaceport" },
+  { id: "start-01-colony-a-launch-a", x: 66, y: 216, spaceportLocationId: "start-01-colony-a" },
+  { id: "start-01-colony-b-launch-a", x: 174, y: 216, spaceportLocationId: "start-01-colony-b" },
+  { id: "start-02-launch-a", x: 214, y: 452, spaceportLocationId: "start-02-spaceport" },
+  { id: "start-02-launch-b", x: 214, y: 496, spaceportLocationId: "start-02-spaceport" },
+  { id: "start-02-launch-c", x: 250, y: 474, spaceportLocationId: "start-02-spaceport" },
+  { id: "start-02-colony-a-launch-a", x: 66, y: 406, spaceportLocationId: "start-02-colony-a" },
+  { id: "start-02-colony-b-launch-a", x: 174, y: 406, spaceportLocationId: "start-02-colony-b" },
+  { id: "start-03-launch-a", x: 214, y: 642, spaceportLocationId: "start-03-spaceport" },
+  { id: "start-03-launch-b", x: 214, y: 686, spaceportLocationId: "start-03-spaceport" },
+  { id: "start-03-launch-c", x: 250, y: 664, spaceportLocationId: "start-03-spaceport" },
+  { id: "start-03-colony-a-launch-a", x: 66, y: 596, spaceportLocationId: "start-03-colony-a" },
+  { id: "start-03-colony-b-launch-a", x: 174, y: 596, spaceportLocationId: "start-03-colony-b" },
+  { id: "start-04-launch-a", x: 214, y: 822, spaceportLocationId: "start-04-spaceport" },
+  { id: "start-04-launch-b", x: 214, y: 866, spaceportLocationId: "start-04-spaceport" },
+  { id: "start-04-launch-c", x: 250, y: 844, spaceportLocationId: "start-04-spaceport" },
+  { id: "start-04-colony-a-launch-a", x: 66, y: 776, spaceportLocationId: "start-04-colony-a" },
+  { id: "start-04-colony-b-launch-a", x: 174, y: 776, spaceportLocationId: "start-04-colony-b" },
+  { id: "p03-launch-a", x: 374, y: 282, spaceportLocationId: "p03" },
+  { id: "p09-launch-a", x: 1286, y: 282, spaceportLocationId: "p09" },
+  { id: "p16-launch-a", x: 860, y: 292, spaceportLocationId: "p16" },
+  { id: "p18-launch-a", x: 1144, y: 468, spaceportLocationId: "p18" },
+  { id: "p23-launch-a", x: 446, y: 652, spaceportLocationId: "p23" },
+  { id: "p29-launch-a", x: 1284, y: 652, spaceportLocationId: "p29" },
+  { id: "p33-launch-a", x: 584, y: 822, spaceportLocationId: "p33" },
+  { id: "p37-launch-a", x: 1144, y: 822, spaceportLocationId: "p37" }
+];
+
 const planetProduction = {
   "start-01-planet-01": { number: 5, adjacentSiteIds: ["start-01-colony-a", "start-01-spaceport"] },
   "start-01-planet-02": { number: 8, adjacentSiteIds: ["start-01-colony-a", "start-01-colony-b", "start-01-spaceport"] },

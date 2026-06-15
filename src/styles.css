@@ -309,6 +309,7 @@ h1 {
 .turn-summary,
 .resource-summary,
 .upgrade-summary,
+.fleet-summary,
 .phase-actions,
 .event-log,
 .selection-panel {
@@ -326,6 +327,8 @@ h1 {
 .resource-summary dd,
 .upgrade-summary dt,
 .upgrade-summary dd,
+.fleet-summary dt,
+.fleet-summary dd,
 .phase-actions p,
 .event-log li,
 .selection-panel p {
@@ -347,11 +350,16 @@ h1 {
   font-weight: 800;
 }
 
-.upgrade-summary dl {
+.upgrade-summary dl,
+.fleet-summary dl {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.1rem 0.6rem;
   margin: 0;
+}
+
+.fleet-summary dd {
+  font-weight: 800;
 }
 
 .phase-actions {
@@ -364,7 +372,8 @@ h1 {
 
 .selection-panel strong,
 .resource-summary strong,
-.upgrade-summary strong {
+.upgrade-summary strong,
+.fleet-summary strong {
   color: #f8fafc;
   font-size: clamp(0.8rem, 1.2vw, 0.95rem);
 }
@@ -501,6 +510,12 @@ h1 {
   filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.7));
 }
 
+.ship.is-selected .ship-shape {
+  stroke: #fef08a;
+  stroke-width: 6;
+  filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.72));
+}
+
 .number-marker {
   pointer-events: none;
   fill: #020617;
@@ -565,7 +580,32 @@ h1 {
 }
 
 .structure--spaceport .structure-shape {
+  stroke-width: 5;
+}
+
+.ship-shape {
+  stroke: rgba(248, 250, 252, 0.86);
+  stroke-width: 3;
+}
+
+.ship--tradeShip .ship-shape {
+  stroke-dasharray: 5 3;
+}
+
+.player-color-1 {
+  fill: #ef4444;
+}
+
+.player-color-2 {
+  fill: #38bdf8;
+}
+
+.player-color-3 {
   fill: #facc15;
+}
+
+.player-color-4 {
+  fill: #f8fafc;
 }
 
 .structure-label {
