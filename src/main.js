@@ -1,8 +1,11 @@
 import { boardLayout, resourceColors } from "./data/boardLayout.js";
 import {
+  advanceToFlightPhase,
   createGameState,
   currentGameStorageKey,
+  endCurrentTurn,
   normalizeGameState,
+  rollProduction,
   touchGameState
 } from "./game/gameState.js";
 import { defaultLanguage, getText, languages } from "./i18n.js";
@@ -177,6 +180,30 @@ function selectBoardElement(type, id) {
   render();
 }
 
+function rollProductionForActivePlayer() {
+  if (!state.gameState || state.gameState.phase !== "production") return;
+
+  state.gameState = rollProduction(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function goToFlightPhase() {
+  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+
+  state.gameState = advanceToFlightPhase(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function endTurn() {
+  if (!state.gameState || state.gameState.phase !== "flight") return;
+
+  state.gameState = endCurrentTurn(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
 function isSelectedElement(type, id) {
   const selectedElement = state.gameState?.board?.selectedElement;
   return selectedElement?.type === type && selectedElement?.id === id;
@@ -344,7 +371,7 @@ function renderBoardShell() {
 function renderBoardHud() {
   const hud = document.createElement("aside");
   hud.className = "board-hud";
-  hud.append(renderTurnSummary(), renderSelectionPanel());
+  hud.append(renderTurnSummary(), renderPhaseActions(), renderEventLog(), renderSelectionPanel());
   return hud;
 }
 
@@ -357,7 +384,8 @@ function renderTurnSummary() {
   const rows = [
     activePlayer?.name ?? t("noActiveGame"),
     `${t("round")} ${gameState?.turnNumber ?? 1}`,
-    `${t("phase")}: ${getPhaseLabel(gameState?.phase)}`
+    `${t("phase")}: ${getPhaseLabel(gameState?.phase)}`,
+    `${t("lastRoll")}: ${formatLastRoll(gameState?.lastRoll)}`
   ];
 
   for (const row of rows) {
@@ -366,6 +394,58 @@ function renderTurnSummary() {
     wrapper.append(item);
   }
 
+  return wrapper;
+}
+
+function renderPhaseActions() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "phase-actions";
+
+  const title = document.createElement("strong");
+  title.textContent = getPhaseLabel(state.gameState?.phase);
+  wrapper.append(title);
+
+  if (!state.gameState) {
+    const empty = document.createElement("p");
+    empty.textContent = t("noActiveGame");
+    wrapper.append(empty);
+    return wrapper;
+  }
+
+  if (state.gameState.phase === "production") {
+    wrapper.append(createButton(t("rollProduction"), rollProductionForActivePlayer, "small-button"));
+  } else if (state.gameState.phase === "tradeBuild") {
+    wrapper.append(createButton(t("toFlightPhase"), goToFlightPhase, "small-button"));
+  } else if (state.gameState.phase === "flight") {
+    wrapper.append(createButton(t("endTurn"), endTurn, "small-button"));
+  }
+
+  return wrapper;
+}
+
+function renderEventLog() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "event-log";
+
+  const title = document.createElement("strong");
+  title.textContent = t("eventLog");
+
+  const list = document.createElement("ol");
+  const entries = (state.gameState?.log ?? []).slice(-5).reverse();
+
+  if (entries.length === 0) {
+    const item = document.createElement("li");
+    item.textContent = t("noLogEntries");
+    list.append(item);
+  } else {
+    for (const entry of entries) {
+      const item = document.createElement("li");
+      item.textContent = formatLogEntry(entry);
+      list.append(item);
+    }
+  }
+
+  wrapper.append(title, list);
   return wrapper;
 }
 
@@ -388,10 +468,33 @@ function renderSelectionPanel() {
 
 function getPhaseLabel(phase) {
   const phaseLabels = {
-    preparation: t("phasePreparation")
+    setup: t("phaseSetup"),
+    production: t("phaseProduction"),
+    tradeBuild: t("phaseTradeBuild"),
+    flight: t("phaseFlight"),
+    turnEnd: t("phaseTurnEnd")
   };
 
-  return phaseLabels[phase] ?? phase ?? t("phasePreparation");
+  return phaseLabels[phase] ?? phase ?? t("phaseProduction");
+}
+
+function formatLastRoll(roll) {
+  if (!roll) return t("none");
+  if (Array.isArray(roll.dice) && roll.dice.length === 2) {
+    return `${roll.total} (${roll.dice[0]} + ${roll.dice[1]})`;
+  }
+
+  return String(roll.total);
+}
+
+function formatLogEntry(entry) {
+  const template = entry.messageKey ? t(entry.messageKey) : entry.message;
+  if (!template) return entry.message ?? "";
+
+  return Object.entries(entry.messageParams ?? {}).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    template
+  );
 }
 
 function resolveSelectedBoardElement() {

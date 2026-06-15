@@ -305,16 +305,21 @@ h1 {
 }
 
 .turn-summary,
+.phase-actions,
+.event-log,
 .selection-panel {
   display: grid;
   gap: 0.25rem;
   border: 1px solid rgba(148, 163, 184, 0.35);
   padding: 0.55rem 0.65rem;
   background: rgba(15, 23, 42, 0.78);
+  pointer-events: auto;
   text-align: left;
 }
 
 .turn-summary p,
+.phase-actions p,
+.event-log li,
 .selection-panel p {
   margin: 0;
   color: #dbeafe;
@@ -322,7 +327,28 @@ h1 {
   line-height: 1.25;
 }
 
+.phase-actions {
+  gap: 0.45rem;
+}
+
+.phase-actions .small-button {
+  width: 100%;
+}
+
 .selection-panel strong {
+  color: #f8fafc;
+  font-size: clamp(0.8rem, 1.2vw, 0.95rem);
+}
+
+.event-log ol {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.phase-actions strong,
+.event-log strong {
   color: #f8fafc;
   font-size: clamp(0.8rem, 1.2vw, 0.95rem);
 }

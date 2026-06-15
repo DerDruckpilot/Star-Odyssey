@@ -47,8 +47,23 @@ const translations = {
     noActiveGame: "Kein aktives Spiel",
     round: "Runde",
     phase: "Phase",
+    lastRoll: "Letzter Wurf",
+    none: "keiner",
+    phaseSetup: "Aufbau",
+    phaseProduction: "Ertragsphase",
+    phaseTradeBuild: "Handeln/Bauen",
+    phaseFlight: "Flugphase",
+    phaseTurnEnd: "Zugende",
     phasePreparation: "Vorbereitung",
-    logNewGameStarted: "Neues Spiel gestartet."
+    rollProduction: "Erträge würfeln",
+    toFlightPhase: "Zur Flugphase",
+    endTurn: "Zug beenden",
+    eventLog: "Ereignislog",
+    noLogEntries: "Keine Ereignisse",
+    logNewGameStarted: "Neues Spiel gestartet.",
+    logProductionRolled: "Erträge gewürfelt: {total}.",
+    logToFlightPhase: "{player} wechselt zur Flugphase.",
+    logTurnEnded: "{player} beendet den Zug. {nextPlayer} ist dran."
   },
   en: {
     subtitle: "A digital space board game",
@@ -94,8 +109,23 @@ const translations = {
     noActiveGame: "No active game",
     round: "Round",
     phase: "Phase",
+    lastRoll: "Last roll",
+    none: "none",
+    phaseSetup: "Setup",
+    phaseProduction: "Production",
+    phaseTradeBuild: "Trade/Build",
+    phaseFlight: "Flight phase",
+    phaseTurnEnd: "Turn end",
     phasePreparation: "Preparation",
-    logNewGameStarted: "New game started."
+    rollProduction: "Roll production",
+    toFlightPhase: "To flight phase",
+    endTurn: "End turn",
+    eventLog: "Event log",
+    noLogEntries: "No events",
+    logNewGameStarted: "New game started.",
+    logProductionRolled: "Production rolled: {total}.",
+    logToFlightPhase: "{player} moves to the flight phase.",
+    logTurnEnded: "{player} ends the turn. {nextPlayer} is next."
   }
 };
 
