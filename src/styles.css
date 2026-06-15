@@ -305,6 +305,7 @@ h1 {
 }
 
 .turn-summary,
+.resource-summary,
 .phase-actions,
 .event-log,
 .selection-panel {
@@ -318,6 +319,8 @@ h1 {
 }
 
 .turn-summary p,
+.resource-summary dt,
+.resource-summary dd,
 .phase-actions p,
 .event-log li,
 .selection-panel p {
@@ -325,6 +328,17 @@ h1 {
   color: #dbeafe;
   font-size: clamp(0.78rem, 1.2vw, 0.95rem);
   line-height: 1.25;
+}
+
+.resource-summary dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.1rem 0.6rem;
+  margin: 0;
+}
+
+.resource-summary dd {
+  font-weight: 800;
 }
 
 .phase-actions {
@@ -335,9 +349,19 @@ h1 {
   width: 100%;
 }
 
-.selection-panel strong {
+.selection-panel strong,
+.resource-summary strong {
   color: #f8fafc;
   font-size: clamp(0.8rem, 1.2vw, 0.95rem);
+}
+
+.selection-panel ul {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0;
+  padding-left: 1rem;
+  color: #dbeafe;
+  font-size: clamp(0.74rem, 1.1vw, 0.9rem);
 }
 
 .event-log ol {
@@ -407,11 +431,20 @@ h1 {
 }
 
 .is-selected .planet,
+.planet.is-selected,
 .space-point.is-selected,
-.outpost.is-selected .outpost-ring {
+.outpost.is-selected .outpost-ring,
+.structure.is-selected .structure-shape {
   stroke: #fef08a;
   stroke-width: 7;
   filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.7));
+}
+
+.number-marker {
+  pointer-events: none;
+  fill: #020617;
+  font-size: 20px;
+  font-weight: 900;
 }
 
 .start-system .planet {
@@ -462,6 +495,23 @@ h1 {
 
 .space-point--spaceport {
   fill: #7f1d1d;
+}
+
+.structure-shape {
+  fill: rgba(248, 250, 252, 0.92);
+  stroke: rgba(15, 23, 42, 0.85);
+  stroke-width: 3;
+}
+
+.structure--spaceport .structure-shape {
+  fill: #facc15;
+}
+
+.structure-label {
+  pointer-events: none;
+  fill: #020617;
+  font-size: 16px;
+  font-weight: 900;
 }
 
 .board-map-label {

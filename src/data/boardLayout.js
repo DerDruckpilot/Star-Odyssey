@@ -35,10 +35,10 @@ export const boardLayout = {
       id: "start-02",
       x: 120,
       y: 405,
-      resources: ["ore", "trade", "food"],
+      resources: ["ore", "goods", "food"],
       planets: [
         { id: "start-02-planet-01", resource: "ore" },
-        { id: "start-02-planet-02", resource: "trade" },
+        { id: "start-02-planet-02", resource: "goods" },
         { id: "start-02-planet-03", resource: "food" }
       ]
     },
@@ -57,9 +57,9 @@ export const boardLayout = {
       id: "start-04",
       x: 120,
       y: 775,
-      resources: ["trade", "food", "ore"],
+      resources: ["goods", "food", "ore"],
       planets: [
-        { id: "start-04-planet-01", resource: "trade" },
+        { id: "start-04-planet-01", resource: "goods" },
         { id: "start-04-planet-02", resource: "food" },
         { id: "start-04-planet-03", resource: "ore" }
       ]
@@ -82,10 +82,10 @@ export const boardLayout = {
       id: "system-02",
       x: 1245,
       y: 145,
-      resources: ["ore", "trade", "carbon"],
+      resources: ["ore", "goods", "carbon"],
       planets: [
         { id: "system-02-planet-01", resource: "ore" },
-        { id: "system-02-planet-02", resource: "trade" },
+        { id: "system-02-planet-02", resource: "goods" },
         { id: "system-02-planet-03", resource: "carbon" }
       ],
       hidden: true
@@ -106,9 +106,9 @@ export const boardLayout = {
       id: "system-04",
       x: 1105,
       y: 325,
-      resources: ["trade", "carbon", "ore"],
+      resources: ["goods", "carbon", "ore"],
       planets: [
-        { id: "system-04-planet-01", resource: "trade" },
+        { id: "system-04-planet-01", resource: "goods" },
         { id: "system-04-planet-02", resource: "carbon" },
         { id: "system-04-planet-03", resource: "ore" }
       ],
@@ -118,11 +118,11 @@ export const boardLayout = {
       id: "system-05",
       x: 410,
       y: 505,
-      resources: ["food", "carbon", "trade"],
+      resources: ["food", "carbon", "goods"],
       planets: [
         { id: "system-05-planet-01", resource: "food" },
         { id: "system-05-planet-02", resource: "carbon" },
-        { id: "system-05-planet-03", resource: "trade" }
+        { id: "system-05-planet-03", resource: "goods" }
       ],
       hidden: true
     },
@@ -142,11 +142,11 @@ export const boardLayout = {
       id: "system-07",
       x: 545,
       y: 685,
-      resources: ["carbon", "ore", "trade"],
+      resources: ["carbon", "ore", "goods"],
       planets: [
         { id: "system-07-planet-01", resource: "carbon" },
         { id: "system-07-planet-02", resource: "ore" },
-        { id: "system-07-planet-03", resource: "trade" }
+        { id: "system-07-planet-03", resource: "goods" }
       ],
       hidden: true
     },
@@ -235,6 +235,7 @@ export const resourceColors = {
   food: "#22c55e",
   fuel: "#f59e0b",
   ore: "#ef4444",
+  goods: "#a855f7",
   trade: "#a855f7"
 };
 
@@ -245,3 +246,70 @@ export const boardConnections = boardLayout.links.map(([from, to], index) => ({
 }));
 
 boardLayout.connections = boardConnections;
+
+// Temporary digital start sites until the exact physical start setup is fully mapped.
+boardLayout.startSites = [
+  { id: "start-01-colony-a", x: 66, y: 172, type: "colonySite", adjacentPlanetIds: ["start-01-planet-01", "start-01-planet-02"] },
+  { id: "start-01-colony-b", x: 174, y: 172, type: "colonySite", adjacentPlanetIds: ["start-01-planet-02", "start-01-planet-03"] },
+  { id: "start-01-spaceport", x: 120, y: 284, type: "spaceportSite", adjacentPlanetIds: ["start-01-planet-01", "start-01-planet-02", "start-01-planet-03"] },
+  { id: "start-02-colony-a", x: 66, y: 362, type: "colonySite", adjacentPlanetIds: ["start-02-planet-01", "start-02-planet-02"] },
+  { id: "start-02-colony-b", x: 174, y: 362, type: "colonySite", adjacentPlanetIds: ["start-02-planet-02", "start-02-planet-03"] },
+  { id: "start-02-spaceport", x: 120, y: 474, type: "spaceportSite", adjacentPlanetIds: ["start-02-planet-01", "start-02-planet-02", "start-02-planet-03"] },
+  { id: "start-03-colony-a", x: 66, y: 552, type: "colonySite", adjacentPlanetIds: ["start-03-planet-01", "start-03-planet-02"] },
+  { id: "start-03-colony-b", x: 174, y: 552, type: "colonySite", adjacentPlanetIds: ["start-03-planet-02", "start-03-planet-03"] },
+  { id: "start-03-spaceport", x: 120, y: 664, type: "spaceportSite", adjacentPlanetIds: ["start-03-planet-01", "start-03-planet-02", "start-03-planet-03"] },
+  { id: "start-04-colony-a", x: 66, y: 732, type: "colonySite", adjacentPlanetIds: ["start-04-planet-01", "start-04-planet-02"] },
+  { id: "start-04-colony-b", x: 174, y: 732, type: "colonySite", adjacentPlanetIds: ["start-04-planet-02", "start-04-planet-03"] },
+  { id: "start-04-spaceport", x: 120, y: 844, type: "spaceportSite", adjacentPlanetIds: ["start-04-planet-01", "start-04-planet-02", "start-04-planet-03"] }
+];
+
+boardLayout.startAssignments = boardLayout.startSystems.map((system, index) => ({
+  playerIndex: index,
+  structures: [
+    { type: "colony", locationId: `${system.id}-colony-a` },
+    { type: "colony", locationId: `${system.id}-colony-b` },
+    { type: "spaceport", locationId: `${system.id}-spaceport` }
+  ]
+}));
+
+const planetProduction = {
+  "start-01-planet-01": { number: 5, adjacentSiteIds: ["start-01-colony-a", "start-01-spaceport"] },
+  "start-01-planet-02": { number: 8, adjacentSiteIds: ["start-01-colony-a", "start-01-colony-b", "start-01-spaceport"] },
+  "start-01-planet-03": { number: 6, adjacentSiteIds: ["start-01-colony-b", "start-01-spaceport"] },
+  "start-02-planet-01": { number: 4, adjacentSiteIds: ["start-02-colony-a", "start-02-spaceport"] },
+  "start-02-planet-02": { number: 9, adjacentSiteIds: ["start-02-colony-a", "start-02-colony-b", "start-02-spaceport"] },
+  "start-02-planet-03": { number: 10, adjacentSiteIds: ["start-02-colony-b", "start-02-spaceport"] },
+  "start-03-planet-01": { number: 3, adjacentSiteIds: ["start-03-colony-a", "start-03-spaceport"] },
+  "start-03-planet-02": { number: 11, adjacentSiteIds: ["start-03-colony-a", "start-03-colony-b", "start-03-spaceport"] },
+  "start-03-planet-03": { number: 8, adjacentSiteIds: ["start-03-colony-b", "start-03-spaceport"] },
+  "start-04-planet-01": { number: 5, adjacentSiteIds: ["start-04-colony-a", "start-04-spaceport"] },
+  "start-04-planet-02": { number: 6, adjacentSiteIds: ["start-04-colony-a", "start-04-colony-b", "start-04-spaceport"] },
+  "start-04-planet-03": { number: 9, adjacentSiteIds: ["start-04-colony-b", "start-04-spaceport"] },
+  "system-01-planet-01": { number: 4, adjacentSiteIds: ["p03"] },
+  "system-01-planet-02": { number: 10, adjacentSiteIds: ["p03"] },
+  "system-01-planet-03": { number: 8, adjacentSiteIds: ["p03"] },
+  "system-03-planet-01": { number: 5, adjacentSiteIds: ["p16"] },
+  "system-03-planet-02": { number: 9, adjacentSiteIds: ["p16"] },
+  "system-03-planet-03": { number: 6, adjacentSiteIds: ["p16"] },
+  "system-05-planet-01": { number: 3, adjacentSiteIds: ["p23"] },
+  "system-05-planet-02": { number: 11, adjacentSiteIds: ["p23"] },
+  "system-05-planet-03": { number: 5, adjacentSiteIds: ["p23"] }
+};
+
+for (const system of [...boardLayout.startSystems, ...boardLayout.planetSystems]) {
+  system.resources = system.resources.map(normalizeResource);
+  for (const planet of system.planets) {
+    planet.resource = normalizeResource(planet.resource);
+    Object.assign(planet, planetProduction[planet.id] ?? { number: null, adjacentSiteIds: [] });
+  }
+}
+
+boardLayout.productionPlanets = [...boardLayout.startSystems, ...boardLayout.planetSystems]
+  .flatMap((system) => system.planets.map((planet) => ({
+    ...planet,
+    systemId: system.id
+  })));
+
+function normalizeResource(resource) {
+  return resource === "trade" ? "goods" : resource;
+}

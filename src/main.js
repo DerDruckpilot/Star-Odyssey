@@ -183,7 +183,7 @@ function selectBoardElement(type, id) {
 function rollProductionForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "production") return;
 
-  state.gameState = rollProduction(state.gameState);
+  state.gameState = rollProduction(state.gameState, boardLayout);
   saveCurrentGameState();
   render();
 }
@@ -212,8 +212,10 @@ function isSelectedElement(type, id) {
 function getBoardElementTypeLabel(type) {
   const labels = {
     outpost: t("outpost"),
+    planet: t("planet"),
     planetSystem: t("planetSystem"),
-    spacePoint: t("spacePoint")
+    spacePoint: t("spacePoint"),
+    structure: t("structure")
   };
 
   return labels[type] ?? type;
@@ -371,7 +373,7 @@ function renderBoardShell() {
 function renderBoardHud() {
   const hud = document.createElement("aside");
   hud.className = "board-hud";
-  hud.append(renderTurnSummary(), renderPhaseActions(), renderEventLog(), renderSelectionPanel());
+  hud.append(renderTurnSummary(), renderResourceSummary(), renderPhaseActions(), renderEventLog(), renderSelectionPanel());
   return hud;
 }
 
@@ -394,6 +396,28 @@ function renderTurnSummary() {
     wrapper.append(item);
   }
 
+  return wrapper;
+}
+
+function renderResourceSummary() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "resource-summary";
+
+  const title = document.createElement("strong");
+  title.textContent = t("resources");
+
+  const activePlayer = state.gameState?.players?.[state.gameState.currentPlayerIndex];
+  const list = document.createElement("dl");
+
+  for (const resource of ["ore", "fuel", "carbon", "food", "goods"]) {
+    const label = document.createElement("dt");
+    label.textContent = getResourceLabel(resource);
+    const value = document.createElement("dd");
+    value.textContent = String(activePlayer?.resources?.[resource] ?? 0);
+    list.append(label, value);
+  }
+
+  wrapper.append(title, list);
   return wrapper;
 }
 
@@ -458,11 +482,18 @@ function renderSelectionPanel() {
 
   const selection = resolveSelectedBoardElement();
   const details = document.createElement("p");
-  details.textContent = selection
-    ? `${t("type")}: ${selection.typeLabel} · ${t("id")}: ${selection.id}`
-    : t("noSelection");
+  details.textContent = selection ? `${t("type")}: ${selection.typeLabel} · ${t("id")}: ${selection.id}` : t("noSelection");
 
   wrapper.append(title, details);
+  if (selection?.details?.length > 0) {
+    const list = document.createElement("ul");
+    for (const detail of selection.details) {
+      const item = document.createElement("li");
+      item.textContent = detail;
+      list.append(item);
+    }
+    wrapper.append(list);
+  }
   return wrapper;
 }
 
@@ -492,14 +523,33 @@ function formatLogEntry(entry) {
   if (!template) return entry.message ?? "";
 
   return Object.entries(entry.messageParams ?? {}).reduce(
-    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    (text, [key, value]) => text.replaceAll(`{${key}}`, formatMessageParam(key, value)),
     template
   );
+}
+
+function formatMessageParam(key, value) {
+  if (key === "resource") return getResourceLabel(value);
+  return String(value);
 }
 
 function resolveSelectedBoardElement() {
   const selectedElement = state.gameState?.board?.selectedElement;
   if (!selectedElement) return null;
+
+  if (selectedElement.type === "planet") {
+    const planet = getPlanetById(selectedElement.id);
+    if (!planet) return null;
+    return {
+      id: planet.id,
+      typeLabel: t("planet"),
+      details: [
+        `${t("resource")}: ${getResourceLabel(planet.resource)}`,
+        `${t("numberMarker")}: ${planet.number ?? t("none")}`,
+        `${t("adjacentSites")}: ${formatIdList(planet.adjacentSiteIds)}`
+      ]
+    };
+  }
 
   if (selectedElement.type === "planetSystem") {
     const system = [...boardLayout.startSystems, ...boardLayout.planetSystems]
@@ -517,10 +567,52 @@ function resolveSelectedBoardElement() {
   if (selectedElement.type === "spacePoint") {
     const point = boardLayout.points.find((candidate) => candidate.id === selectedElement.id);
     if (!point) return null;
-    return { id: point.id, typeLabel: t("spacePoint") };
+    return {
+      id: point.id,
+      typeLabel: t("spacePoint"),
+      details: [`${t("type")}: ${point.type}`]
+    };
+  }
+
+  if (selectedElement.type === "structure") {
+    const structure = getStructureById(selectedElement.id);
+    if (!structure) return null;
+    return {
+      id: structure.id,
+      typeLabel: t("structure"),
+      details: [
+        `${t("owner")}: ${getOwnerName(structure.ownerPlayerId)}`,
+        `${t("type")}: ${getStructureTypeLabel(structure.type)}`,
+        `${t("adjacentPlanets")}: ${formatIdList(structure.adjacentPlanetIds)}`
+      ]
+    };
   }
 
   return null;
+}
+
+function getPlanetById(planetId) {
+  return boardLayout.productionPlanets.find((planet) => planet.id === planetId);
+}
+
+function getStructureById(structureId) {
+  return state.gameState?.board?.structures?.find((structure) => structure.id === structureId);
+}
+
+function getOwnerName(ownerPlayerId) {
+  return state.gameState?.players?.find((player) => player.id === ownerPlayerId)?.name ?? ownerPlayerId;
+}
+
+function getStructureTypeLabel(type) {
+  return type === "spaceport" ? t("spaceport") : t("colony");
+}
+
+function getResourceLabel(resource) {
+  return t(`resource_${resource}`);
+}
+
+function formatIdList(ids = []) {
+  return ids.length > 0 ? ids.join(", ") : t("none");
 }
 
 function renderBoardSvg() {
@@ -531,7 +623,14 @@ function renderBoardSvg() {
     "aria-label": t("boardAreaLabel")
   });
 
-  svg.append(renderGridLayer(), renderLinksLayer(), renderSystemsLayer(), renderPointsLayer(), renderBoardLabels());
+  svg.append(
+    renderGridLayer(),
+    renderLinksLayer(),
+    renderSystemsLayer(),
+    renderPointsLayer(),
+    renderStructuresLayer(),
+    renderBoardLabels()
+  );
   return svg;
 }
 
@@ -610,14 +709,28 @@ function renderPlanetSystem(system, className) {
 
   planets.forEach((planet, index) => {
     const offset = offsets[index];
-    group.append(createSvgElement("circle", {
-      class: `planet planet--${planet.resource}`,
+    const selectedClass = isSelectedElement("planet", planet.id) ? " is-selected" : "";
+    const planetElement = createSvgElement("circle", {
+      class: `planet planet--${planet.resource}${selectedClass}`,
       "data-planet-id": planet.id,
       cx: system.x + offset.x,
       cy: system.y + offset.y,
       r: className === "start-system" ? 32 : 28,
       fill: resourceColors[planet.resource]
-    }));
+    });
+    enableBoardElementSelection(planetElement, "planet", planet.id);
+    group.append(planetElement);
+
+    if (planet.number) {
+      const marker = createSvgElement("text", {
+        class: "number-marker",
+        x: system.x + offset.x,
+        y: system.y + offset.y + 7,
+        "text-anchor": "middle"
+      });
+      marker.textContent = planet.number;
+      group.append(marker);
+    }
   });
 
   if (system.hidden) {
@@ -673,6 +786,51 @@ function renderPointsLayer() {
     });
     enableBoardElementSelection(pointElement, "spacePoint", point.id);
     group.append(pointElement);
+  }
+
+  return group;
+}
+
+function renderStructuresLayer() {
+  const group = createSvgElement("g", { class: "board-structures-layer" });
+  const sitesById = new Map((boardLayout.startSites ?? []).map((site) => [site.id, site]));
+
+  for (const structure of state.gameState?.board?.structures ?? []) {
+    const site = sitesById.get(structure.locationId);
+    if (!site) continue;
+    const selectedClass = isSelectedElement("structure", structure.id) ? " is-selected" : "";
+    const structureGroup = createSvgElement("g", {
+      class: `structure structure--${structure.type}${selectedClass}`
+    });
+    enableBoardElementSelection(structureGroup, "structure", structure.id);
+
+    if (structure.type === "spaceport") {
+      structureGroup.append(createSvgElement("rect", {
+        class: "structure-shape",
+        x: site.x - 16,
+        y: site.y - 16,
+        width: 32,
+        height: 32,
+        rx: 5
+      }));
+    } else {
+      structureGroup.append(createSvgElement("circle", {
+        class: "structure-shape",
+        cx: site.x,
+        cy: site.y,
+        r: 15
+      }));
+    }
+
+    const label = createSvgElement("text", {
+      class: "structure-label",
+      x: site.x,
+      y: site.y + 6,
+      "text-anchor": "middle"
+    });
+    label.textContent = structure.ownerPlayerId.replace("player-", "");
+    structureGroup.append(label);
+    group.append(structureGroup);
   }
 
   return group;

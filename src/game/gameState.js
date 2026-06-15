@@ -6,6 +6,7 @@ export const turnPhases = ["setup", "production", "tradeBuild", "flight", "turnE
 export function createGameState({ language, playerCount, boardLayout }) {
   const now = new Date().toISOString();
   const safePlayerCount = [2, 3, 4].includes(playerCount) ? playerCount : 2;
+  const startingStructures = createStartingStructures(safePlayerCount, boardLayout);
 
   return {
     gameId: createId("game"),
@@ -22,7 +23,8 @@ export function createGameState({ language, playerCount, boardLayout }) {
       layoutVersion: boardLayout.layoutVersion,
       selectedElement: null,
       exploredSystems: [],
-      colonies: [],
+      structures: startingStructures,
+      colonies: startingStructures.filter((structure) => structure.type === "colony"),
       stations: [],
       ships: []
     },
@@ -38,22 +40,38 @@ export function createGameState({ language, playerCount, boardLayout }) {
   };
 }
 
-export function rollProduction(gameState) {
+export function rollProduction(gameState, boardLayout) {
   const firstDie = rollDie();
   const secondDie = rollDie();
   const total = firstDie + secondDie;
+  const productionResult = total === 7
+    ? {
+      players: gameState.players,
+      logEntries: [
+        {
+          type: "turn",
+          messageKey: "logSevenPlaceholder",
+          messageParams: {}
+        }
+      ]
+    }
+    : distributeProduction(gameState, boardLayout, total);
 
   return updateGameState(gameState, {
+    players: productionResult.players,
     phase: "tradeBuild",
     lastRoll: {
       dice: [firstDie, secondDie],
       total
     },
-    logEntry: {
-      type: "turn",
-      messageKey: "logProductionRolled",
-      messageParams: { total }
-    }
+    logEntries: [
+      {
+        type: "turn",
+        messageKey: "logProductionRolled",
+        messageParams: { total }
+      },
+      ...productionResult.logEntries
+    ]
   });
 }
 
@@ -128,7 +146,8 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     board: {
       ...fallback.board,
       ...(gameState.board || {}),
-      layoutVersion: gameState.board?.layoutVersion || boardLayout.layoutVersion
+      layoutVersion: gameState.board?.layoutVersion || boardLayout.layoutVersion,
+      structures: normalizeStructures(gameState.board?.structures, normalizedPlayerCount, boardLayout)
     },
     log: normalizeLog(gameState.log, fallback.log)
   };
@@ -165,10 +184,7 @@ function normalizePlayer(player, index, language) {
     name: player.name || fallback.name,
     color: player.color || fallback.color,
     victoryPoints: Number.isInteger(player.victoryPoints) ? player.victoryPoints : 4,
-    resources: {
-      ...createEmptyResources(),
-      ...(player.resources || {})
-    },
+    resources: normalizeResources(player.resources),
     upgrades: {
       ...createDefaultUpgrades(),
       ...(player.upgrades || {})
@@ -181,11 +197,11 @@ function normalizePlayer(player, index, language) {
 
 function createEmptyResources() {
   return {
-    erz: 0,
-    treibstoff: 0,
+    ore: 0,
+    fuel: 0,
     carbon: 0,
-    nahrung: 0,
-    handelsware: 0
+    food: 0,
+    goods: 0
   };
 }
 
@@ -197,23 +213,115 @@ function createDefaultUpgrades() {
   };
 }
 
-function updateGameState(gameState, { logEntry, ...updates }) {
+function updateGameState(gameState, { logEntry, logEntries, ...updates }) {
   const now = new Date().toISOString();
+  const entries = logEntries ?? (logEntry ? [logEntry] : []);
 
   return {
     ...gameState,
     ...updates,
     updatedAt: now,
-    log: logEntry
+    log: entries.length > 0
       ? [
         ...normalizeLog(gameState.log, []),
-        {
+        ...entries.map((entry) => ({
           id: createId("log"),
           createdAt: now,
-          ...logEntry
-        }
+          ...entry
+        }))
       ]
       : normalizeLog(gameState.log, [])
+  };
+}
+
+function createStartingStructures(playerCount, boardLayout) {
+  const sitesById = new Map((boardLayout.startSites ?? []).map((site) => [site.id, site]));
+  const assignments = (boardLayout.startAssignments ?? []).slice(0, playerCount);
+
+  return assignments.flatMap((assignment) => {
+    const ownerPlayerId = `player-${assignment.playerIndex + 1}`;
+    return assignment.structures.map((structure, index) => {
+      const site = sitesById.get(structure.locationId);
+
+      return {
+        id: `${ownerPlayerId}-${structure.type}-${index + 1}`,
+        ownerPlayerId,
+        type: structure.type,
+        locationId: structure.locationId,
+        adjacentPlanetIds: site?.adjacentPlanetIds ?? []
+      };
+    });
+  });
+}
+
+function normalizeStructures(structures, playerCount, boardLayout) {
+  if (!Array.isArray(structures) || structures.length === 0) {
+    return createStartingStructures(playerCount, boardLayout);
+  }
+
+  return structures
+    .filter((structure) => structure && structure.id && structure.ownerPlayerId && structure.locationId)
+    .map((structure) => ({
+      id: structure.id,
+      ownerPlayerId: structure.ownerPlayerId,
+      type: structure.type === "spaceport" ? "spaceport" : "colony",
+      locationId: structure.locationId,
+      adjacentPlanetIds: Array.isArray(structure.adjacentPlanetIds) ? structure.adjacentPlanetIds : []
+    }));
+}
+
+function distributeProduction(gameState, boardLayout, rollTotal) {
+  const structures = gameState.board?.structures ?? [];
+  const producingPlanets = (boardLayout.productionPlanets ?? [])
+    .filter((planet) => planet.number === rollTotal);
+  const players = gameState.players.map((player) => ({
+    ...player,
+    resources: normalizeResources(player.resources)
+  }));
+  const playersById = new Map(players.map((player) => [player.id, player]));
+  const gains = [];
+
+  for (const planet of producingPlanets) {
+    for (const structure of structures) {
+      if (!structure.adjacentPlanetIds?.includes(planet.id)) continue;
+      const player = playersById.get(structure.ownerPlayerId);
+      if (!player) continue;
+
+      player.resources[planet.resource] = (player.resources[planet.resource] ?? 0) + 1;
+      gains.push({
+        player: player.name,
+        resource: planet.resource,
+        amount: 1
+      });
+    }
+  }
+
+  return {
+    players,
+    logEntries: gains.length > 0
+      ? gains.map((gain) => ({
+        type: "production",
+        messageKey: "logResourceGained",
+        messageParams: gain
+      }))
+      : [
+        {
+          type: "production",
+          messageKey: "logNoProduction",
+          messageParams: {}
+        }
+      ]
+  };
+}
+
+function normalizeResources(resources = {}) {
+  return {
+    ...createEmptyResources(),
+    ...resources,
+    ore: resources.ore ?? resources.erz ?? 0,
+    fuel: resources.fuel ?? resources.treibstoff ?? 0,
+    food: resources.food ?? resources.nahrung ?? 0,
+    goods: resources.goods ?? resources.handelsware ?? resources.trade ?? 0
   };
 }
 
