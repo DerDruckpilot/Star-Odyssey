@@ -1,12 +1,15 @@
 import { boardLayout, resourceColors } from "./data/boardLayout.js";
+import { bankTradeRates, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
 import {
   advanceToFlightPhase,
+  buyUpgrade,
   createGameState,
   currentGameStorageKey,
   endCurrentTurn,
   normalizeGameState,
   rollProduction,
-  touchGameState
+  touchGameState,
+  tradeWithSupply
 } from "./game/gameState.js";
 import { defaultLanguage, getText, languages } from "./i18n.js";
 
@@ -20,6 +23,8 @@ const state = {
   view: "menu",
   selectedPlayers: null,
   gameState: loadCurrentGameState(),
+  tradeFromResource: "ore",
+  tradeToResource: "food",
   modal: null,
   notice: ""
 };
@@ -192,6 +197,25 @@ function goToFlightPhase() {
   if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
 
   state.gameState = advanceToFlightPhase(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function tradeActivePlayerWithSupply() {
+  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+
+  state.gameState = tradeWithSupply(state.gameState, {
+    fromResource: state.tradeFromResource,
+    toResource: state.tradeToResource
+  });
+  saveCurrentGameState();
+  render();
+}
+
+function buyActivePlayerUpgrade(upgradeId) {
+  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+
+  state.gameState = buyUpgrade(state.gameState, upgradeId);
   saveCurrentGameState();
   render();
 }
@@ -373,7 +397,14 @@ function renderBoardShell() {
 function renderBoardHud() {
   const hud = document.createElement("aside");
   hud.className = "board-hud";
-  hud.append(renderTurnSummary(), renderResourceSummary(), renderPhaseActions(), renderEventLog(), renderSelectionPanel());
+  hud.append(
+    renderTurnSummary(),
+    renderResourceSummary(),
+    renderUpgradeSummary(),
+    renderPhaseActions(),
+    renderEventLog(),
+    renderSelectionPanel()
+  );
   return hud;
 }
 
@@ -409,11 +440,33 @@ function renderResourceSummary() {
   const activePlayer = state.gameState?.players?.[state.gameState.currentPlayerIndex];
   const list = document.createElement("dl");
 
-  for (const resource of ["ore", "fuel", "carbon", "food", "goods"]) {
+  for (const resource of resourceTypes) {
     const label = document.createElement("dt");
     label.textContent = getResourceLabel(resource);
     const value = document.createElement("dd");
     value.textContent = String(activePlayer?.resources?.[resource] ?? 0);
+    list.append(label, value);
+  }
+
+  wrapper.append(title, list);
+  return wrapper;
+}
+
+function renderUpgradeSummary() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "upgrade-summary";
+
+  const title = document.createElement("strong");
+  title.textContent = t("upgrades");
+
+  const activePlayer = state.gameState?.players?.[state.gameState.currentPlayerIndex];
+  const list = document.createElement("dl");
+
+  for (const upgrade of upgradeDefinitions) {
+    const label = document.createElement("dt");
+    label.textContent = getUpgradeLabel(upgrade.id);
+    const value = document.createElement("dd");
+    value.textContent = `${activePlayer?.upgrades?.[upgrade.id] ?? 0}/${upgrade.limit}`;
     list.append(label, value);
   }
 
@@ -439,12 +492,94 @@ function renderPhaseActions() {
   if (state.gameState.phase === "production") {
     wrapper.append(createButton(t("rollProduction"), rollProductionForActivePlayer, "small-button"));
   } else if (state.gameState.phase === "tradeBuild") {
-    wrapper.append(createButton(t("toFlightPhase"), goToFlightPhase, "small-button"));
+    wrapper.append(renderBankTradeControls(), renderUpgradeControls(), createButton(t("toFlightPhase"), goToFlightPhase, "small-button"));
   } else if (state.gameState.phase === "flight") {
     wrapper.append(createButton(t("endTurn"), endTurn, "small-button"));
   }
 
   return wrapper;
+}
+
+function renderBankTradeControls() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "trade-build-section";
+
+  const title = document.createElement("strong");
+  title.textContent = t("bankTrade");
+
+  const fields = document.createElement("div");
+  fields.className = "trade-fields";
+  fields.append(
+    renderResourceSelect(t("give"), state.tradeFromResource, (resource) => {
+      state.tradeFromResource = resource;
+      render();
+    }),
+    renderResourceSelect(t("receive"), state.tradeToResource, (resource) => {
+      state.tradeToResource = resource;
+      render();
+    })
+  );
+
+  const rate = getBankTradeRate(state.tradeFromResource);
+  const tradeButton = createButton(t("trade"), tradeActivePlayerWithSupply, "small-button");
+  tradeButton.disabled = !canActivePlayerTrade();
+
+  const hint = document.createElement("p");
+  hint.textContent = t("tradeRateHint")
+    .replace("{give}", rate)
+    .replace("{receive}", "1");
+
+  wrapper.append(title, fields, hint, tradeButton);
+  return wrapper;
+}
+
+function renderUpgradeControls() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "trade-build-section upgrade-controls";
+
+  const title = document.createElement("strong");
+  title.textContent = t("buildUpgrades");
+  wrapper.append(title);
+
+  for (const upgrade of upgradeDefinitions) {
+    const card = document.createElement("article");
+    card.className = "upgrade-card";
+
+    const label = document.createElement("span");
+    label.textContent = `${getUpgradeLabel(upgrade.id)} ${getActiveUpgradeLevel(upgrade.id)}/${upgrade.limit}`;
+
+    const cost = document.createElement("small");
+    cost.textContent = `${t("cost")}: ${formatCost(upgrade.cost)}`;
+
+    const button = createButton(t("build"), () => buyActivePlayerUpgrade(upgrade.id), "small-button");
+    button.disabled = !canActivePlayerBuyUpgrade(upgrade);
+
+    card.append(label, cost, button);
+    wrapper.append(card);
+  }
+
+  return wrapper;
+}
+
+function renderResourceSelect(labelText, selectedResource, onChange) {
+  const label = document.createElement("label");
+  label.className = "resource-select";
+
+  const caption = document.createElement("span");
+  caption.textContent = labelText;
+
+  const select = document.createElement("select");
+  for (const resource of resourceTypes) {
+    const option = document.createElement("option");
+    option.value = resource;
+    option.textContent = getResourceLabel(resource);
+    option.selected = resource === selectedResource;
+    select.append(option);
+  }
+  select.addEventListener("change", () => onChange(select.value));
+
+  label.append(caption, select);
+  return label;
 }
 
 function renderEventLog() {
@@ -529,7 +664,8 @@ function formatLogEntry(entry) {
 }
 
 function formatMessageParam(key, value) {
-  if (key === "resource") return getResourceLabel(value);
+  if (["resource", "giveResource", "receiveResource"].includes(key)) return getResourceLabel(value);
+  if (key === "upgrade") return getUpgradeLabel(value);
   return String(value);
 }
 
@@ -609,6 +745,43 @@ function getStructureTypeLabel(type) {
 
 function getResourceLabel(resource) {
   return t(`resource_${resource}`);
+}
+
+function getUpgradeLabel(upgrade) {
+  return t(`upgrade_${upgrade}`);
+}
+
+function getActivePlayer() {
+  return state.gameState?.players?.[state.gameState.currentPlayerIndex] ?? null;
+}
+
+function getActiveUpgradeLevel(upgradeId) {
+  return getActivePlayer()?.upgrades?.[upgradeId] ?? 0;
+}
+
+function getBankTradeRate(resource) {
+  return resource === "goods" ? bankTradeRates.goods : bankTradeRates.default;
+}
+
+function canActivePlayerTrade() {
+  const player = getActivePlayer();
+  if (!player || state.tradeFromResource === state.tradeToResource) return false;
+  return (player.resources?.[state.tradeFromResource] ?? 0) >= getBankTradeRate(state.tradeFromResource);
+}
+
+function canActivePlayerBuyUpgrade(upgrade) {
+  const player = getActivePlayer();
+  if (!player) return false;
+  if ((player.upgrades?.[upgrade.id] ?? 0) >= upgrade.limit) return false;
+
+  return Object.entries(upgrade.cost)
+    .every(([resource, amount]) => (player.resources?.[resource] ?? 0) >= amount);
+}
+
+function formatCost(cost) {
+  return Object.entries(cost)
+    .map(([resource, amount]) => `${amount} ${getResourceLabel(resource)}`)
+    .join(", ");
 }
 
 function formatIdList(ids = []) {

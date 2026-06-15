@@ -46,7 +46,8 @@ body::after {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -214,7 +215,8 @@ h1 {
   transform: translateY(-1px);
 }
 
-.menu-button:disabled {
+.menu-button:disabled,
+.small-button:disabled {
   border-color: rgba(100, 116, 139, 0.28);
   color: rgba(203, 213, 225, 0.48);
   background: rgba(15, 23, 42, 0.42);
@@ -306,6 +308,7 @@ h1 {
 
 .turn-summary,
 .resource-summary,
+.upgrade-summary,
 .phase-actions,
 .event-log,
 .selection-panel {
@@ -321,6 +324,8 @@ h1 {
 .turn-summary p,
 .resource-summary dt,
 .resource-summary dd,
+.upgrade-summary dt,
+.upgrade-summary dd,
 .phase-actions p,
 .event-log li,
 .selection-panel p {
@@ -337,8 +342,16 @@ h1 {
   margin: 0;
 }
 
-.resource-summary dd {
+.resource-summary dd,
+.upgrade-summary dd {
   font-weight: 800;
+}
+
+.upgrade-summary dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.1rem 0.6rem;
+  margin: 0;
 }
 
 .phase-actions {
@@ -350,9 +363,57 @@ h1 {
 }
 
 .selection-panel strong,
-.resource-summary strong {
+.resource-summary strong,
+.upgrade-summary strong {
   color: #f8fafc;
   font-size: clamp(0.8rem, 1.2vw, 0.95rem);
+}
+
+.trade-build-section {
+  display: grid;
+  gap: 0.45rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  padding-top: 0.45rem;
+}
+
+.trade-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.resource-select {
+  display: grid;
+  gap: 0.2rem;
+  color: #dbeafe;
+  font-size: clamp(0.74rem, 1vw, 0.86rem);
+}
+
+.resource-select select {
+  width: 100%;
+  min-height: 2rem;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  color: #f8fafc;
+  background: rgba(2, 6, 23, 0.84);
+}
+
+.upgrade-controls {
+  gap: 0.5rem;
+}
+
+.upgrade-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 0.5rem;
+  align-items: center;
+}
+
+.upgrade-card small {
+  color: #cbd5e1;
+}
+
+.upgrade-card .small-button {
+  grid-row: span 2;
 }
 
 .selection-panel ul {

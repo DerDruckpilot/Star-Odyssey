@@ -1,3 +1,5 @@
+import { bankTradeRates, upgradeDefinitions } from "../data/buildCosts.js";
+
 const playerColorKeys = ["red", "blue", "yellow", "white"];
 
 export const currentGameStorageKey = "star-odyssey-current-game";
@@ -83,6 +85,79 @@ export function advanceToFlightPhase(gameState) {
       messageKey: "logToFlightPhase",
       messageParams: {
         player: getActivePlayerName(gameState)
+      }
+    }
+  });
+}
+
+export function tradeWithSupply(gameState, { fromResource, toResource }) {
+  if (gameState.phase !== "tradeBuild" || fromResource === toResource) return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const rate = getTradeRate(fromResource);
+  if (!activePlayer || !canPay(activePlayer.resources, { [fromResource]: rate })) return gameState;
+
+  const players = gameState.players.map((player, index) => {
+    if (index !== gameState.currentPlayerIndex) return player;
+    const resources = normalizeResources(player.resources);
+
+    return {
+      ...player,
+      resources: {
+        ...resources,
+        [fromResource]: (resources[fromResource] ?? 0) - rate,
+        [toResource]: (resources[toResource] ?? 0) + 1
+      }
+    };
+  });
+
+  return updateGameState(gameState, {
+    players,
+    logEntry: {
+      type: "trade",
+      messageKey: "logBankTrade",
+      messageParams: {
+        player: activePlayer.name,
+        giveAmount: rate,
+        giveResource: fromResource,
+        receiveAmount: 1,
+        receiveResource: toResource
+      }
+    }
+  });
+}
+
+export function buyUpgrade(gameState, upgradeId) {
+  if (gameState.phase !== "tradeBuild") return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const definition = upgradeDefinitions.find((upgrade) => upgrade.id === upgradeId);
+  const currentLevel = activePlayer?.upgrades?.[upgradeId] ?? 0;
+  if (!activePlayer || !definition || currentLevel >= definition.limit || !canPay(activePlayer.resources, definition.cost)) {
+    return gameState;
+  }
+
+  const players = gameState.players.map((player, index) => {
+    if (index !== gameState.currentPlayerIndex) return player;
+
+    return {
+      ...player,
+      resources: payCost(player.resources, definition.cost),
+      upgrades: {
+        ...normalizeUpgrades(player.upgrades),
+        [upgradeId]: currentLevel + 1
+      }
+    };
+  });
+
+  return updateGameState(gameState, {
+    players,
+    logEntry: {
+      type: "build",
+      messageKey: "logUpgradeBuilt",
+      messageParams: {
+        player: activePlayer.name,
+        upgrade: upgradeId
       }
     }
   });
@@ -185,10 +260,7 @@ function normalizePlayer(player, index, language) {
     color: player.color || fallback.color,
     victoryPoints: Number.isInteger(player.victoryPoints) ? player.victoryPoints : 4,
     resources: normalizeResources(player.resources),
-    upgrades: {
-      ...createDefaultUpgrades(),
-      ...(player.upgrades || {})
-    },
+    upgrades: normalizeUpgrades(player.upgrades),
     halfMedals: Number.isInteger(player.halfMedals) ? player.halfMedals : 0,
     ships: Array.isArray(player.ships) ? player.ships : [],
     stations: Array.isArray(player.stations) ? player.stations : []
@@ -207,9 +279,9 @@ function createEmptyResources() {
 
 function createDefaultUpgrades() {
   return {
-    antrieb: 0,
-    frachtmodul: 0,
-    bordkanone: 0
+    drive: 0,
+    cargo: 0,
+    cannon: 0
   };
 }
 
@@ -323,6 +395,33 @@ function normalizeResources(resources = {}) {
     food: resources.food ?? resources.nahrung ?? 0,
     goods: resources.goods ?? resources.handelsware ?? resources.trade ?? 0
   };
+}
+
+function normalizeUpgrades(upgrades = {}) {
+  return {
+    ...createDefaultUpgrades(),
+    ...upgrades,
+    drive: upgrades.drive ?? upgrades.antrieb ?? 0,
+    cargo: upgrades.cargo ?? upgrades.frachtmodul ?? 0,
+    cannon: upgrades.cannon ?? upgrades.bordkanone ?? 0
+  };
+}
+
+function getTradeRate(resource) {
+  return resource === "goods" ? bankTradeRates.goods : bankTradeRates.default;
+}
+
+function canPay(resources, cost) {
+  const normalizedResources = normalizeResources(resources);
+  return Object.entries(cost).every(([resource, amount]) => (normalizedResources[resource] ?? 0) >= amount);
+}
+
+function payCost(resources, cost) {
+  const paidResources = normalizeResources(resources);
+  for (const [resource, amount] of Object.entries(cost)) {
+    paidResources[resource] = (paidResources[resource] ?? 0) - amount;
+  }
+  return paidResources;
 }
 
 function getActivePlayerName(gameState) {
