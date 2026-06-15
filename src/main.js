@@ -8,6 +8,8 @@ import {
   currentGameStorageKey,
   determineFlightSpeed,
   endCurrentTurn,
+  foundColony,
+  foundTradeStation,
   getReachableNodes,
   normalizeGameState,
   moveShip,
@@ -257,6 +259,24 @@ function buildActivePlayerSpaceport() {
   if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
 
   state.gameState = upgradeColonyToSpaceport(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function foundColonyWithSelectedShip() {
+  const selectedShip = getSelectedShip();
+  if (!state.gameState || !selectedShip) return;
+
+  state.gameState = foundColony(state.gameState, boardLayout, selectedShip.id);
+  saveCurrentGameState();
+  render();
+}
+
+function foundTradeStationWithSelectedShip() {
+  const selectedShip = getSelectedShip();
+  if (!state.gameState || !selectedShip) return;
+
+  state.gameState = foundTradeStation(state.gameState, boardLayout, selectedShip.id);
   saveCurrentGameState();
   render();
 }
@@ -596,6 +616,19 @@ function renderFlightControls() {
     : t("selectOwnShip");
 
   wrapper.append(summary);
+  if (selectedShip && canFoundColonyWithShip(selectedShip)) {
+    wrapper.append(createButton(t("foundColony"), foundColonyWithSelectedShip, "small-button"));
+  }
+  if (selectedShip?.type === "tradeShip" && isShipAtDock(selectedShip)) {
+    const tradeStationRequirement = getTradeStationRequirement(selectedShip.locationId);
+    if (canFoundTradeStationWithShip(selectedShip)) {
+      wrapper.append(createButton(t("foundTradeStation"), foundTradeStationWithSelectedShip, "small-button"));
+    } else {
+      const hint = document.createElement("p");
+      hint.textContent = `${t("notEnoughCargoModules")} ${t("requiredCargoModules")}: ${tradeStationRequirement}`;
+      wrapper.append(hint);
+    }
+  }
   return wrapper;
 }
 
@@ -824,13 +857,32 @@ function resolveSelectedBoardElement() {
     const system = [...boardLayout.startSystems, ...boardLayout.planetSystems]
       .find((candidate) => candidate.id === selectedElement.id);
     if (!system) return null;
-    return { id: system.id, typeLabel: t("planetSystem") };
+    const explored = isSystemExplored(system.id);
+    const planetDetails = (system.planets ?? [])
+      .map((planet) => `${getResourceLabel(planet.resource)}${explored && planet.number ? ` ${planet.number}` : ""}`)
+      .join(", ");
+    return {
+      id: system.id,
+      typeLabel: t("planetSystem"),
+      details: [
+        `${t("status")}: ${explored ? t("explored") : t("unexplored")}`,
+        `${t("planets")}: ${planetDetails}`
+      ]
+    };
   }
 
   if (selectedElement.type === "outpost") {
     const outpost = boardLayout.outposts.find((candidate) => candidate.id === selectedElement.id);
     if (!outpost) return null;
-    return { id: outpost.id, typeLabel: t("outpost") };
+    const stations = getTradeStationsAtOutpost(outpost.id);
+    return {
+      id: outpost.id,
+      typeLabel: t("outpost"),
+      details: [
+        `${t("tradeStations")}: ${stations.length}`,
+        `${t("requiredCargoModules")}: ${stations.length + 1}`
+      ]
+    };
   }
 
   if (selectedElement.type === "spacePoint") {
@@ -838,10 +890,20 @@ function resolveSelectedBoardElement() {
     if (!point) return null;
     const occupyingShip = getShipAtLocation(point.id);
     const occupyingStructure = getStructureAtLocation(point.id);
+    const colonySite = getColonySiteAtNode(point.id);
+    const dock = getDockAtNode(point.id);
     const details = [
       `${t("type")}: ${point.type}`,
       `${t("occupied")}: ${occupyingShip || occupyingStructure ? t("yes") : t("no")}`
     ];
+    if (colonySite) {
+      details.push(`${t("colonySite")}: ${occupyingStructure ? t("occupied") : t("free")}`);
+      details.push(`${t("adjacentPlanets")}: ${formatIdList(colonySite.adjacentPlanetIds)}`);
+    }
+    if (dock) {
+      details.push(`${t("dock")}: ${occupyingStructure ? t("occupied") : t("free")}`);
+      details.push(`${t("requiredCargoModules")}: ${getTradeStationRequirement(point.id)}`);
+    }
     if (occupyingShip) details.push(`${t("ship")}: ${getShipTypeLabel(occupyingShip.type)} · ${getOwnerName(occupyingShip.ownerPlayerId)}`);
     if (occupyingStructure) details.push(`${t("structure")}: ${getStructureTypeLabel(occupyingStructure.type)} · ${getOwnerName(occupyingStructure.ownerPlayerId)}`);
     return {
@@ -904,12 +966,19 @@ function getStructureAtLocation(locationId) {
   return state.gameState?.board?.structures?.find((structure) => structure.locationId === locationId);
 }
 
+function getStructureRenderPoint(structure) {
+  return (boardLayout.startSites ?? []).find((site) => site.id === structure.locationId)
+    ?? (boardLayout.points ?? []).find((point) => point.id === structure.locationId);
+}
+
 function getOwnerName(ownerPlayerId) {
   return state.gameState?.players?.find((player) => player.id === ownerPlayerId)?.name ?? ownerPlayerId;
 }
 
 function getStructureTypeLabel(type) {
-  return type === "spaceport" ? t("spaceport") : t("colony");
+  if (type === "spaceport") return t("spaceport");
+  if (type === "tradeStation") return t("tradeStation");
+  return t("colony");
 }
 
 function getResourceLabel(resource) {
@@ -959,6 +1028,55 @@ function getShipMovementDetails(ship) {
   return [`${t("remainingMovement")}: ${getShipRemainingMovement(ship.id)}`];
 }
 
+function getColonySiteAtNode(nodeId) {
+  return (boardLayout.colonySites ?? []).find((site) => site.nodeId === nodeId);
+}
+
+function getDockAtNode(nodeId) {
+  return (boardLayout.docks ?? []).find((dock) => dock.nodeId === nodeId);
+}
+
+function isSystemExplored(systemId) {
+  return (state.gameState?.board?.exploredSystems ?? []).includes(systemId);
+}
+
+function isShipAtDock(ship) {
+  return Boolean(getDockAtNode(ship.locationId));
+}
+
+function canFoundColonyWithShip(ship) {
+  const colonySite = getColonySiteAtNode(ship.locationId);
+  return Boolean(
+    state.gameState?.phase === "flight" &&
+    ship.type === "colonyShip" &&
+    colonySite &&
+    isSystemExplored(colonySite.systemId) &&
+    !getStructureAtLocation(colonySite.nodeId)
+  );
+}
+
+function canFoundTradeStationWithShip(ship) {
+  const dock = getDockAtNode(ship.locationId);
+  return Boolean(
+    state.gameState?.phase === "flight" &&
+    ship.type === "tradeShip" &&
+    dock &&
+    !getStructureAtLocation(dock.nodeId) &&
+    (getActivePlayer()?.upgrades?.cargo ?? 0) >= getTradeStationRequirement(ship.locationId)
+  );
+}
+
+function getTradeStationRequirement(nodeId) {
+  const dock = getDockAtNode(nodeId);
+  if (!dock) return 1;
+  return getTradeStationsAtOutpost(dock.outpostId).length + 1;
+}
+
+function getTradeStationsAtOutpost(outpostId) {
+  return (state.gameState?.board?.structures ?? [])
+    .filter((structure) => structure.type === "tradeStation" && structure.outpostId === outpostId);
+}
+
 function getReachableNodeMap() {
   const selectedShip = getSelectedShip();
   if (!selectedShip || state.gameState?.phase !== "flight" || !state.gameState.hasRolledFlightSpeed) return new Map();
@@ -974,6 +1092,12 @@ function getReachableNodeMap() {
 
 function canMoveSelectedShipTo(targetNodeId) {
   return getReachableNodeMap().has(targetNodeId);
+}
+
+function isFoundablePoint(nodeId) {
+  const selectedShip = getSelectedShip();
+  if (!selectedShip || selectedShip.locationId !== nodeId) return false;
+  return canFoundColonyWithShip(selectedShip) || canFoundTradeStationWithShip(selectedShip);
 }
 
 function getActiveUpgradeLevel(upgradeId) {
@@ -1111,11 +1235,12 @@ function renderSystemsLayer() {
   const group = createSvgElement("g", { class: "board-systems-layer" });
 
   for (const system of boardLayout.startSystems) {
-    group.append(renderPlanetSystem(system, "start-system"));
+    group.append(renderPlanetSystem(system, "start-system", true));
   }
 
   for (const system of boardLayout.planetSystems) {
-    group.append(renderPlanetSystem(system, system.hidden ? "hidden-system" : "planet-system"));
+    const explored = isSystemExplored(system.id);
+    group.append(renderPlanetSystem(system, explored ? "planet-system" : "hidden-system", explored));
   }
 
   for (const outpost of boardLayout.outposts) {
@@ -1125,7 +1250,7 @@ function renderSystemsLayer() {
   return group;
 }
 
-function renderPlanetSystem(system, className) {
+function renderPlanetSystem(system, className, explored) {
   const selectedClass = isSelectedElement("planetSystem", system.id) ? " is-selected" : "";
   const group = createSvgElement("g", { class: `${className}${selectedClass}` });
   enableBoardElementSelection(group, "planetSystem", system.id);
@@ -1154,7 +1279,7 @@ function renderPlanetSystem(system, className) {
     enableBoardElementSelection(planetElement, "planet", planet.id);
     group.append(planetElement);
 
-    if (planet.number) {
+    if (explored && planet.number) {
       const marker = createSvgElement("text", {
         class: "number-marker",
         x: system.x + offset.x,
@@ -1166,7 +1291,7 @@ function renderPlanetSystem(system, className) {
     }
   });
 
-  if (system.hidden) {
+  if (!explored) {
     group.append(createSvgElement("circle", {
       class: "hidden-marker",
       cx: system.x,
@@ -1214,8 +1339,9 @@ function renderPointsLayer() {
     const selectedClass = isSelectedElement("spacePoint", point.id) ? " is-selected" : "";
     const reachableClass = reachableNodes.has(point.id) ? " is-reachable" : "";
     const occupiedClass = getShipAtLocation(point.id) ? " is-occupied" : "";
+    const foundableClass = isFoundablePoint(point.id) ? " is-foundable" : "";
     const pointElement = createSvgElement("circle", {
-      class: `space-point space-point--${point.type}${selectedClass}${reachableClass}${occupiedClass}`,
+      class: `space-point space-point--${point.type}${selectedClass}${reachableClass}${occupiedClass}${foundableClass}`,
       cx: point.x,
       cy: point.y,
       r: point.type === "space" ? 9 : 13
@@ -1229,10 +1355,9 @@ function renderPointsLayer() {
 
 function renderStructuresLayer() {
   const group = createSvgElement("g", { class: "board-structures-layer" });
-  const sitesById = new Map((boardLayout.startSites ?? []).map((site) => [site.id, site]));
 
   for (const structure of state.gameState?.board?.structures ?? []) {
-    const site = sitesById.get(structure.locationId);
+    const site = getStructureRenderPoint(structure);
     if (!site) continue;
     const selectedClass = isSelectedElement("structure", structure.id) ? " is-selected" : "";
     const ownerIndex = Number.parseInt(structure.ownerPlayerId.replace("player-", ""), 10);
@@ -1241,7 +1366,12 @@ function renderStructuresLayer() {
     });
     enableBoardElementSelection(structureGroup, "structure", structure.id);
 
-    if (structure.type === "spaceport") {
+    if (structure.type === "tradeStation") {
+      structureGroup.append(createSvgElement("polygon", {
+        class: `structure-shape player-color-${ownerIndex}`,
+        points: `${site.x},${site.y - 18} ${site.x + 18},${site.y} ${site.x},${site.y + 18} ${site.x - 18},${site.y}`
+      }));
+    } else if (structure.type === "spaceport") {
       structureGroup.append(createSvgElement("rect", {
         class: `structure-shape player-color-${ownerIndex}`,
         x: site.x - 16,

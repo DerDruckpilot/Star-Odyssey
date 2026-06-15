@@ -30,7 +30,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
     board: {
       layoutVersion: boardLayout.layoutVersion,
       selectedElement: null,
-      exploredSystems: [],
+      exploredSystems: normalizeExploredSystems([], boardLayout),
       structures: startingStructures,
       colonies: startingStructures.filter((structure) => structure.type === "colony"),
       stations: [],
@@ -168,6 +168,7 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
     ships: updatedShips.filter((candidate) => candidate.ownerPlayerId === player.id)
   }));
   const remaining = remainingMovement - pathCost;
+  const explorationResult = exploreAdjacentSystems(gameState, boardLayout, targetNodeId, activePlayer.name);
 
   return updateGameState(gameState, {
     players,
@@ -177,19 +178,142 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
     },
     board: {
       ...gameState.board,
+      exploredSystems: explorationResult.exploredSystems,
       selectedElement: { type: "ship", id: shipId },
       ships: updatedShips
     },
+    logEntries: [
+      {
+        type: "flight",
+        messageKey: "logShipMoved",
+        messageParams: {
+          player: activePlayer.name,
+          ship: ship.type,
+          from: ship.locationId,
+          to: targetNodeId,
+          cost: pathCost,
+          remaining
+        }
+      },
+      ...explorationResult.logEntries
+    ]
+  });
+}
+
+export function foundColony(gameState, boardLayout, shipId) {
+  if (gameState.phase !== "flight") return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const ships = normalizeShips(gameState.board?.ships);
+  const ship = ships.find((candidate) => candidate.id === shipId);
+  const colonySite = (boardLayout.colonySites ?? []).find((site) => site.nodeId === ship?.locationId);
+  if (
+    !activePlayer ||
+    !ship ||
+    ship.ownerPlayerId !== activePlayer.id ||
+    ship.type !== "colonyShip" ||
+    !colonySite ||
+    !isSystemExplored(gameState, boardLayout, colonySite.systemId) ||
+    isStructureAtLocation(gameState.board?.structures, colonySite.nodeId)
+  ) {
+    return gameState;
+  }
+
+  const structure = {
+    id: createId("colony"),
+    ownerPlayerId: activePlayer.id,
+    type: "colony",
+    locationId: colonySite.nodeId,
+    systemId: colonySite.systemId,
+    adjacentPlanetIds: colonySite.adjacentPlanetIds ?? []
+  };
+  const updatedShips = ships.filter((candidate) => candidate.id !== ship.id);
+  const structures = [...normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout), structure];
+  const remainingMovementByShipId = { ...(gameState.remainingMovementByShipId ?? {}) };
+  delete remainingMovementByShipId[ship.id];
+  const players = syncPlayersWithBoardAssets(gameState.players, structures, updatedShips)
+    .map((player) => player.id === activePlayer.id
+      ? { ...player, victoryPoints: player.victoryPoints + 1 }
+      : player);
+
+  return updateGameState(gameState, {
+    players,
+    remainingMovementByShipId,
+    board: {
+      ...gameState.board,
+      selectedElement: { type: "structure", id: structure.id },
+      structures,
+      colonies: structures.filter((candidate) => candidate.type === "colony"),
+      ships: updatedShips
+    },
     logEntry: {
-      type: "flight",
-      messageKey: "logShipMoved",
+      type: "founding",
+      messageKey: "logColonyFounded",
       messageParams: {
-        player: activePlayer.name,
-        ship: ship.type,
-        from: ship.locationId,
-        to: targetNodeId,
-        cost: pathCost,
-        remaining
+        player: activePlayer.name
+      }
+    }
+  });
+}
+
+export function foundTradeStation(gameState, boardLayout, shipId) {
+  if (gameState.phase !== "flight") return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const ships = normalizeShips(gameState.board?.ships);
+  const ship = ships.find((candidate) => candidate.id === shipId);
+  const dock = (boardLayout.docks ?? []).find((candidate) => candidate.nodeId === ship?.locationId);
+  const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout);
+  const existingOutpostStations = structures
+    .filter((structure) => structure.type === "tradeStation" && structure.outpostId === dock?.outpostId);
+  const requiredCargo = existingOutpostStations.length + 1;
+  if (
+    !activePlayer ||
+    !ship ||
+    ship.ownerPlayerId !== activePlayer.id ||
+    ship.type !== "tradeShip" ||
+    !dock ||
+    isStructureAtLocation(structures, dock.nodeId) ||
+    (activePlayer.upgrades?.cargo ?? 0) < requiredCargo
+  ) {
+    return gameState;
+  }
+
+  const structure = {
+    id: createId("trade-station"),
+    ownerPlayerId: activePlayer.id,
+    type: "tradeStation",
+    locationId: dock.nodeId,
+    dockId: dock.id,
+    outpostId: dock.outpostId,
+    adjacentPlanetIds: []
+  };
+  const updatedShips = ships.filter((candidate) => candidate.id !== ship.id);
+  const updatedStructures = [...structures, structure];
+  const remainingMovementByShipId = { ...(gameState.remainingMovementByShipId ?? {}) };
+  delete remainingMovementByShipId[ship.id];
+  const grantsVictoryPoint = existingOutpostStations.length === 0;
+  const players = syncPlayersWithBoardAssets(gameState.players, updatedStructures, updatedShips)
+    .map((player) => player.id === activePlayer.id
+      ? { ...player, victoryPoints: player.victoryPoints + (grantsVictoryPoint ? 1 : 0) }
+      : player);
+
+  return updateGameState(gameState, {
+    players,
+    remainingMovementByShipId,
+    board: {
+      ...gameState.board,
+      selectedElement: { type: "structure", id: structure.id },
+      structures: updatedStructures,
+      colonies: updatedStructures.filter((candidate) => candidate.type === "colony"),
+      stations: updatedStructures.filter((candidate) => candidate.type === "tradeStation"),
+      ships: updatedShips
+    },
+    logEntry: {
+      type: "founding",
+      messageKey: "logTradeStationFounded",
+      messageParams: {
+        player: activePlayer.name
       }
     }
   });
@@ -451,8 +575,10 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
       ...fallback.board,
       ...(gameState.board || {}),
       layoutVersion: gameState.board?.layoutVersion || boardLayout.layoutVersion,
+      exploredSystems: normalizeExploredSystems(gameState.board?.exploredSystems, boardLayout),
       structures: normalizedStructures,
       colonies: normalizedStructures.filter((structure) => structure.type === "colony"),
+      stations: normalizedStructures.filter((structure) => structure.type === "tradeStation"),
       ships: normalizedShips
     },
     log: normalizeLog(gameState.log, fallback.log)
@@ -603,10 +729,31 @@ function normalizeStructures(structures, playerCount, boardLayout) {
     .map((structure) => ({
       id: structure.id,
       ownerPlayerId: structure.ownerPlayerId,
-      type: structure.type === "spaceport" ? "spaceport" : "colony",
+      type: normalizeStructureType(structure.type),
       locationId: structure.locationId,
+      systemId: structure.systemId ?? null,
+      dockId: structure.dockId ?? null,
+      outpostId: structure.outpostId ?? null,
       adjacentPlanetIds: Array.isArray(structure.adjacentPlanetIds) ? structure.adjacentPlanetIds : []
     }));
+}
+
+function normalizeStructureType(type) {
+  if (type === "spaceport") return "spaceport";
+  if (type === "tradeStation") return "tradeStation";
+  return "colony";
+}
+
+function normalizeExploredSystems(exploredSystems, boardLayout) {
+  const startSystemIds = (boardLayout.startSystems ?? []).map((system) => system.id);
+  const knownSystemIds = new Set([
+    ...startSystemIds,
+    ...(boardLayout.planetSystems ?? []).map((system) => system.id)
+  ]);
+  const savedSystemIds = Array.isArray(exploredSystems) ? exploredSystems : [];
+
+  return [...new Set([...startSystemIds, ...savedSystemIds])]
+    .filter((systemId) => knownSystemIds.has(systemId));
 }
 
 function normalizeShips(ships = []) {
@@ -657,6 +804,44 @@ function findUpgradeableColony(gameState, ownerPlayerId) {
 
 function updatePlayerById(players, playerId, updatePlayer) {
   return players.map((player) => player.id === playerId ? updatePlayer(player) : player);
+}
+
+function syncPlayersWithBoardAssets(players, structures, ships) {
+  return players.map((player) => ({
+    ...player,
+    structures: structures.filter((structure) => structure.ownerPlayerId === player.id),
+    ships: ships.filter((ship) => ship.ownerPlayerId === player.id)
+  }));
+}
+
+function exploreAdjacentSystems(gameState, boardLayout, nodeId, playerName) {
+  const exploredSystemIds = new Set(normalizeExploredSystems(gameState.board?.exploredSystems, boardLayout));
+  const newSystems = (boardLayout.planetSystems ?? [])
+    .filter((system) => !exploredSystemIds.has(system.id) && (system.adjacentNodeIds ?? []).includes(nodeId));
+
+  for (const system of newSystems) {
+    exploredSystemIds.add(system.id);
+  }
+
+  return {
+    exploredSystems: [...exploredSystemIds],
+    logEntries: newSystems.map((system) => ({
+      type: "exploration",
+      messageKey: "logSystemExplored",
+      messageParams: {
+        player: playerName,
+        system: system.name ?? system.id
+      }
+    }))
+  };
+}
+
+function isSystemExplored(gameState, boardLayout, systemId) {
+  return normalizeExploredSystems(gameState.board?.exploredSystems, boardLayout).includes(systemId);
+}
+
+function isStructureAtLocation(structures, locationId) {
+  return (structures ?? []).some((structure) => structure?.locationId === locationId);
 }
 
 function getShortestPathCost(boardLayout, fromNodeId, toNodeId) {

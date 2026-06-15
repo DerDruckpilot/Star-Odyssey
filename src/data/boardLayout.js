@@ -359,12 +359,66 @@ const planetProduction = {
   "system-05-planet-03": { number: 5, adjacentSiteIds: ["p23"] }
 };
 
+const colonySiteNodesBySystem = {
+  "system-01": ["p03"],
+  "system-02": ["p09"],
+  "system-03": ["p16"],
+  "system-04": ["p18"],
+  "system-05": ["p23"],
+  "system-06": ["p29"],
+  "system-07": ["p33"],
+  "system-08": ["p37"]
+};
+
+const dockNodesByOutpost = {
+  "outpost-01": ["p06", "p07"],
+  "outpost-02": ["p13", "p14"],
+  "outpost-03": ["p26", "p27"],
+  "outpost-04": ["p34", "p35"]
+};
+
 for (const system of [...boardLayout.startSystems, ...boardLayout.planetSystems]) {
+  system.name = system.name ?? system.id;
+  system.isExplored = !system.hidden;
+  system.planetIds = system.planets.map((planet) => planet.id);
+  system.adjacentNodeIds = colonySiteNodesBySystem[system.id] ?? [];
+  system.colonySiteIds = (colonySiteNodesBySystem[system.id] ?? []).map((nodeId) => `${system.id}-${nodeId}-colony-site`);
   system.resources = system.resources.map(normalizeResource);
   for (const planet of system.planets) {
     planet.resource = normalizeResource(planet.resource);
     Object.assign(planet, planetProduction[planet.id] ?? { number: null, adjacentSiteIds: [] });
+    planet.systemId = system.id;
+    planet.resourceType = planet.resource;
+    planet.numberToken = planet.number;
+    planet.isRevealed = !system.hidden;
   }
+}
+
+boardLayout.colonySites = Object.entries(colonySiteNodesBySystem).flatMap(([systemId, nodeIds]) => {
+  const system = boardLayout.planetSystems.find((candidate) => candidate.id === systemId);
+  return nodeIds.map((nodeId) => ({
+    id: `${systemId}-${nodeId}-colony-site`,
+    nodeId,
+    systemId,
+    adjacentPlanetIds: system?.planetIds ?? [],
+    occupiedByStructureId: null
+  }));
+});
+
+boardLayout.docks = Object.entries(dockNodesByOutpost).flatMap(([outpostId, nodeIds]) => (
+  nodeIds.map((nodeId, index) => ({
+    id: `${outpostId}-dock-${index + 1}`,
+    outpostId,
+    nodeId,
+    occupiedByStructureId: null
+  }))
+));
+
+for (const outpost of boardLayout.outposts) {
+  const docks = boardLayout.docks.filter((dock) => dock.outpostId === outpost.id);
+  outpost.dockNodeId = docks[0]?.nodeId ?? null;
+  outpost.dockIds = docks.map((dock) => dock.id);
+  outpost.tradeStationIds = [];
 }
 
 boardLayout.productionPlanets = [...boardLayout.startSystems, ...boardLayout.planetSystems]
