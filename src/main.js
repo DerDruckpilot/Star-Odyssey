@@ -529,10 +529,14 @@ function renderPlayerHudModal() {
   const header = document.createElement("header");
   header.className = "player-hud-header";
 
+  const titleGroup = document.createElement("div");
+  titleGroup.className = "player-hud-title";
+
   const title = document.createElement("h2");
   title.textContent = player.name;
 
-  header.append(title, createButton(t("close"), closePlayerHud, "small-button secondary-small-button"));
+  titleGroup.append(title, renderHudResourceStrip(player));
+  header.append(titleGroup, createButton(t("close"), closePlayerHud, "small-button secondary-small-button"));
 
   const content = document.createElement("div");
   content.className = "player-hud-content";
@@ -548,7 +552,7 @@ function renderPlayerHudTabs() {
   tabs.className = "player-hud-tabs";
   const tabDefinitions = [
     ["turn", t("tabTurn")],
-    ["resources", t("tabResources")],
+    ["resources", t("tabTrade")],
     ["upgrades", t("tabUpgrades")],
     ["fleet", t("tabFleet")],
     ["log", t("tabLog")]
@@ -569,17 +573,15 @@ function renderPlayerHudTabs() {
 function renderPlayerHudTabContent(player) {
   const content = document.createElement("div");
   content.className = "player-hud-tab-content";
-  const isActivePlayer = player.id === getActivePlayer()?.id;
 
   if (state.hudTab === "resources") {
-    content.append(renderResourceSummary(player));
-    if (isActivePlayer && state.gameState?.phase === "tradeBuild") content.append(renderBankTradeControls());
+    content.append(renderBankTradeControls(player));
   } else if (state.hudTab === "upgrades") {
     content.append(renderUpgradeSummary(player));
-    if (isActivePlayer && state.gameState?.phase === "tradeBuild") content.append(renderUpgradeControls());
+    content.append(renderUpgradeControls(player));
   } else if (state.hudTab === "fleet") {
     content.append(renderFleetSummary(player));
-    if (isActivePlayer && state.gameState?.phase === "tradeBuild") content.append(renderBuildControls());
+    content.append(renderBuildControls(player));
   } else if (state.hudTab === "log") {
     content.append(renderEventLog(), renderSelectionPanel());
   } else {
@@ -587,6 +589,21 @@ function renderPlayerHudTabContent(player) {
   }
 
   return content;
+}
+
+function renderHudResourceStrip(player) {
+  const list = document.createElement("dl");
+  list.className = "player-hud-resources";
+
+  for (const resource of resourceTypes) {
+    const label = document.createElement("dt");
+    label.textContent = getResourceLabel(resource);
+    const value = document.createElement("dd");
+    value.textContent = String(player?.resources?.[resource] ?? 0);
+    list.append(label, value);
+  }
+
+  return list;
 }
 
 function renderTurnSummary(player = getActivePlayer()) {
@@ -710,6 +727,9 @@ function renderPhaseActions(player = getActivePlayer()) {
   if (state.gameState.phase === "production") {
     wrapper.append(createButton(t("rollProduction"), rollProductionForActivePlayer, "small-button"));
   } else if (state.gameState.phase === "tradeBuild") {
+    const hint = document.createElement("p");
+    hint.textContent = t("tradeBuildReady");
+    wrapper.append(hint);
     wrapper.append(renderSupplyDrawControls());
     wrapper.append(
       createButton(t("toFlightPhase"), goToFlightPhase, "small-button")
@@ -731,7 +751,7 @@ function renderSupplyDrawControls() {
   wrapper.className = "supply-draw-controls";
   const drawCount = getSupplyDrawCount(getActivePlayer());
 
-  if (drawCount > 0 && !state.gameState?.hasDrawnSupplyThisTurn) {
+  if (drawCount > 0 && !hasActivePlayerDrawnSupplyThisTurn()) {
     wrapper.append(createButton(t("drawSupply").replace("{count}", drawCount), drawSupplyForActivePlayer, "small-button"));
   } else {
     const hint = document.createElement("p");
@@ -769,7 +789,7 @@ function renderFlightControls() {
   return wrapper;
 }
 
-function renderBuildControls() {
+function renderBuildControls(player = getActivePlayer()) {
   const wrapper = document.createElement("div");
   wrapper.className = "trade-build-section build-controls";
 
@@ -788,7 +808,7 @@ function renderBuildControls() {
     cost.textContent = `${t("cost")}: ${formatCost(action.cost)}`;
 
     const button = createButton(t("build"), () => runBuildAction(action.id), "small-button");
-    button.disabled = !canActivePlayerBuild(action);
+    button.disabled = !canTradeBuildActions(player) || !canPlayerBuild(player, action);
 
     card.append(label, cost, button);
     wrapper.append(card);
@@ -797,7 +817,7 @@ function renderBuildControls() {
   return wrapper;
 }
 
-function renderBankTradeControls() {
+function renderBankTradeControls(player = getActivePlayer()) {
   const wrapper = document.createElement("div");
   wrapper.className = "trade-build-section";
 
@@ -819,7 +839,7 @@ function renderBankTradeControls() {
 
   const rate = getBankTradeRate(state.tradeFromResource);
   const tradeButton = createButton(t("trade"), tradeActivePlayerWithSupply, "small-button");
-  tradeButton.disabled = !canActivePlayerTrade();
+  tradeButton.disabled = !canTradeBuildActions(player) || !canPlayerTrade(player);
 
   const hint = document.createElement("p");
   hint.textContent = t("tradeRateHint")
@@ -830,7 +850,7 @@ function renderBankTradeControls() {
   return wrapper;
 }
 
-function renderUpgradeControls() {
+function renderUpgradeControls(player = getActivePlayer()) {
   const wrapper = document.createElement("div");
   wrapper.className = "trade-build-section upgrade-controls";
 
@@ -843,13 +863,13 @@ function renderUpgradeControls() {
     card.className = "upgrade-card";
 
     const label = document.createElement("span");
-    label.textContent = `${getUpgradeLabel(upgrade.id)} ${getActiveUpgradeLevel(upgrade.id)}/${upgrade.limit}`;
+    label.textContent = `${getUpgradeLabel(upgrade.id)} ${player?.upgrades?.[upgrade.id] ?? 0}/${upgrade.limit}`;
 
     const cost = document.createElement("small");
     cost.textContent = `${t("cost")}: ${formatCost(upgrade.cost)}`;
 
     const button = createButton(t("build"), () => buyActivePlayerUpgrade(upgrade.id), "small-button");
-    button.disabled = !canActivePlayerBuyUpgrade(upgrade);
+    button.disabled = !canTradeBuildActions(player) || !canPlayerBuyUpgrade(player, upgrade);
 
     card.append(label, cost, button);
     wrapper.append(card);
@@ -1269,18 +1289,31 @@ function getSupplyDrawCount(player) {
   return 0;
 }
 
+function hasActivePlayerDrawnSupplyThisTurn() {
+  return Boolean(
+    state.gameState?.hasDrawnSupplyThisTurn &&
+    state.gameState?.supplyDrawTurnKey === getCurrentSupplyDrawTurnKey()
+  );
+}
+
+function getCurrentSupplyDrawTurnKey() {
+  return `${state.gameState?.turnNumber ?? 1}:${getActivePlayer()?.id ?? "unknown"}`;
+}
+
 function getBankTradeRate(resource) {
   return resource === "goods" ? bankTradeRates.goods : bankTradeRates.default;
 }
 
-function canActivePlayerTrade() {
-  const player = getActivePlayer();
+function canTradeBuildActions(player) {
+  return Boolean(player?.id === getActivePlayer()?.id && state.gameState?.phase === "tradeBuild");
+}
+
+function canPlayerTrade(player) {
   if (!player || state.tradeFromResource === state.tradeToResource) return false;
   return (player.resources?.[state.tradeFromResource] ?? 0) >= getBankTradeRate(state.tradeFromResource);
 }
 
-function canActivePlayerBuyUpgrade(upgrade) {
-  const player = getActivePlayer();
+function canPlayerBuyUpgrade(player, upgrade) {
   if (!player) return false;
   if ((player.upgrades?.[upgrade.id] ?? 0) >= upgrade.limit) return false;
 
@@ -1296,8 +1329,7 @@ function runBuildAction(actionId) {
   }
 }
 
-function canActivePlayerBuild(action) {
-  const player = getActivePlayer();
+function canPlayerBuild(player, action) {
   if (!player || !canPlayerPay(player, action.cost)) return false;
   if (action.id === "spaceport") return hasUpgradeableColony(player.id);
   if (["colonyShip", "tradeShip"].includes(action.id)) return Boolean(findFreeLaunchPointForActivePlayer(player.id));

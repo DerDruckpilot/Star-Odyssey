@@ -33,6 +33,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
     supplyDeck: createSupplyDeck(),
     supplyDiscard: [],
     hasDrawnSupplyThisTurn: false,
+    supplyDrawTurnKey: null,
     board: {
       layoutVersion: boardLayout.layoutVersion,
       selectedElement: null,
@@ -93,7 +94,7 @@ export function rollProduction(gameState, boardLayout) {
 }
 
 export function drawSupply(gameState) {
-  if (gameState.phase !== "tradeBuild" || gameState.hasDrawnSupplyThisTurn) return gameState;
+  if (gameState.phase !== "tradeBuild" || hasSupplyDrawnThisTurn(gameState)) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const drawCount = getSupplyDrawCount(activePlayer);
@@ -125,6 +126,7 @@ export function drawSupply(gameState) {
     players,
     supplyDeck,
     hasDrawnSupplyThisTurn: true,
+    supplyDrawTurnKey: getTurnKey(gameState),
     logEntry: {
       type: "production",
       messageKey: "logSupplyDrawn",
@@ -564,6 +566,8 @@ export function endCurrentTurn(gameState) {
     flightSpeedTotal: null,
     remainingMovementByShipId: {},
     hasRolledFlightSpeed: false,
+    hasDrawnSupplyThisTurn: false,
+    supplyDrawTurnKey: null,
     board: {
       ...gameState.board,
       selectedElement: null
@@ -629,6 +633,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     supplyDeck: normalizeSupplyDeck(gameState.supplyDeck),
     supplyDiscard: Array.isArray(gameState.supplyDiscard) ? gameState.supplyDiscard.filter((resource) => supplyResourceTypes.includes(resource)) : [],
     hasDrawnSupplyThisTurn: Boolean(gameState.hasDrawnSupplyThisTurn),
+    supplyDrawTurnKey: typeof gameState.supplyDrawTurnKey === "string" ? gameState.supplyDrawTurnKey : null,
     board: {
       ...fallback.board,
       ...(gameState.board || {}),
@@ -716,6 +721,14 @@ function getSupplyDrawCount(player) {
   if (victoryPoints >= 4 && victoryPoints <= 7) return 2;
   if (victoryPoints >= 8 && victoryPoints <= 9) return 1;
   return 0;
+}
+
+function hasSupplyDrawnThisTurn(gameState) {
+  return Boolean(gameState.hasDrawnSupplyThisTurn && gameState.supplyDrawTurnKey === getTurnKey(gameState));
+}
+
+function getTurnKey(gameState) {
+  return `${gameState.turnNumber}:${gameState.players?.[gameState.currentPlayerIndex]?.id ?? "unknown"}`;
 }
 
 function formatResourceList(resources) {
