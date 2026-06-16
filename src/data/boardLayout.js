@@ -646,19 +646,21 @@ function createFixedStartSystem(id, name, planetDefinitions) {
     planets: planetDefinitions.map((planet, index) => ({
       id: `${id}-planet-${String(index + 1).padStart(2, "0")}`,
       resource: planet.resource,
-      coordinate: planet.coordinate
+      coordinate: planet.coordinate,
+      tokenGroup: name
     }))
   };
 }
 
-function createPlanetSystemTemplate(id, resources, numbers) {
+function createPlanetSystemTemplate(id, resources, numbers, tokenGroups = ["triangle", "bracket", "hex"]) {
   return {
     id,
     resources,
     planets: resources.map((resource, index) => ({
       id: `${id}-planet-${String(index + 1).padStart(2, "0")}`,
       resource,
-      number: numbers[index] ?? null
+      number: numbers[index] ?? null,
+      tokenGroup: tokenGroups[index] ?? "triangle"
     }))
   };
 }
@@ -780,6 +782,7 @@ function applySystemMetadata(system) {
 
   for (const planet of planets) {
     planet.resource = normalizeResource(planet.resource);
+    planet.tokenGroup = planet.tokenGroup ?? system.name ?? "triangle";
     Object.assign(planet, planetProduction[planet.id] ?? { number: planet.number ?? null, adjacentSiteIds: [] });
     planet.systemId = system.id;
     planet.resourceType = planet.resource;

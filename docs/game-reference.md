@@ -37,6 +37,7 @@ Kolonien und Raumhaefen grenzen typischerweise an zwei Planeten. Dadurch kann ei
 - Handel mit dem Vorrat ist als fester Tauschkurs geplant, z. B. 3 gleiche Rohstoffe gegen 1 beliebigen Rohstoff.
 - Handelsware hat als Ressource eine Sonderrolle und kann guenstiger gegen den Vorrat getauscht werden.
 - Bauen verbraucht konkrete Rohstoffkombinationen und platziert neue Figuren oder verbessert das Mutterschiff-/Spielerprofil.
+- Neue Kolonie- und Handelsschiffe werden nicht automatisch gesetzt: Nach dem Bau waehlt der Spieler einen freien Raumhafenpunkt neben einem eigenen Raumhafen.
 
 ## Schiffe und Bewegung
 
@@ -53,6 +54,16 @@ Kolonien und Raumhaefen grenzen typischerweise an zwei Planeten. Dadurch kann ei
 - Danach sind die Produktionszahlen der Planeten bekannt.
 - Sondermarker koennen Hindernisse wie Piraten-/Gefahrenorte oder Eis-/Blockadeplaneten darstellen.
 - Nach einer Erkundung kann das Schiff weiterfliegen, wenn noch Bewegungspunkte uebrig sind.
+
+## Zahlenchips und Sondermarker
+
+- Zahlenchips gehoeren zu Symbolgruppen und werden nur auf passende Planetengruppen gelegt.
+- Jeder Zahlenchip wird pro Partie nur einmal verwendet.
+- Startsysteme sind offen; variable Systeme starten verdeckt und decken ihre Chips erst bei der Erkundung auf.
+- Piratenstuetzpunkte und Eisplaneten blockieren den betroffenen Planeten: Er produziert nicht und angrenzende Koloniebauplaetze sind gesperrt.
+- Ein Piratenstuetzpunkt kann durch ein angrenzendes Schiff entfernt werden, wenn der Spieler genug Bordkanonen besitzt.
+- Ein Eisplanet kann durch ein angrenzendes Schiff terraformt werden, wenn der Spieler genug Frachtmodule besitzt.
+- Nach dem Entfernen eines Sondermarkers erhaelt der Spieler den Marker als Siegpunkt; der Planet bekommt einen offenen Reserve-Zahlenchip.
 
 ## Gruendung
 

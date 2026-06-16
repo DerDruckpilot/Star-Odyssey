@@ -312,6 +312,26 @@ h1 {
   white-space: nowrap;
 }
 
+.victory-point-list {
+  position: fixed;
+  left: 0.75rem;
+  top: 3rem;
+  z-index: 5;
+  display: grid;
+  gap: 0.15rem;
+  max-width: min(36vw, 12rem);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  padding: 0.32rem 0.45rem;
+  color: #dbeafe;
+  background: rgba(15, 23, 42, 0.62);
+  font-size: clamp(0.64rem, 0.85vw, 0.76rem);
+  font-weight: 700;
+}
+
+.victory-point-list .is-active {
+  color: #fef08a;
+}
+
 .player-hud-launcher {
   position: fixed;
   left: 0.5rem;
@@ -698,6 +718,11 @@ h1 {
   font-weight: 900;
 }
 
+.number-marker--special {
+  fill: #fef2f2;
+  font-size: 18px;
+}
+
 .start-system .planet {
   filter: drop-shadow(0 0 8px rgba(248, 250, 252, 0.35));
 }
@@ -743,24 +768,24 @@ h1 {
 }
 
 .space-point--colony {
-  fill: #166534;
+  fill: #082f49;
 }
 
 .space-point--colony-site {
   stroke-width: 2.4;
-  stroke: rgba(250, 204, 21, 0.88);
+  stroke: rgba(224, 242, 254, 0.94);
 }
 
 .space-point--dock {
-  fill: #854d0e;
+  fill: #082f49;
 }
 
 .space-point--spaceport {
-  fill: #7f1d1d;
+  fill: #082f49;
 }
 
 .space-point--launch {
-  fill: #312e81;
+  fill: #082f49;
 }
 
 .space-point.is-reachable {
@@ -781,6 +806,13 @@ h1 {
   fill: #bef264;
   stroke: #facc15;
   filter: drop-shadow(0 0 9px rgba(190, 242, 100, 0.72));
+}
+
+.space-point.is-ship-build-target {
+  fill: #67e8f9;
+  stroke: #f8fafc;
+  stroke-width: 5;
+  filter: drop-shadow(0 0 10px rgba(103, 232, 249, 0.72));
 }
 
 .space-point.is-occupied:not(.is-reachable) {

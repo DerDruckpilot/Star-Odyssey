@@ -8,6 +8,7 @@ const requiredPaths = [
   "src/data",
   "src/data/boardLayout.js",
   "src/data/buildCosts.js",
+  "src/data/numberTokens.js",
   "src/game",
   "src/game/gameState.js",
   "src/main.js",

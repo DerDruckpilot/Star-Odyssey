@@ -83,6 +83,12 @@ Die Sternennebel-Hexe sind fest: `I4`, `H5`, `H6`, `K2`, `J3`, `J4`, `I5`, `I6`,
 
 Die zufaellige Verteilung wird im Game-State gespeichert. Save/Load stellt deshalb dieselbe Platzierung wieder her; nur ein neues Spiel erzeugt eine neue Verteilung.
 
+## Zahlenchips und Spezialmarker
+
+Die Zahlenchip-Pools liegen zentral in `src/data/numberTokens.js`. Startsysteme nutzen feste Alpha/Beta/Gamma/Delta-Chips und sind sofort offen. Variable Planetensysteme nutzen die Symbolgruppen `triangle`, `bracket` und `hex`; ihre Chips bleiben bis zur Erkundung verdeckt. Spezialchips fuer Piratenstuetzpunkte und Eisplaneten blockieren Produktion und angrenzende Koloniebauplaetze, bis sie mit Bordkanonen beziehungsweise Frachtmodulen entfernt werden. Danach wird ein Reserve-Zahlenchip auf den Planeten gelegt.
+
+Beim Bau neuer Schiffe wird kein Startpunkt mehr automatisch gewaehlt. Der Spieler startet einen Bauauftrag und waehlt anschliessend einen freien Raumhafenpunkt neben einem eigenen Raumhafen auf dem Board.
+
 Offen fuer spaeter:
 
 - Finale Platzierung von Planetensystemen, Aussenposten, Koloniepunkten und Docks anhand weiterer Referenzen weiter praezisieren.

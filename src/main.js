@@ -1,9 +1,16 @@
 import { boardLayout, resourceColors } from "./data/boardLayout.js";
 import { bankTradeRates, buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
 import {
+  formatTokenLabel,
+  getPlanetToken,
+  getTokenGroupLabel,
+  isActiveSpecialToken
+} from "./data/numberTokens.js";
+import {
   advanceToFlightPhase,
   buildShip,
   buyUpgrade,
+  cancelPendingShipPlacement,
   createGameState,
   currentGameStorageKey,
   determineFlightSpeed,
@@ -14,6 +21,7 @@ import {
   getReachableNodes,
   normalizeGameState,
   moveShip,
+  placePendingShip,
   placeInitialColony,
   placeInitialColonyShip,
   placeInitialSpaceport,
@@ -205,6 +213,7 @@ function enableBoardElementSelection(element, type, id) {
 function selectBoardElement(type, id) {
   if (!state.gameState) return;
 
+  if (type === "spacePoint" && placePendingShipAt(id)) return;
   if (type === "spacePoint" && handlePlacementPointSelection(id)) return;
   if (type === "spacePoint" && moveSelectedShipTo(id)) return;
 
@@ -316,6 +325,24 @@ function buildActivePlayerShip(shipType) {
   if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
 
   state.gameState = buildShip(state.gameState, boardLayout, shipType);
+  saveCurrentGameState();
+  render();
+}
+
+function placePendingShipAt(nodeId) {
+  if (!state.gameState || state.gameState.phase !== "tradeBuild") return false;
+  if (!state.gameState.board?.pendingShipPlacement || !isValidPendingShipLaunchNode(nodeId)) return false;
+
+  state.gameState = placePendingShip(state.gameState, boardLayout, nodeId);
+  saveCurrentGameState();
+  render();
+  return true;
+}
+
+function cancelActiveShipBuild() {
+  if (!state.gameState) return;
+
+  state.gameState = cancelPendingShipPlacement(state.gameState);
   saveCurrentGameState();
   render();
 }
@@ -517,7 +544,7 @@ function renderBoardShell() {
   board.setAttribute("aria-label", t("boardAreaLabel"));
   board.append(renderBoardSvg());
 
-  screen.append(hiddenTitle, board, renderCompactBoardStatus(), renderPlayerHudButtons(), renderPlayerHudModal(), controls, renderNotice());
+  screen.append(hiddenTitle, board, renderCompactBoardStatus(), renderVictoryPointList(), renderPlayerHudButtons(), renderPlayerHudModal(), controls, renderNotice());
   return screen;
 }
 
@@ -529,6 +556,20 @@ function renderCompactBoardStatus() {
     ? `${activePlayer?.name ?? ""} · ${t("round")} ${state.gameState.turnNumber} · ${getPhaseLabel(state.gameState.phase)}`
     : "";
   return status;
+}
+
+function renderVictoryPointList() {
+  const list = document.createElement("div");
+  list.className = "victory-point-list";
+
+  for (const [index, player] of (state.gameState?.players ?? []).entries()) {
+    const row = document.createElement("div");
+    row.className = player.id === getActivePlayer()?.id ? "is-active" : "";
+    row.textContent = `${t("playerNumber").replace("{number}", index + 1)}: ${player.victoryPoints ?? 0} ${t("victoryPointShort")}`;
+    list.append(row);
+  }
+
+  return list;
 }
 
 function renderPlayerHudButtons() {
@@ -865,6 +906,13 @@ function renderBuildControls(player = getActivePlayer()) {
   title.textContent = t("buildShipsStructures");
   wrapper.append(title);
 
+  const pendingShipPlacement = state.gameState?.board?.pendingShipPlacement;
+  if (pendingShipPlacement) {
+    const pending = document.createElement("p");
+    pending.textContent = `${t("chooseStartPoint")}: ${getShipTypeLabel(pendingShipPlacement.shipType)}. ${t("chooseStartPointHint")}`;
+    wrapper.append(pending, createButton(t("cancelShipBuild"), cancelActiveShipBuild, "small-button secondary-small-button"));
+  }
+
   for (const action of buildActionDefinitions) {
     const card = document.createElement("article");
     card.className = "upgrade-card";
@@ -876,7 +924,7 @@ function renderBuildControls(player = getActivePlayer()) {
     cost.textContent = `${t("cost")}: ${formatCost(action.cost)}`;
 
     const button = createButton(t("build"), () => runBuildAction(action.id), "small-button");
-    button.disabled = !canTradeBuildActions(player) || !canPlayerBuild(player, action);
+    button.disabled = Boolean(pendingShipPlacement) || !canTradeBuildActions(player) || !canPlayerBuild(player, action);
 
     card.append(label, cost, button);
     wrapper.append(card);
@@ -1100,14 +1148,16 @@ function resolveSelectedBoardElement() {
   if (selectedElement.type === "planet") {
     const planet = getPlanetById(selectedElement.id);
     if (!planet) return null;
+    const token = getPlanetToken(state.gameState?.board?.numberTokens, planet.id);
     return {
       id: planet.id,
       typeLabel: t("planet"),
       details: [
         `${t("resource")}: ${getResourceLabel(planet.resource)}`,
-        `${t("numberMarker")}: ${planet.number ?? t("none")}`,
+        `${t("numberMarker")}: ${formatTokenLabel(token) || t("none")}`,
+        isActiveSpecialToken(token) ? `${t("specialMarker")}: ${getSpecialMarkerLabel(token)}` : null,
         `${t("adjacentSites")}: ${formatIdList(planet.adjacentSiteIds)}`
-      ]
+      ].filter(Boolean)
     };
   }
 
@@ -1117,7 +1167,11 @@ function resolveSelectedBoardElement() {
     if (!system) return null;
     const explored = isSystemExplored(system.id);
     const planetDetails = (system.planets ?? [])
-      .map((planet) => `${getResourceLabel(planet.resource)}${explored && planet.number ? ` ${planet.number}` : ""}`)
+      .map((planet) => {
+        const token = getPlanetToken(state.gameState?.board?.numberTokens, planet.id);
+        const label = explored ? formatTokenLabel(token) : getTokenGroupLabel(planet.tokenGroup);
+        return `${getResourceLabel(planet.resource)}${label ? ` ${label}` : ""}`;
+      })
       .join(", ");
     return {
       id: system.id,
@@ -1158,6 +1212,7 @@ function resolveSelectedBoardElement() {
       details.push(`${t("colonySite")}: ${occupyingStructure ? t("occupied") : t("free")}`);
       details.push(`${t("planetSystem")}: ${colonySite.systemId}`);
       details.push(`${t("adjacentPlanets")}: ${formatIdList(colonySite.adjacentPlanetIds)}`);
+      if (isColonySiteBlockedBySpecial(colonySite)) details.push(t("siteBlockedBySpecial"));
     }
     if (dock) {
       details.push(`${t("dock")}: ${occupyingStructure ? t("occupied") : t("free")}`);
@@ -1280,6 +1335,12 @@ function getShipStatusLabel(status) {
   return status === "active" ? t("shipStatusActive") : t("shipStatusDocked");
 }
 
+function getSpecialMarkerLabel(token) {
+  if (token?.type === "pirate") return t("pirateBase").replace("{value}", token.value);
+  if (token?.type === "ice") return t("icePlanet").replace("{value}", token.value);
+  return t("none");
+}
+
 function getActivePlayer() {
   return state.gameState?.players?.[state.gameState.currentPlayerIndex] ?? null;
 }
@@ -1309,6 +1370,11 @@ function getShipMovementDetails(ship) {
 
 function getColonySiteAtNode(nodeId) {
   return getVisibleColonySites().find((site) => site.nodeId === nodeId);
+}
+
+function isColonySiteBlockedBySpecial(colonySite) {
+  return (colonySite?.adjacentPlanetIds ?? [])
+    .some((planetId) => isActiveSpecialToken(getPlanetToken(state.gameState?.board?.numberTokens, planetId)));
 }
 
 function getStartColonySiteAtNode(nodeId) {
@@ -1348,6 +1414,7 @@ function canFoundColonyWithShip(ship) {
     ship.type === "colonyShip" &&
     colonySite &&
     isSystemExplored(colonySite.systemId) &&
+    !isColonySiteBlockedBySpecial(colonySite) &&
     !getStructureAtLocation(colonySite.nodeId)
   );
 }
@@ -1425,6 +1492,10 @@ function getPlacementPointClass(nodeId) {
   return "";
 }
 
+function getPendingShipPlacementClass(nodeId) {
+  return isValidPendingShipLaunchNode(nodeId) ? " is-ship-build-target" : "";
+}
+
 function isValidPlacementColonySite(site) {
   return Boolean(
     site?.isStartSite &&
@@ -1442,6 +1513,12 @@ function isValidPlacementLaunchNode(nodeId) {
     !getStructureAtLocation(nodeId) &&
     !getBlockedSystemNodeIds().has(nodeId)
   );
+}
+
+function isValidPendingShipLaunchNode(nodeId) {
+  const pending = state.gameState?.board?.pendingShipPlacement;
+  if (!pending || state.gameState?.phase !== "tradeBuild") return false;
+  return findFreeLaunchPointsForPlayer(pending.ownerPlayerId).some((point) => point.id === nodeId);
 }
 
 function hasActivePlayerDrawnSupplyThisTurn() {
@@ -1502,7 +1579,14 @@ function hasUpgradeableColony(playerId) {
 }
 
 function findFreeLaunchPointForActivePlayer(playerId) {
-  const occupiedLocationIds = new Set((state.gameState?.board?.ships ?? []).map((ship) => ship.locationId));
+  return findFreeLaunchPointsForPlayer(playerId)[0] ?? null;
+}
+
+function findFreeLaunchPointsForPlayer(playerId) {
+  const occupiedLocationIds = new Set([
+    ...(state.gameState?.board?.ships ?? []).map((ship) => ship.locationId),
+    ...(state.gameState?.board?.structures ?? []).map((structure) => structure.locationId)
+  ]);
   const ownSpaceportLocationIds = new Set(
     (state.gameState?.board?.structures ?? [])
       .filter((structure) => structure.ownerPlayerId === playerId && structure.type === "spaceport")
@@ -1510,7 +1594,7 @@ function findFreeLaunchPointForActivePlayer(playerId) {
   );
 
   return (boardLayout.spaceportLaunchPoints ?? [])
-    .find((point) => ownSpaceportLocationIds.has(point.spaceportLocationId) && !occupiedLocationIds.has(point.id));
+    .filter((point) => ownSpaceportLocationIds.has(point.spaceportLocationId) && !occupiedLocationIds.has(point.id));
 }
 
 function formatCost(cost) {
@@ -1645,14 +1729,18 @@ function renderPlanetSystem(system, className, explored) {
     enableBoardElementSelection(planetElement, "planet", planet.id);
     group.append(planetElement);
 
-    if (explored && planet.number) {
+    const token = getPlanetToken(state.gameState?.board?.numberTokens, planet.id);
+    const tokenLabel = explored
+      ? formatTokenLabel(token)
+      : getTokenGroupLabel(planet.tokenGroup);
+    if (tokenLabel) {
       const marker = createSvgElement("text", {
-        class: "number-marker",
+        class: `number-marker${isActiveSpecialToken(token) ? " number-marker--special" : ""}`,
         x: position.x,
         y: position.y + 7,
         "text-anchor": "middle"
       });
-      marker.textContent = planet.number;
+      marker.textContent = tokenLabel;
       group.append(marker);
     }
   });
@@ -1720,10 +1808,12 @@ function renderPointsLayer() {
     const occupiedClass = getShipAtLocation(point.id) ? " is-occupied" : "";
     const foundableClass = isFoundablePoint(point.id) ? " is-foundable" : "";
     const placementClass = getPlacementPointClass(point.id);
+    const shipBuildClass = getPendingShipPlacementClass(point.id);
     const colonySiteClass = colonySite ? " space-point--colony-site" : "";
-    const radius = colonySite ? 10 : point.type === "boundary" ? 5 : point.type === "space" ? 7 : 11;
+    const visualType = point.type === "boundary" ? "boundary" : "space";
+    const radius = colonySite ? 10 : visualType === "boundary" ? 5 : 7;
     const pointElement = createSvgElement("circle", {
-      class: `space-point space-point--${point.type}${colonySiteClass}${selectedClass}${reachableClass}${occupiedClass}${foundableClass}${placementClass}`,
+      class: `space-point space-point--${visualType}${colonySiteClass}${selectedClass}${reachableClass}${occupiedClass}${foundableClass}${placementClass}${shipBuildClass}`,
       cx: point.x,
       cy: point.y,
       r: radius
