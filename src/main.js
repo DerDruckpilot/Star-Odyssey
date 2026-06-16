@@ -925,7 +925,7 @@ function resolveSelectedBoardElement() {
   }
 
   if (selectedElement.type === "planetSystem") {
-    const system = [...boardLayout.startSystems, ...boardLayout.planetSystems]
+    const system = [...boardLayout.startSystems, ...getVisiblePlanetSystems()]
       .find((candidate) => candidate.id === selectedElement.id);
     if (!system) return null;
     const explored = isSystemExplored(system.id);
@@ -943,7 +943,7 @@ function resolveSelectedBoardElement() {
   }
 
   if (selectedElement.type === "outpost") {
-    const outpost = boardLayout.outposts.find((candidate) => candidate.id === selectedElement.id);
+    const outpost = getVisibleOutposts().find((candidate) => candidate.id === selectedElement.id);
     if (!outpost) return null;
     const stations = getTradeStationsAtOutpost(outpost.id);
     return {
@@ -1018,7 +1018,27 @@ function resolveSelectedBoardElement() {
 }
 
 function getPlanetById(planetId) {
-  return boardLayout.productionPlanets.find((planet) => planet.id === planetId);
+  return getVisibleProductionPlanets().find((planet) => planet.id === planetId);
+}
+
+function getVisiblePlanetSystems() {
+  return Array.isArray(state.gameState?.board?.placedSystems)
+    ? state.gameState.board.placedSystems
+    : (boardLayout.planetSystems ?? []);
+}
+
+function getVisibleOutposts() {
+  return Array.isArray(state.gameState?.board?.placedOutposts)
+    ? state.gameState.board.placedOutposts
+    : (boardLayout.outposts ?? []);
+}
+
+function getVisibleProductionPlanets() {
+  return [...(boardLayout.startSystems ?? []), ...getVisiblePlanetSystems()]
+    .flatMap((system) => (system.planets ?? []).map((planet) => ({
+      ...planet,
+      systemId: system.id
+    })));
 }
 
 function getStructureById(structureId) {
@@ -1322,12 +1342,12 @@ function renderSystemsLayer() {
     group.append(renderPlanetSystem(system, "start-system", true));
   }
 
-  for (const system of boardLayout.planetSystems) {
+  for (const system of getVisiblePlanetSystems()) {
     const explored = isSystemExplored(system.id);
     group.append(renderPlanetSystem(system, explored ? "planet-system" : "hidden-system", explored));
   }
 
-  for (const outpost of boardLayout.outposts) {
+  for (const outpost of getVisibleOutposts()) {
     group.append(renderOutpost(outpost));
   }
 
@@ -1350,13 +1370,14 @@ function renderPlanetSystem(system, className, explored) {
   }));
 
   planets.forEach((planet, index) => {
-    const offset = offsets[index];
+    const fallbackOffset = offsets[index] ?? { x: 0, y: 0 };
+    const position = getPlanetRenderPosition(system, planet, fallbackOffset);
     const selectedClass = isSelectedElement("planet", planet.id) ? " is-selected" : "";
     const planetElement = createSvgElement("circle", {
       class: `planet planet--${planet.resource}${selectedClass}`,
       "data-planet-id": planet.id,
-      cx: system.x + offset.x,
-      cy: system.y + offset.y,
+      cx: position.x,
+      cy: position.y,
       r: className === "start-system" ? 32 : 28,
       fill: resourceColors[planet.resource]
     });
@@ -1366,8 +1387,8 @@ function renderPlanetSystem(system, className, explored) {
     if (explored && planet.number) {
       const marker = createSvgElement("text", {
         class: "number-marker",
-        x: system.x + offset.x,
-        y: system.y + offset.y + 7,
+        x: position.x,
+        y: position.y + 7,
         "text-anchor": "middle"
       });
       marker.textContent = planet.number;
@@ -1385,6 +1406,16 @@ function renderPlanetSystem(system, className, explored) {
   }
 
   return group;
+}
+
+function getPlanetRenderPosition(system, planet, fallbackOffset) {
+  const hex = planet.coordinate
+    ? (boardLayout.hexes ?? []).find((candidate) => candidate.id === planet.coordinate)
+    : null;
+
+  return hex
+    ? { x: hex.x, y: hex.y }
+    : { x: system.x + fallbackOffset.x, y: system.y + fallbackOffset.y };
 }
 
 function renderOutpost(outpost) {

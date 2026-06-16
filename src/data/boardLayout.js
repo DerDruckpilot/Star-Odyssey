@@ -23,18 +23,83 @@ const validHexRows = [
 ];
 
 const nebulaHexes = new Set([
+  "I4",
+  "H5",
+  "H6",
   "K2",
-  "J3", "K3",
-  "I4", "J4", "K4",
-  "H5", "I5",
-  "H6", "I6",
-  "H7", "I7", "J7",
-  "H8", "I8", "J8", "K8",
-  "I9", "K9",
+  "J3",
+  "J4",
+  "I5",
+  "I6",
+  "H7",
+  "I8",
+  "I9",
+  "J8",
+  "K8",
+  "K9",
   "L10"
 ]);
 
 const sectorSplitColumnIndex = getColumnIndex("K");
+
+const systemSlots = [
+  createSystemSlot("slot-01", "single", ["E2", "F2", "E3"]),
+  createSystemSlot("slot-02", "single", ["D5", "E5", "E6"]),
+  createSystemSlot("slot-03", "single", ["E9", "E10", "F10"]),
+  createSystemSlot("slot-04", "single", ["G3", "G4", "H4"]),
+  createSystemSlot("slot-05", "single", ["G6", "F7", "G7"]),
+  createSystemSlot("slot-06", "single", ["G9", "H9", "H10"]),
+  createSystemSlot("slot-07", "single", ["I2", "J2", "I3"]),
+  createSystemSlot("slot-08", "single", ["J9", "J10", "K10"]),
+  createSystemSlot("slot-09", "double", ["L2", "K3", "L3"]),
+  createSystemSlot("slot-10", "double", ["K5", "L5", "L6"]),
+  createSystemSlot("slot-11", "double", ["L8", "M8", "L9"]),
+  createSystemSlot("slot-12", "double", ["J6", "I7", "J7"]),
+  createSystemSlot("slot-13", "double", ["N2", "O2", "N3"]),
+  createSystemSlot("slot-14", "double", ["N6", "O6", "N7"]),
+  createSystemSlot("slot-15", "double", ["N9", "N10", "O10"])
+];
+
+const fixedStartSystems = [
+  createFixedStartSystem("start-01", "alpha", [
+    { coordinate: "A1", resource: "food" },
+    { coordinate: "A2", resource: "carbon" },
+    { coordinate: "B2", resource: "fuel" }
+  ]),
+  createFixedStartSystem("start-02", "beta", [
+    { coordinate: "A4", resource: "ore" },
+    { coordinate: "B4", resource: "fuel" },
+    { coordinate: "A5", resource: "goods" }
+  ]),
+  createFixedStartSystem("start-03", "gamma", [
+    { coordinate: "A7", resource: "ore" },
+    { coordinate: "A8", resource: "food" },
+    { coordinate: "B8", resource: "carbon" }
+  ]),
+  createFixedStartSystem("start-04", "delta", [
+    { coordinate: "A10", resource: "fuel" },
+    { coordinate: "B10", resource: "goods" },
+    { coordinate: "A11", resource: "ore" }
+  ])
+];
+
+const planetSystemTemplates = [
+  createPlanetSystemTemplate("system-01", ["carbon", "food", "fuel"], [4, 8, 11]),
+  createPlanetSystemTemplate("system-02", ["carbon", "goods", "ore"], [8, 10, 3]),
+  createPlanetSystemTemplate("system-03", ["fuel", "goods", "ore"], [3, 4, 11]),
+  createPlanetSystemTemplate("system-04", ["fuel", "ore", "food"], [2, 5, 9]),
+  createPlanetSystemTemplate("system-05", ["food", "goods", "carbon"], [3, 6, 5]),
+  createPlanetSystemTemplate("system-06", ["carbon", "goods", "fuel"], [10, 6, 9]),
+  createPlanetSystemTemplate("system-07", ["goods", "ore", "food"], [6, 10, 4]),
+  createPlanetSystemTemplate("system-08", ["ore", "goods", "carbon"], [5, 8, 9])
+];
+
+const outpostTemplates = [
+  { id: "outpost-01", templateId: "outpost-alpha", name: "A" },
+  { id: "outpost-02", templateId: "outpost-beta", name: "B" },
+  { id: "outpost-03", templateId: "outpost-gamma", name: "C" },
+  { id: "outpost-04", templateId: "outpost-delta", name: "D" }
+];
 
 const semanticNodeRequests = [
   nodeRequest("start-01-launch-a", "A2", 0, "launch"),
@@ -109,6 +174,7 @@ const spaceQuadrants = createHexCells();
 const boardGraph = createBoardGraph(spaceQuadrants);
 const boardConnections = boardGraph.connections;
 const pointsById = new Map(boardGraph.points.map((point) => [point.id, point]));
+const defaultWildSpacePlacement = createDefaultWildSpacePlacement();
 
 export const boardLayout = {
   layoutVersion: "coordinate-reference-v1",
@@ -124,32 +190,15 @@ export const boardLayout = {
   points: boardGraph.points,
   connections: boardConnections,
   links: boardConnections.map((connection) => [connection.from, connection.to]),
-  startSystems: [
-    createStartSystem("start-01", 76, 126, ["food", "fuel", "carbon"]),
-    createStartSystem("start-02", 76, 330, ["ore", "goods", "food"]),
-    createStartSystem("start-03", 76, 535, ["carbon", "ore", "fuel"]),
-    createStartSystem("start-04", 76, 740, ["goods", "food", "ore"])
-  ],
-  planetSystems: [
-    createPlanetSystem("system-01", "F2", ["carbon", "food", "fuel"]),
-    createPlanetSystem("system-02", "J2", ["ore", "goods", "carbon"]),
-    createPlanetSystem("system-03", "M2", ["fuel", "ore", "food"]),
-    createPlanetSystem("system-04", "O2", ["goods", "carbon", "ore"]),
-    createPlanetSystem("system-05", "D4", ["food", "carbon", "goods"]),
-    createPlanetSystem("system-06", "G6", ["fuel", "food", "ore"]),
-    createPlanetSystem("system-07", "K6", ["carbon", "ore", "goods"]),
-    createPlanetSystem("system-08", "O8", ["food", "fuel", "carbon"])
-  ],
-  outposts: [
-    createOutpost("outpost-01", "F2", "A"),
-    createOutpost("outpost-02", "D4", "B"),
-    createOutpost("outpost-03", "G3", "C"),
-    createOutpost("outpost-04", "J2", "D"),
-    createOutpost("outpost-05", "G6", "E"),
-    createOutpost("outpost-06", "K5", "F"),
-    createOutpost("outpost-07", "N6", "G"),
-    createOutpost("outpost-08", "O3", "H")
-  ],
+  fixedStartSystems,
+  startSystems: fixedStartSystems,
+  systemSlots,
+  nebulaHexes: [...nebulaHexes],
+  planetSystemTemplates,
+  outpostTemplates,
+  planetSystems: defaultWildSpacePlacement.placedSystems,
+  outposts: defaultWildSpacePlacement.placedOutposts,
+  emptySlots: defaultWildSpacePlacement.emptySlots,
   specialPoints: {
     colonySites: ["p03", "p09", "p16", "p18", "p23", "p29", "p33", "p37"],
     spaceports: ["p01", "p11", "p21", "p31"],
@@ -167,6 +216,9 @@ export const resourceColors = {
   goods: "#a855f7",
   trade: "#a855f7"
 };
+
+boardLayout.createRandomPlacement = createWildSpacePlacement;
+boardLayout.createDefaultPlacement = createDefaultWildSpacePlacement;
 
 boardLayout.startSites = [
   createStartSite("start-01-colony-a", 52, 112, "colonySite", ["start-01-planet-01", "start-01-planet-02"]),
@@ -326,6 +378,77 @@ function createCoordinateRange(startColumn, endColumn, rowNumber) {
   return coordinateColumns
     .slice(startIndex, endIndex + 1)
     .map((column) => `${column}${rowNumber}`);
+}
+
+function createSystemSlot(id, source, hexIds) {
+  const centers = hexIds.map((hexId) => hexCenter(hexId));
+  const center = centers.reduce((sum, point) => ({
+    x: sum.x + point.x,
+    y: sum.y + point.y
+  }), { x: 0, y: 0 });
+
+  return {
+    id,
+    source,
+    hexIds,
+    x: roundCoordinate(center.x / centers.length),
+    y: roundCoordinate(center.y / centers.length)
+  };
+}
+
+function createDefaultWildSpacePlacement() {
+  return placeWildSpaceContents(
+    systemSlots,
+    [
+      ...planetSystemTemplates.map((template) => ({ type: "planetSystem", template })),
+      ...outpostTemplates.map((template) => ({ type: "outpost", template }))
+    ]
+  );
+}
+
+function createWildSpacePlacement() {
+  return placeWildSpaceContents(
+    shuffle(systemSlots),
+    shuffle([
+      ...planetSystemTemplates.map((template) => ({ type: "planetSystem", template })),
+      ...outpostTemplates.map((template) => ({ type: "outpost", template }))
+    ])
+  );
+}
+
+function placeWildSpaceContents(slots, contents) {
+  const placedSystems = [];
+  const placedOutposts = [];
+  const usedSlotIds = new Set();
+
+  contents.forEach((content, index) => {
+    const slot = slots[index];
+    if (!slot) return;
+    usedSlotIds.add(slot.id);
+
+    if (content.type === "planetSystem") {
+      placedSystems.push(instantiatePlanetSystem(content.template, slot));
+    } else {
+      placedOutposts.push(instantiateOutpost(content.template, slot));
+    }
+  });
+
+  return {
+    placedSystems,
+    placedOutposts,
+    emptySlots: systemSlots
+      .filter((slot) => !usedSlotIds.has(slot.id))
+      .map((slot) => slot.id)
+  };
+}
+
+function shuffle(items) {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const targetIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[targetIndex]] = [shuffled[targetIndex], shuffled[index]];
+  }
+  return shuffled;
 }
 
 function nodeRequest(id, hexId, corner, type = "space") {
@@ -495,43 +618,63 @@ function roundCoordinate(value) {
   return Number(value.toFixed(3));
 }
 
-function createStartSystem(id, x, y, resources) {
+function createFixedStartSystem(id, name, planetDefinitions) {
+  const centers = planetDefinitions.map((planet) => hexCenter(planet.coordinate));
+  const center = averagePoints(centers);
+
   return {
     id,
-    x,
-    y,
-    resources,
-    planets: resources.map((resource, index) => ({
+    name,
+    x: roundCoordinate(center.x),
+    y: roundCoordinate(center.y),
+    resources: planetDefinitions.map((planet) => planet.resource),
+    planets: planetDefinitions.map((planet, index) => ({
       id: `${id}-planet-${String(index + 1).padStart(2, "0")}`,
-      resource
+      resource: planet.resource,
+      coordinate: planet.coordinate
     }))
   };
 }
 
-function createPlanetSystem(id, hexId, resources) {
-  const center = hexCenter(hexId, 0, -18);
+function createPlanetSystemTemplate(id, resources, numbers) {
   return {
     id,
-    coordinate: hexId,
-    x: roundCoordinate(center.x),
-    y: roundCoordinate(center.y),
     resources,
     planets: resources.map((resource, index) => ({
       id: `${id}-planet-${String(index + 1).padStart(2, "0")}`,
-      resource
+      resource,
+      number: numbers[index] ?? null
+    }))
+  };
+}
+
+function instantiatePlanetSystem(template, slot) {
+  return {
+    id: template.id,
+    templateId: template.id,
+    slotId: slot.id,
+    slotHexIds: [...slot.hexIds],
+    x: slot.x,
+    y: slot.y,
+    resources: [...template.resources],
+    planets: template.planets.map((planet, index) => ({
+      ...planet,
+      coordinate: slot.hexIds[index] ?? slot.hexIds[0]
     })),
     hidden: true
   };
 }
 
-function createOutpost(id, hexId, name) {
-  const center = hexCenter(hexId, 0, 8);
+function instantiateOutpost(template, slot) {
   return {
-    id,
-    coordinate: hexId,
-    x: roundCoordinate(center.x),
-    y: roundCoordinate(center.y),
-    name
+    id: template.id,
+    templateId: template.templateId,
+    slotId: slot.id,
+    slotHexIds: [...slot.hexIds],
+    coordinate: slot.hexIds[0],
+    x: slot.x,
+    y: slot.y,
+    name: template.name
   };
 }
 
@@ -553,4 +696,16 @@ function createLaunchPoint(id, spaceportLocationId) {
 
 function normalizeResource(resource) {
   return resource === "trade" ? "goods" : resource;
+}
+
+function averagePoints(points) {
+  const total = points.reduce((sum, point) => ({
+    x: sum.x + point.x,
+    y: sum.y + point.y
+  }), { x: 0, y: 0 });
+
+  return {
+    x: total.x / points.length,
+    y: total.y / points.length
+  };
 }

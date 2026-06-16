@@ -52,7 +52,7 @@ Die aktuelle Board-Shell nutzt `src/data/boardLayout.js` als Datenquelle. Das Ko
 
 Das Board nutzt ein `odd-r offset rows` Koordinatensystem mit Koordinaten-IDs wie `A2`, `J7` und `O10`. Die sichtbare Brettform ist kein Rechteck, sondern eine feste Hexliste mit 11 Reihen und 135 sichtbaren Hexfeldern.
 
-Gueltig sind exakt die Koordinaten aus dem Koordinatenbild: Reihe 1 `A1 B1`, dann alternierend `A` bis `O` bzw. `A` bis `N` von Reihe 2 bis 10, und Reihe 11 `A11 B11`. Der Sternennebel ist anhand der markierten Koordinaten gesetzt: `K2`, `J3`, `K3`, `I4`, `J4`, `K4`, `H5`, `I5`, `H6`, `I6`, `H7`, `I7`, `J7`, `H8`, `I8`, `J8`, `K8`, `I9`, `K9`, `L10`.
+Gueltig sind exakt die Koordinaten aus dem Koordinatenbild: Reihe 1 `A1 B1`, dann alternierend `A` bis `O` bzw. `A` bis `N` von Reihe 2 bis 10, und Reihe 11 `A11 B11`. Der Sternennebel ist anhand der festen Koordinaten gesetzt: `I4`, `H5`, `H6`, `K2`, `J3`, `J4`, `I5`, `I6`, `H7`, `I8`, `I9`, `J8`, `K8`, `K9`, `L10`.
 
 Die Hexfelder sind die primaere Geometriequelle. Jedes Hexfeld wird ueber eine einheitliche Grid-Formel berechnet. Aus den sechs Hex-Ecken werden anschliessend die Raumpunkte abgeleitet: identische Ecken benachbarter Hexfelder werden dedupliziert, normale Raumpunkte entstehen an gemeinsamen Kreuzungen von drei Hexfeldern, Randpunkte bleiben als Boundary-Nodes erhalten. Verbindungen werden aus den Hexkanten zwischen benachbarten Raumpunkten generiert.
 
@@ -65,8 +65,23 @@ Umgesetzt sind:
 - Gelb markierter Sternennebel als zackige Zone mittig/rechts.
 - Hinterer Sektor rechts des Sternennebels.
 - 8 erkundbare Planetensysteme als Dreiergruppen.
-- 8 Aussenposten/Fraktionsorte an passenden Hexbereichen.
+- 4 zufaellig platzierte Aussenposten/Fraktionsorte an passenden System-Slots.
 - Bewegungs-, Kolonie- und Dockpunkte liegen auf generierten Hex-Ecken. Wichtige bestehende IDs bleiben als semantische Bindungen an diese Ecken erhalten, damit bestehende Interaktionen robust bleiben.
+
+## Variante Wilder Weltraum
+
+Fuer neue Partien wird vorerst nur die Variante Wilder Weltraum genutzt. Die vier Startsysteme links bleiben fest:
+
+- Alpha: `A1` Nahrung, `A2` Carbon, `B2` Treibstoff.
+- Beta: `A4` Erz, `B4` Treibstoff, `A5` Handelsware.
+- Gamma: `A7` Erz, `A8` Nahrung, `B8` Carbon.
+- Delta: `A10` Treibstoff, `B10` Handelsware, `A11` Erz.
+
+Alle uebrigen Planetensysteme und Aussenposten werden beim Start eines neuen Spiels zufaellig auf einen gemeinsamen Pool aus 15 Dreier-Hex-Slots verteilt. Es gibt acht Planetensystem-Templates und vier Aussenposten-Templates; drei Slots bleiben dadurch leer und werden wie normale leere Hexfelder gerendert. Die fruehere `*`/`**`-Unterscheidung bleibt nur als interne Herkunftsnotiz am Slot.
+
+Die Sternennebel-Hexe sind fest: `I4`, `H5`, `H6`, `K2`, `J3`, `J4`, `I5`, `I6`, `H7`, `I8`, `I9`, `J8`, `K8`, `K9`, `L10`. Nebel ist kein System-Slot und wird nicht durch zufaellige Inhalte ueberschrieben.
+
+Die zufaellige Verteilung wird im Game-State gespeichert. Save/Load stellt deshalb dieselbe Platzierung wieder her; nur ein neues Spiel erzeugt eine neue Verteilung.
 
 Offen fuer spaeter:
 
