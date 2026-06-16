@@ -25,7 +25,29 @@ const mothershipBallValues = {
 const mothershipBallPool = ["yellow", "yellow", "blue", "red", "black"];
 
 export const currentGameStorageKey = "star-odyssey-current-game";
-export const turnPhases = ["placement", "setup", "production", "tradeBuild", "flight", "turnEnd"];
+export const turnPhases = ["placement", "setup", "production", "tradeBuild", "flight", "turnEnd", "gameOver"];
+
+export function calculateVictoryPoints(gameState, playerId) {
+  if (!gameState || !playerId) return 0;
+
+  const structures = Array.isArray(gameState.board?.structures)
+    ? gameState.board.structures.filter((structure) => structure?.ownerPlayerId === playerId)
+    : [];
+  const player = Array.isArray(gameState.players)
+    ? gameState.players.find((candidate) => candidate.id === playerId)
+    : null;
+
+  const structurePoints = structures.reduce((sum, structure) => {
+    if (structure.type === "spaceport") return sum + 2;
+    if (structure.type === "colony") return sum + 1;
+    return sum;
+  }, 0);
+  const friendshipPoints = normalizeFriendshipMarkers(player?.friendshipMarkers).length * 2;
+  const specialMedalPoints = normalizeSpecialMedals(player?.specialMedals).length;
+  const halfMedalPoints = Math.floor(Math.max(0, player?.halfMedals ?? 0) / 2);
+
+  return structurePoints + friendshipPoints + specialMedalPoints + halfMedalPoints;
+}
 
 export function createGameState({ language, playerCount, boardLayout }) {
   const now = new Date().toISOString();
@@ -46,6 +68,8 @@ export function createGameState({ language, playerCount, boardLayout }) {
     currentPlayerIndex: 0,
     turnNumber: 1,
     phase: "placement",
+    gameOver: false,
+    winnerPlayerId: null,
     lastRoll: null,
     flightRoll: null,
     flightSpeedBase: null,
@@ -98,6 +122,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
 }
 
 export function rollProduction(gameState, boardLayout, forcedRoll = null) {
+  if (isGameOverState(gameState)) return gameState;
   const firstDie = forcedRoll?.dice?.[0] ?? rollDie();
   const secondDie = forcedRoll?.dice?.[1] ?? rollDie();
   const total = firstDie + secondDie;
@@ -141,6 +166,7 @@ export function rollProduction(gameState, boardLayout, forcedRoll = null) {
 }
 
 export function rollPlacementStart(gameState, forcedRoll = null) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "placement" || gameState.placement?.step !== "rollStartPlayer") return gameState;
 
   const placement = normalizePlacementState(gameState.placement, gameState.playerCount);
@@ -230,6 +256,7 @@ export function rollPlacementStart(gameState, forcedRoll = null) {
 }
 
 export function placeInitialSpaceport(gameState, boardLayout, siteId) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "placement" || gameState.placement?.step !== "placeSpaceport") return gameState;
 
   const placement = normalizePlacementState(gameState.placement, gameState.playerCount);
@@ -265,6 +292,7 @@ export function placeInitialSpaceport(gameState, boardLayout, siteId) {
 }
 
 export function placeInitialColonyShip(gameState, boardLayout, nodeId) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "placement" || gameState.placement?.step !== "placeColonyShip") return gameState;
 
   const placement = normalizePlacementState(gameState.placement, gameState.playerCount);
@@ -298,6 +326,7 @@ export function placeInitialColonyShip(gameState, boardLayout, nodeId) {
 }
 
 export function placeInitialColony(gameState, boardLayout, siteId) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "placement" || !["placeFirstColony", "placeSecondColony"].includes(gameState.placement?.step)) {
     return gameState;
   }
@@ -339,6 +368,7 @@ export function placeInitialColony(gameState, boardLayout, siteId) {
 }
 
 export function drawSupply(gameState) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "tradeBuild" || hasSupplyDrawnThisTurn(gameState)) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
@@ -385,6 +415,7 @@ export function drawSupply(gameState) {
 }
 
 export function updateSevenDiscardSelection(gameState, playerId, resource, delta) {
+  if (isGameOverState(gameState)) return gameState;
   const sevenResolution = normalizeSevenResolution(gameState.sevenResolution, gameState.players);
   if (!sevenResolution?.active || sevenResolution.step !== "discard" || !resource || !Number.isInteger(delta) || delta === 0) {
     return gameState;
@@ -420,6 +451,7 @@ export function updateSevenDiscardSelection(gameState, playerId, resource, delta
 }
 
 export function submitSevenDiscard(gameState, playerId) {
+  if (isGameOverState(gameState)) return gameState;
   const sevenResolution = normalizeSevenResolution(gameState.sevenResolution, gameState.players);
   if (!sevenResolution?.active || sevenResolution.step !== "discard") return gameState;
 
@@ -465,6 +497,7 @@ export function submitSevenDiscard(gameState, playerId) {
 }
 
 export function setSevenStealTarget(gameState, targetPlayerId) {
+  if (isGameOverState(gameState)) return gameState;
   const sevenResolution = normalizeSevenResolution(gameState.sevenResolution, gameState.players);
   if (!sevenResolution?.active || sevenResolution.step !== "steal") return gameState;
   if (!getSevenStealCandidates(gameState, sevenResolution).some((player) => player.id === targetPlayerId)) return gameState;
@@ -478,6 +511,7 @@ export function setSevenStealTarget(gameState, targetPlayerId) {
 }
 
 export function resolveSevenSteal(gameState) {
+  if (isGameOverState(gameState)) return gameState;
   const sevenResolution = normalizeSevenResolution(gameState.sevenResolution, gameState.players);
   if (!sevenResolution?.active || sevenResolution.step !== "steal") return gameState;
 
@@ -553,6 +587,7 @@ export function resolveSevenSteal(gameState) {
 }
 
 export function distributeSevenSupply(gameState) {
+  if (isGameOverState(gameState)) return gameState;
   const sevenResolution = normalizeSevenResolution(gameState.sevenResolution, gameState.players);
   if (!sevenResolution?.active || sevenResolution.step !== "supply" || sevenResolution.supplyDistributed) return gameState;
 
@@ -589,6 +624,7 @@ export function distributeSevenSupply(gameState) {
 }
 
 export function advanceToFlightPhase(gameState) {
+  if (isGameOverState(gameState)) return gameState;
   return updateGameState(gameState, {
     phase: "flight",
     activeTradeOffer: null,
@@ -618,6 +654,7 @@ export function advanceToFlightPhase(gameState) {
 }
 
 export function determineFlightSpeed(gameState, forcedRoll = null) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "flight" || gameState.hasRolledFlightSpeed) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
@@ -677,6 +714,7 @@ export function determineFlightSpeed(gameState, forcedRoll = null) {
 }
 
 export function resolveEncounterChoice(gameState, payload = {}) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "flight" || !gameState.activeEncounter) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
@@ -708,6 +746,7 @@ export function resolveEncounterChoice(gameState, payload = {}) {
 }
 
 export function finishEncounter(gameState) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "flight" || !gameState.activeEncounter || gameState.activeEncounter.status !== "resolved") {
     return gameState;
   }
@@ -730,6 +769,7 @@ export function finishEncounter(gameState) {
 }
 
 export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "flight" || !gameState.hasRolledFlightSpeed || gameState.activeEncounter) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
@@ -812,6 +852,7 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
 }
 
 export function foundColony(gameState, boardLayout, shipId) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "flight") return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
@@ -843,10 +884,7 @@ export function foundColony(gameState, boardLayout, shipId) {
   const structures = [...normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout), structure];
   const remainingMovementByShipId = { ...(gameState.remainingMovementByShipId ?? {}) };
   delete remainingMovementByShipId[ship.id];
-  const players = syncPlayersWithBoardAssets(gameState.players, structures, updatedShips)
-    .map((player) => player.id === activePlayer.id
-      ? { ...player, victoryPoints: player.victoryPoints + 1 }
-      : player);
+  const players = syncPlayersWithBoardAssets(gameState.players, structures, updatedShips);
 
   return updateGameState(gameState, {
     players,
@@ -869,6 +907,7 @@ export function foundColony(gameState, boardLayout, shipId) {
 }
 
 export function foundTradeStation(gameState, boardLayout, shipId) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "flight") return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
@@ -915,6 +954,7 @@ export function foundTradeStation(gameState, boardLayout, shipId) {
 }
 
 export function confirmPendingTradeStationPlacement(gameState, boardLayout, targetNodeId) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "flight") return gameState;
 
   const pending = normalizePendingTradeStationPlacement(gameState.board?.pendingTradeStationPlacement, gameState.players);
@@ -1044,6 +1084,7 @@ export function confirmPendingTradeStationPlacement(gameState, boardLayout, targ
 }
 
 export function cancelPendingTradeStationPlacement(gameState) {
+  if (isGameOverState(gameState)) return gameState;
   if (!gameState.board?.pendingTradeStationPlacement) return gameState;
 
   return updateGameState(gameState, {
@@ -1093,6 +1134,7 @@ export function getReachableNodes(boardLayout, ships, shipId, maxDistance, struc
 }
 
 export function tradeWithSupply(gameState, { fromResource, toResource }) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "tradeBuild" || fromResource === toResource) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
@@ -1130,6 +1172,7 @@ export function tradeWithSupply(gameState, { fromResource, toResource }) {
 }
 
 export function createTradeOffer(gameState, { fromPlayerId, toPlayerId, offeredResources, requestedResources }) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "tradeBuild") return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
@@ -1171,6 +1214,7 @@ export function createTradeOffer(gameState, { fromPlayerId, toPlayerId, offeredR
 }
 
 export function cancelTradeOffer(gameState, playerId) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "tradeBuild") return gameState;
   const activeTradeOffer = normalizeActiveTradeOffer(gameState.activeTradeOffer, gameState.players);
   if (!activeTradeOffer || activeTradeOffer.fromPlayerId !== playerId) return gameState;
@@ -1189,6 +1233,7 @@ export function cancelTradeOffer(gameState, playerId) {
 }
 
 export function respondToTradeOffer(gameState, playerId, decision) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "tradeBuild") return gameState;
   const activeTradeOffer = normalizeActiveTradeOffer(gameState.activeTradeOffer, gameState.players);
   if (!activeTradeOffer || !["accept", "decline"].includes(decision) || activeTradeOffer.toPlayerId !== playerId) {
@@ -1273,6 +1318,7 @@ export function respondToTradeOffer(gameState, playerId, decision) {
 }
 
 export function buyUpgrade(gameState, upgradeId) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "tradeBuild") return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
@@ -1309,6 +1355,7 @@ export function buyUpgrade(gameState, upgradeId) {
 }
 
 export function buildShip(gameState, boardLayout, shipType) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "tradeBuild" || !["colonyShip", "tradeShip"].includes(shipType)) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
@@ -1333,6 +1380,7 @@ export function buildShip(gameState, boardLayout, shipType) {
 }
 
 export function placePendingShip(gameState, boardLayout, targetNodeId) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "tradeBuild") return gameState;
 
   const pending = normalizePendingShipPlacement(gameState.board?.pendingShipPlacement, gameState.players);
@@ -1384,6 +1432,7 @@ export function placePendingShip(gameState, boardLayout, targetNodeId) {
 }
 
 export function cancelPendingShipPlacement(gameState) {
+  if (isGameOverState(gameState)) return gameState;
   if (!gameState.board?.pendingShipPlacement) return gameState;
 
   return updateGameState(gameState, {
@@ -1396,6 +1445,7 @@ export function cancelPendingShipPlacement(gameState) {
 }
 
 export function startPendingSpaceportUpgrade(gameState) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "tradeBuild") return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
@@ -1426,6 +1476,7 @@ export function startPendingSpaceportUpgrade(gameState) {
 }
 
 export function confirmPendingSpaceportUpgrade(gameState, structureId) {
+  if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "tradeBuild") return gameState;
 
   const pending = normalizePendingSpaceportUpgrade(gameState.board?.pendingSpaceportUpgrade, gameState.players);
@@ -1441,7 +1492,6 @@ export function confirmPendingSpaceportUpgrade(gameState, structureId) {
     .map((structure) => structure.id === colony.id ? { ...structure, type: "spaceport" } : structure);
   const players = updatePlayerById(gameState.players, activePlayer.id, (player) => ({
     ...player,
-    victoryPoints: player.victoryPoints + 1,
     resources: payCost(player.resources, definition.cost),
     structures: structures.filter((structure) => structure.ownerPlayerId === player.id)
   }));
@@ -1466,6 +1516,7 @@ export function confirmPendingSpaceportUpgrade(gameState, structureId) {
 }
 
 export function cancelPendingSpaceportUpgrade(gameState) {
+  if (isGameOverState(gameState)) return gameState;
   if (!gameState.board?.pendingSpaceportUpgrade) return gameState;
 
   return updateGameState(gameState, {
@@ -1485,6 +1536,7 @@ export function cancelPendingSpaceportUpgrade(gameState) {
 }
 
 export function endCurrentTurn(gameState) {
+  if (isGameOverState(gameState)) return gameState;
   const nextPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.playerCount;
   const nextTurnNumber = nextPlayerIndex === 0 ? gameState.turnNumber + 1 : gameState.turnNumber;
 
@@ -1560,12 +1612,11 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     ...player,
     structures: normalizedStructures.filter((structure) => structure.ownerPlayerId === player.id),
     ships: normalizedShips.filter((ship) => ship.ownerPlayerId === player.id)
-  }));
+  })).map((player) => hydrateLegacySpecialMedals(player, normalizedStructures));
   const normalizedCurrentPlayerIndex = Number.isInteger(gameState.currentPlayerIndex)
     ? Math.min(Math.max(gameState.currentPlayerIndex, 0), normalizedPlayerCount - 1)
     : 0;
-
-  return {
+  const normalizedState = {
     ...fallback,
     ...gameState,
     language: gameState.language || language,
@@ -1574,6 +1625,8 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     currentPlayerIndex: normalizedCurrentPlayerIndex,
     turnNumber: Number.isInteger(gameState.turnNumber) ? gameState.turnNumber : 1,
     phase: normalizedPhase,
+    gameOver: normalizedPhase === "gameOver" || Boolean(gameState.gameOver),
+    winnerPlayerId: typeof gameState.winnerPlayerId === "string" ? gameState.winnerPlayerId : null,
     lastRoll: normalizeRoll(gameState.lastRoll),
     flightRoll: normalizedPhase === "flight" ? normalizeFlightRoll(gameState.flightRoll) : null,
     flightSpeedBase: normalizedPhase === "flight" && Number.isInteger(gameState.flightSpeedBase) ? gameState.flightSpeedBase : null,
@@ -1611,6 +1664,8 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     },
     log: normalizeLog(gameState.log, fallback.log)
   };
+
+  return finalizeDerivedState(normalizedState);
 }
 
 export function touchGameState(gameState) {
@@ -1625,10 +1680,11 @@ function createPlayers(playerCount, language) {
     id: `player-${index + 1}`,
     name: language === "en" ? `Player ${index + 1}` : `Spieler ${index + 1}`,
     color: playerColorKeys[index],
-    victoryPoints: 4,
+    victoryPoints: 0,
     resources: createEmptyResources(),
     upgrades: createDefaultUpgrades(),
     halfMedals: 0,
+    specialMedals: [],
     friendshipCards: [],
     friendshipMarkers: [],
     ships: [],
@@ -1705,10 +1761,11 @@ function normalizePlayer(player, index, language) {
     id: player.id || fallback.id,
     name: player.name || fallback.name,
     color: player.color || fallback.color,
-    victoryPoints: Number.isInteger(player.victoryPoints) ? player.victoryPoints : 4,
+    victoryPoints: Number.isInteger(player.victoryPoints) ? player.victoryPoints : 0,
     resources: normalizeResources(player.resources),
     upgrades: normalizeUpgrades(player.upgrades),
     halfMedals: Number.isInteger(player.halfMedals) ? player.halfMedals : 0,
+    specialMedals: normalizeSpecialMedals(player.specialMedals),
     friendshipCards: normalizeFriendshipCards(player.friendshipCards),
     friendshipMarkers: normalizeFriendshipMarkers(player.friendshipMarkers),
     ships: Array.isArray(player.ships) ? player.ships : [],
@@ -2172,12 +2229,10 @@ function withResourceDelta(player, resource, delta) {
 function withHalfMedalDelta(player, delta) {
   const previousHalfMedals = Math.max(0, player.halfMedals ?? 0);
   const nextHalfMedals = Math.max(0, previousHalfMedals + delta);
-  const vpDelta = Math.floor(nextHalfMedals / 2) - Math.floor(previousHalfMedals / 2);
 
   return {
     ...player,
-    halfMedals: nextHalfMedals,
-    victoryPoints: Math.max(0, (player.victoryPoints ?? 0) + vpDelta)
+    halfMedals: nextHalfMedals
   };
 }
 
@@ -2237,8 +2292,7 @@ function createDefaultUpgrades() {
 function updateGameState(gameState, { logEntry, logEntries, ...updates }) {
   const now = new Date().toISOString();
   const entries = logEntries ?? (logEntry ? [logEntry] : []);
-
-  return {
+  const nextState = {
     ...gameState,
     ...updates,
     updatedAt: now,
@@ -2253,6 +2307,41 @@ function updateGameState(gameState, { logEntry, logEntries, ...updates }) {
       ]
       : normalizeLog(gameState.log, [])
   };
+
+  return finalizeDerivedState(nextState);
+}
+
+function finalizeDerivedState(gameState) {
+  const players = syncCalculatedVictoryPoints(gameState);
+  const finalizedState = {
+    ...gameState,
+    players
+  };
+  const activePlayer = players[finalizedState.currentPlayerIndex];
+
+  if (finalizedState.phase !== "gameOver" && activePlayer && activePlayer.victoryPoints >= 15) {
+    return {
+      ...finalizedState,
+      phase: "gameOver",
+      gameOver: true,
+      winnerPlayerId: activePlayer.id
+    };
+  }
+
+  return {
+    ...finalizedState,
+    gameOver: finalizedState.phase === "gameOver" || Boolean(finalizedState.gameOver),
+    winnerPlayerId: finalizedState.phase === "gameOver"
+      ? (finalizedState.winnerPlayerId ?? activePlayer?.id ?? null)
+      : null
+  };
+}
+
+function syncCalculatedVictoryPoints(gameState) {
+  return (gameState.players ?? []).map((player) => ({
+    ...player,
+    victoryPoints: calculateVictoryPoints(gameState, player.id)
+  }));
 }
 
 function createStartingStructures(playerCount, boardLayout) {
@@ -2527,6 +2616,37 @@ function normalizeFriendshipMarkers(friendshipMarkers) {
   return Array.isArray(friendshipMarkers) ? friendshipMarkers.filter((markerId) => typeof markerId === "string") : [];
 }
 
+function normalizeSpecialMedals(specialMedals) {
+  return Array.isArray(specialMedals) ? [...new Set(specialMedals.filter((medalId) => typeof medalId === "string"))] : [];
+}
+
+function hydrateLegacySpecialMedals(player, structures) {
+  const specialMedals = normalizeSpecialMedals(player.specialMedals);
+  if (specialMedals.length > 0) {
+    return {
+      ...player,
+      specialMedals
+    };
+  }
+
+  const ownedStructures = (structures ?? []).filter((structure) => structure.ownerPlayerId === player.id);
+  const baseStructurePoints = ownedStructures.reduce((sum, structure) => {
+    if (structure.type === "spaceport") return sum + 2;
+    if (structure.type === "colony") return sum + 1;
+    return sum;
+  }, 0);
+  const knownPoints =
+    baseStructurePoints +
+    normalizeFriendshipMarkers(player.friendshipMarkers).length * 2 +
+    Math.floor(Math.max(0, player.halfMedals ?? 0) / 2);
+  const legacySpecialCount = Math.max(0, (player.victoryPoints ?? 0) - knownPoints);
+
+  return {
+    ...player,
+    specialMedals: Array.from({ length: legacySpecialCount }, (_, index) => `legacy-special-${player.id}-${index + 1}`)
+  };
+}
+
 function normalizeActiveTradeOffer(activeTradeOffer, players = []) {
   if (!activeTradeOffer || typeof activeTradeOffer !== "object") return null;
   const playerIds = new Set((players ?? []).map((player) => player.id));
@@ -2648,14 +2768,12 @@ function applyFriendshipMarkerState(players, outposts, structures, outpostId) {
     if (player.id === currentHolderPlayerId) {
       return {
         ...player,
-        victoryPoints: Math.max(0, player.victoryPoints - 2),
         friendshipMarkers: markers.filter((markerId) => markerId !== outpostId)
       };
     }
     if (player.id === nextHolderPlayerId) {
       return {
         ...player,
-        victoryPoints: player.victoryPoints + 2,
         friendshipMarkers: [...markers.filter((markerId) => markerId !== outpostId), outpostId]
       };
     }
@@ -2807,7 +2925,13 @@ function resolveAdjacentSpecialMarkers(gameState, boardLayout, nodeId, activePla
     const result = resolveSpecialToken(numberTokens, planet.id, activePlayer.id);
     numberTokens = result.numberTokens;
     players = players.map((player) => player.id === activePlayer.id
-      ? { ...player, victoryPoints: player.victoryPoints + 1 }
+      ? {
+        ...player,
+        specialMedals: [
+          ...normalizeSpecialMedals(player.specialMedals),
+          `${planet.id}:${token.type}:${token.value}`
+        ]
+      }
       : player);
     logEntries.push({
       type: "exploration",
@@ -3012,6 +3136,10 @@ function normalizePhase(phase) {
   if (turnPhases.includes(phase)) return phase;
   if (phase === "preparation") return "production";
   return "production";
+}
+
+function isGameOverState(gameState) {
+  return gameState?.phase === "gameOver" || Boolean(gameState?.gameOver);
 }
 
 function normalizeRoll(roll) {

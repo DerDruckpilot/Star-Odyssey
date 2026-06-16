@@ -13,7 +13,7 @@ Star Odyssey ist rundenbasiert. Es gibt keinen Echtzeitdruck und keine freie Act
 7. Ereignis/Begegnung bei Bedarf
 8. Zug beenden
 9. Naechsten Spieler setzen
-10. Spielende pruefen
+10. Spielende pruefen / Game-Over-Phase
 
 ## Spielstart
 
@@ -60,3 +60,9 @@ Die State Machine soll spaeter Handycontroller unterstuetzen:
 - Controller zeigt nur spielerspezifische Aktionen, Handkarten und Bestaetigungen.
 - Bewegung kann ueber digitalen Analogstick oder Buttons Zielpunkte markieren.
 - Ein separater Button bestaetigt den naechsten Schritt oder schliesst Bewegung/Zug ab.
+
+## Game Over
+
+- Nach jeder relevanten Wertungsaktion wird der aktuelle Punktestand zentral neu berechnet.
+- Erreicht der aktive Spieler 15 oder mehr Siegpunkte, wechselt das Spiel in eine Game-Over-Phase.
+- In dieser Phase sind weitere Spielaktionen gesperrt und nur noch die Rueckkehr ins Menue bleibt offen.

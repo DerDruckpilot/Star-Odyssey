@@ -100,5 +100,8 @@ Diese Werte sollten spaeter als Teil des Spielerzustands modelliert werden, nich
 ## Siegpunktlogik und Spielende
 
 - Kolonien, Raumhaefen, Stationserfolge, Fraktionsmehrheiten und besondere Medaillen koennen Siegpunkte liefern.
+- Kolonie: 1 Punkt, Raumhafen: insgesamt 2 Punkte, Freundschaftsmarker: 2 Punkte, Spezialmarker: 1 Punkt je Marker.
+- Je 2 halbe Medaillen ergeben 1 weiteren Siegpunkt.
+- Die Siegpunktanzeige wird als abgeleiteter Wert aus Strukturen, Markern und Medaillen berechnet.
 - Manche Punkte sind dauerhaft, andere koennen durch Mehrheiten wechseln.
-- Das Spiel endet mit dem Zug, in dem der aktive Spieler das Siegpunktziel erreicht oder ueberschreitet.
+- Das Spiel endet mit dem Zug, in dem der aktive Spieler 15 oder mehr Siegpunkte erreicht oder besitzt.

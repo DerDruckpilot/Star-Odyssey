@@ -332,6 +332,11 @@ h1 {
   color: #fef08a;
 }
 
+.victory-point-list .is-winner {
+  color: #fde68a;
+  font-weight: 800;
+}
+
 .player-hud-launcher {
   position: fixed;
   left: 0.5rem;

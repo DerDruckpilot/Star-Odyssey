@@ -1,5 +1,7 @@
 import { boardLayout } from "../src/data/boardLayout.js";
 import {
+  buyUpgrade,
+  calculateVictoryPoints,
   buildShip,
   cancelPendingSpaceportUpgrade,
   cancelPendingTradeStationPlacement,
@@ -315,6 +317,8 @@ if (outpostUnderTest) {
   const firstDockNodeId = outpostUnderTest.docks[0].nodeId;
   const secondDockNodeId = outpostUnderTest.docks[1].nodeId;
   const thirdDockNodeId = outpostUnderTest.docks[2].nodeId;
+  const playerOnePointsBeforeMarker = calculateVictoryPoints(game, "player-1");
+  const playerTwoPointsBeforeMarker = calculateVictoryPoints(game, "player-2");
 
   game = foundTradeStation(game, boardLayout, "player-1-trade-ship-a");
   assert(game.board.pendingTradeStationPlacement?.availableDockIds?.length >= 3, "Trade station founding should start with a pending dock selection.");
@@ -322,7 +326,7 @@ if (outpostUnderTest) {
   assert(game.board.structures.some((structure) => structure.type === "tradeStation" && structure.locationId === firstDockNodeId), "Trade station should occupy the selected dock.");
   assert(!game.board.ships.some((ship) => ship.id === "player-1-trade-ship-a"), "Trade ship should be consumed when founding a trade station.");
   assert(game.players[0].friendshipMarkers.includes(outpostUnderTest.id), "The first outpost founder should receive the friendship marker.");
-  assert(game.players[0].victoryPoints === 6, "Friendship marker should grant 2 victory points.");
+  assert(game.players[0].victoryPoints === playerOnePointsBeforeMarker + 2, "Friendship marker should grant 2 victory points.");
   assert(game.players[0].friendshipCards.length === 1, "Founding a trade station should grant one friendship card.");
 
   game = {
@@ -373,8 +377,8 @@ if (outpostUnderTest) {
   game = confirmPendingTradeStationPlacement(game, boardLayout, thirdDockNodeId);
   const updatedOutpost = game.board.placedOutposts.find((outpost) => outpost.id === outpostUnderTest.id);
   assert(updatedOutpost?.friendshipHolderPlayerId === "player-2", "Friendship marker should move only when another player gains a clear majority.");
-  assert(game.players[0].victoryPoints === 4, "Previous friendship holder should lose 2 victory points on marker transfer.");
-  assert(game.players[1].victoryPoints === 6, "New friendship holder should gain 2 victory points on marker transfer.");
+  assert(game.players[0].victoryPoints === playerOnePointsBeforeMarker, "Previous friendship holder should lose 2 victory points on marker transfer.");
+  assert(game.players[1].victoryPoints === playerTwoPointsBeforeMarker + 2, "New friendship holder should gain 2 victory points on marker transfer.");
   const normalizedOutpostGame = normalizeGameState(JSON.parse(JSON.stringify(game)), {
     language: "de",
     playerCount: 2,
@@ -454,6 +458,7 @@ encounterGame = determineFlightSpeed(encounterGame, {
 });
 assert(encounterGame.activeEncounter?.cardId === "honor-medal", "A black mothership ball should start an encounter.");
 assert(encounterGame.flightSpeedBase === 3, "A black mothership ball should force base speed 3.");
+const encounterPointsBeforeMedal = encounterGame.players[0].victoryPoints;
 const blockedMoveState = moveShip(
   encounterGame,
   boardLayout,
@@ -466,7 +471,7 @@ assert(
 );
 encounterGame = resolveEncounterChoice(encounterGame, { choiceId: "accept" });
 assert(encounterGame.players[0].halfMedals === 2, "Encounter reward should add a half medal.");
-assert(encounterGame.players[0].victoryPoints === 5, "Two half medals should count as one victory point.");
+assert(encounterGame.players[0].victoryPoints === encounterPointsBeforeMedal + 1, "Two half medals should count as one victory point.");
 const normalizedEncounterState = normalizeGameState(JSON.parse(JSON.stringify(encounterGame)), {
   language: "de",
   playerCount: 2,
@@ -483,6 +488,130 @@ const postEncounterMoveState = moveShip(
   encounterGame.board.ships[0].locationId
 );
 assert(postEncounterMoveState !== null, "Game state should remain usable after finishing an encounter.");
+
+assert(calculateVictoryPoints(game, "player-1") >= 4, "Central scoring should count starting colonies and spaceports.");
+
+const scoringGame = normalizeGameState(JSON.parse(JSON.stringify(game)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+const scoringBasePoints = calculateVictoryPoints(scoringGame, "player-1");
+scoringGame.players = scoringGame.players.map((player, index) => index === 0
+  ? {
+    ...player,
+    friendshipMarkers: ["friendship-a"],
+    specialMedals: ["special-a"],
+    halfMedals: 2
+  }
+  : player);
+assert(calculateVictoryPoints(scoringGame, "player-1") === scoringBasePoints + 4, "Scoring should add friendship marker, special medal and two half medals correctly.");
+
+let noGameOverState = normalizeGameState(JSON.parse(JSON.stringify(game)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+noGameOverState = {
+  ...noGameOverState,
+  phase: "tradeBuild",
+  currentPlayerIndex: 0,
+  players: noGameOverState.players.map((player, index) => index === 1
+    ? {
+      ...player,
+      specialMedals: Array.from({ length: 11 }, (_, medalIndex) => `special-${medalIndex}`)
+    }
+    : {
+      ...player,
+      resources: {
+        ...player.resources,
+        fuel: 2
+      }
+    })
+};
+noGameOverState = buyUpgrade(noGameOverState, "drive");
+assert(noGameOverState.phase !== "gameOver", "A non-active player reaching 15 points should not end the game immediately.");
+
+let gameOverState = normalizeGameState(JSON.parse(JSON.stringify(game)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+gameOverState = {
+  ...gameOverState,
+  phase: "tradeBuild",
+  currentPlayerIndex: 0,
+  players: gameOverState.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      specialMedals: Array.from({ length: 10 }, (_, medalIndex) => `victory-${medalIndex}`),
+      resources: {
+        ...player.resources,
+        fuel: 2
+      }
+    }
+    : player)
+};
+gameOverState = buyUpgrade(gameOverState, "drive");
+assert(gameOverState.phase === "gameOver", "The game should end when the active player reaches or holds 15 points.");
+assert(gameOverState.winnerPlayerId === "player-1", "Winner should be stored when the game ends.");
+
+const resourcesAfterGameOver = JSON.stringify(gameOverState.players[0].resources);
+const blockedAfterGameOver = buildShip(gameOverState, boardLayout, "colonyShip");
+assert(JSON.stringify(blockedAfterGameOver.players[0].resources) === resourcesAfterGameOver, "Actions after game over should not change resources.");
+
+let invalidSpaceportState = normalizeGameState(JSON.parse(JSON.stringify(game)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+invalidSpaceportState = {
+  ...invalidSpaceportState,
+  phase: "tradeBuild",
+  currentPlayerIndex: 0,
+  players: invalidSpaceportState.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      resources: {
+        ...player.resources,
+        carbon: 3,
+        food: 2
+      }
+    }
+    : player)
+};
+invalidSpaceportState = startPendingSpaceportUpgrade(invalidSpaceportState);
+const invalidSpaceportResourcesBefore = JSON.stringify(invalidSpaceportState.players[0].resources);
+const invalidSpaceportTarget = invalidSpaceportState.board.structures.find((structure) => structure.ownerPlayerId === "player-2")?.id;
+invalidSpaceportState = confirmPendingSpaceportUpgrade(invalidSpaceportState, invalidSpaceportTarget);
+assert(JSON.stringify(invalidSpaceportState.players[0].resources) === invalidSpaceportResourcesBefore, "Invalid spaceport upgrades must not change resources.");
+
+let invalidShipPlacementState = normalizeGameState(JSON.parse(JSON.stringify(game)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+invalidShipPlacementState = {
+  ...invalidShipPlacementState,
+  phase: "tradeBuild",
+  currentPlayerIndex: 0,
+  players: invalidShipPlacementState.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      resources: {
+        ...player.resources,
+        ore: 1,
+        fuel: 1,
+        carbon: 1,
+        food: 1
+      }
+    }
+    : player)
+};
+invalidShipPlacementState = buildShip(invalidShipPlacementState, boardLayout, "colonyShip");
+const invalidShipResourcesBefore = JSON.stringify(invalidShipPlacementState.players[0].resources);
+invalidShipPlacementState = placePendingShip(invalidShipPlacementState, boardLayout, "invalid-point");
+assert(JSON.stringify(invalidShipPlacementState.players[0].resources) === invalidShipResourcesBefore, "Invalid ship placement must not change resources.");
 
 if (process.exitCode !== 1) {
   console.log("Game state check passed.");

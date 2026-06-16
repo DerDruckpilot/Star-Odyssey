@@ -21,6 +21,7 @@ import {
   createTradeOffer,
   createGameState,
   currentGameStorageKey,
+  calculateVictoryPoints,
   determineFlightSpeed,
   drawSupply,
   distributeSevenSupply,
@@ -554,6 +555,17 @@ function endTurn() {
   render();
 }
 
+function returnToMenuFromGameOver() {
+  state.gameState = null;
+  try {
+    localStorage.removeItem(currentGameStorageKey);
+  } catch {
+    // ignore storage cleanup failures
+  }
+  resetTradeOfferDraft();
+  setView("menu");
+}
+
 function isSelectedElement(type, id) {
   const selectedElement = state.gameState?.board?.selectedElement;
   return selectedElement?.type === type && selectedElement?.id === id;
@@ -717,7 +729,17 @@ function renderBoardShell() {
   board.setAttribute("aria-label", t("boardAreaLabel"));
   board.append(renderBoardSvg());
 
-  screen.append(hiddenTitle, board, renderCompactBoardStatus(), renderVictoryPointList(), renderPlayerHudButtons(), renderPlayerHudModal(), controls, renderNotice());
+  screen.append(
+    hiddenTitle,
+    board,
+    renderCompactBoardStatus(),
+    renderVictoryPointList(),
+    renderPlayerHudButtons(),
+    renderPlayerHudModal(),
+    renderGameOverOverlay(),
+    controls,
+    renderNotice()
+  );
   return screen;
 }
 
@@ -737,8 +759,12 @@ function renderVictoryPointList() {
 
   for (const [index, player] of (state.gameState?.players ?? []).entries()) {
     const row = document.createElement("div");
-    row.className = player.id === getActivePlayer()?.id ? "is-active" : "";
-    row.textContent = `${t("playerNumber").replace("{number}", index + 1)}: ${player.victoryPoints ?? 0} ${t("victoryPointShort")}`;
+    const points = calculateVictoryPoints(state.gameState, player.id);
+    row.className = [
+      player.id === getActivePlayer()?.id ? "is-active" : "",
+      points >= 15 ? "is-winner" : ""
+    ].filter(Boolean).join(" ");
+    row.textContent = `${t("playerNumber").replace("{number}", index + 1)}: ${points} ${t("victoryPointShort")}`;
     list.append(row);
   }
 
@@ -795,6 +821,35 @@ function renderPlayerHudModal() {
   content.append(renderPlayerHudTabContent(player));
 
   panel.append(header, content);
+  overlay.append(panel);
+  return overlay;
+}
+
+function renderGameOverOverlay() {
+  if (state.view !== "board" || state.gameState?.phase !== "gameOver" || !state.gameState?.winnerPlayerId) {
+    return document.createDocumentFragment();
+  }
+
+  const winner = state.gameState.players.find((player) => player.id === state.gameState.winnerPlayerId);
+  const points = winner ? calculateVictoryPoints(state.gameState, winner.id) : 0;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+
+  const panel = document.createElement("section");
+  panel.className = "modal-panel";
+
+  const content = document.createElement("div");
+  content.className = "modal-content";
+
+  const title = document.createElement("h2");
+  title.textContent = t("gameOverTitle");
+  const body = document.createElement("p");
+  body.textContent = t("gameOverMessage")
+    .replace("{player}", winner?.name ?? "")
+    .replace("{points}", points);
+
+  content.append(title, body, createButton(t("backToMenu"), returnToMenuFromGameOver, "menu-button"));
+  panel.append(content);
   overlay.append(panel);
   return overlay;
 }
@@ -937,7 +992,7 @@ function renderFleetSummary(player = getActivePlayer()) {
   const structures = state.gameState?.board?.structures?.filter((structure) => structure.ownerPlayerId === player?.id) ?? [];
   const ships = state.gameState?.board?.ships?.filter((ship) => ship.ownerPlayerId === player?.id) ?? [];
   const rows = [
-    [t("victoryPoints"), player?.victoryPoints ?? 0],
+    [t("victoryPoints"), player ? calculateVictoryPoints(state.gameState, player.id) : 0],
     [t("colonies"), structures.filter((structure) => structure.type === "colony").length],
     [t("spaceports"), structures.filter((structure) => structure.type === "spaceport").length],
     [t("colonyShips"), ships.filter((ship) => ship.type === "colonyShip").length],
@@ -1718,7 +1773,8 @@ function getPhaseLabel(phase) {
     production: t("phaseProduction"),
     tradeBuild: t("phaseTradeBuild"),
     flight: t("phaseFlight"),
-    turnEnd: t("phaseTurnEnd")
+    turnEnd: t("phaseTurnEnd"),
+    gameOver: t("phaseGameOver")
   };
 
   return phaseLabels[phase] ?? phase ?? t("phaseProduction");
