@@ -1,6 +1,10 @@
 import { boardLayout } from "../src/data/boardLayout.js";
 import {
   buildShip,
+  cancelPendingSpaceportUpgrade,
+  cancelTradeOffer,
+  confirmPendingSpaceportUpgrade,
+  createTradeOffer,
   createGameState,
   distributeSevenSupply,
   drawSupply,
@@ -9,10 +13,12 @@ import {
   placeInitialColony,
   placeInitialColonyShip,
   placeInitialSpaceport,
+  respondToTradeOffer,
   resolveSevenSteal,
   rollPlacementStart,
   rollProduction,
   setSevenStealTarget,
+  startPendingSpaceportUpgrade,
   submitSevenDiscard,
   updateSevenDiscardSelection
 } from "../src/game/gameState.js";
@@ -196,6 +202,66 @@ const resourcesBeforePlacement = game.players[0].resources.ore;
 game = placePendingShip(game, boardLayout, launchPoint.id);
 assert(!game.board.pendingShipPlacement, "Pending ship placement should clear after selecting a launch point.");
 assert(game.players[0].resources.ore === resourcesBeforePlacement - 1, "Ship resources should be paid only after selecting a launch point.");
+
+game = {
+  ...game,
+  activeTradeOffer: null,
+  players: game.players.map((player, index) => ({
+    ...player,
+    resources: index === 0
+      ? { ore: 2, fuel: 1, carbon: 0, food: 0, goods: 0 }
+      : { ore: 0, fuel: 0, carbon: 1, food: 0, goods: 0 }
+  }))
+};
+game = createTradeOffer(game, {
+  fromPlayerId: "player-1",
+  toPlayerId: "player-2",
+  offeredResources: { ore: 1, fuel: 0, carbon: 0, food: 0, goods: 0 },
+  requestedResources: { ore: 0, fuel: 0, carbon: 1, food: 0, goods: 0 }
+});
+assert(game.activeTradeOffer?.toPlayerId === "player-2", "Active player should be able to create a trade offer.");
+game = respondToTradeOffer(game, "player-2", "accept");
+assert(!game.activeTradeOffer, "Accepted trade offers should clear.");
+assert(game.players[0].resources.ore === 1 && game.players[0].resources.carbon === 1, "Accepted trades should transfer resources to the active player.");
+assert(game.players[1].resources.ore === 1 && game.players[1].resources.carbon === 0, "Accepted trades should transfer resources to the target player.");
+
+game = createTradeOffer(game, {
+  fromPlayerId: "player-1",
+  toPlayerId: "player-2",
+  offeredResources: { ore: 1, fuel: 0, carbon: 0, food: 0, goods: 0 },
+  requestedResources: { ore: 0, fuel: 0, carbon: 0, food: 0, goods: 0 }
+});
+game = respondToTradeOffer(game, "player-2", "decline");
+assert(!game.activeTradeOffer, "Declined trade offers should clear.");
+
+game = {
+  ...game,
+  activeTradeOffer: null,
+  players: game.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      resources: {
+        ...player.resources,
+        carbon: 3,
+        food: 2
+      }
+    }
+    : player)
+};
+const colonyBeforeUpgrade = game.board.structures.find((structure) => structure.ownerPlayerId === "player-1" && structure.type === "colony");
+game = startPendingSpaceportUpgrade(game);
+assert(game.board.pendingSpaceportUpgrade?.ownerPlayerId === "player-1", "Spaceport build should start with a pending colony selection.");
+const carbonBeforeUpgrade = game.players[0].resources.carbon;
+game = confirmPendingSpaceportUpgrade(game, colonyBeforeUpgrade.id);
+assert(!game.board.pendingSpaceportUpgrade, "Pending spaceport upgrade should clear after selecting a colony.");
+assert(game.players[0].resources.carbon === carbonBeforeUpgrade - 3, "Spaceport cost should be paid only after selecting the colony.");
+assert(game.board.structures.some((structure) => structure.id === colonyBeforeUpgrade.id && structure.type === "spaceport"), "Selected colony should become a spaceport.");
+
+game = startPendingSpaceportUpgrade(game);
+const foodBeforeCancel = game.players[0].resources.food;
+game = cancelPendingSpaceportUpgrade(game);
+assert(!game.board.pendingSpaceportUpgrade, "Cancelling spaceport selection should clear the pending state.");
+assert(game.players[0].resources.food === foodBeforeCancel, "Cancelling spaceport selection should not change resources.");
 
 if (process.exitCode !== 1) {
   console.log("Game state check passed.");

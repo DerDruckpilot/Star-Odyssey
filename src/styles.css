@@ -585,6 +585,13 @@ h1 {
   gap: 0.35rem;
 }
 
+.trade-resource-configurator,
+.active-trade-offer,
+.trade-offer-actions {
+  display: grid;
+  gap: 0.45rem;
+}
+
 .resource-select {
   display: grid;
   gap: 0.2rem;
@@ -839,6 +846,12 @@ h1 {
   fill: rgba(248, 250, 252, 0.92);
   stroke: rgba(15, 23, 42, 0.85);
   stroke-width: 3;
+}
+
+.structure.is-spaceport-build-target .structure-shape {
+  stroke: #67e8f9;
+  stroke-width: 5;
+  filter: drop-shadow(0 0 10px rgba(103, 232, 249, 0.72));
 }
 
 .structure--spaceport .structure-shape {

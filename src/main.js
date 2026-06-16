@@ -11,6 +11,10 @@ import {
   buildShip,
   buyUpgrade,
   cancelPendingShipPlacement,
+  cancelPendingSpaceportUpgrade,
+  cancelTradeOffer,
+  confirmPendingSpaceportUpgrade,
+  createTradeOffer,
   createGameState,
   currentGameStorageKey,
   determineFlightSpeed,
@@ -26,15 +30,16 @@ import {
   placeInitialColony,
   placeInitialColonyShip,
   placeInitialSpaceport,
+  respondToTradeOffer,
   resolveSevenSteal,
   rollProduction,
   rollPlacementStart,
   setSevenStealTarget,
+  startPendingSpaceportUpgrade,
   submitSevenDiscard,
   touchGameState,
   tradeWithSupply,
   updateSevenDiscardSelection,
-  upgradeColonyToSpaceport
 } from "./game/gameState.js";
 import { defaultLanguage, getText, languages } from "./i18n.js";
 
@@ -52,6 +57,9 @@ const state = {
   gameState: loadCurrentGameState(),
   tradeFromResource: "ore",
   tradeToResource: "food",
+  tradeOfferTargetPlayerId: null,
+  tradeOfferedResources: createEmptyResourceSelection(),
+  tradeRequestedResources: createEmptyResourceSelection(),
   modal: null,
   hudPlayerId: null,
   hudTab: "turn",
@@ -164,6 +172,16 @@ function closePlayerHud() {
   render();
 }
 
+function createEmptyResourceSelection() {
+  return Object.fromEntries(resourceTypes.map((resource) => [resource, 0]));
+}
+
+function resetTradeOfferDraft() {
+  state.tradeOfferTargetPlayerId = null;
+  state.tradeOfferedResources = createEmptyResourceSelection();
+  state.tradeRequestedResources = createEmptyResourceSelection();
+}
+
 function startNewGameSetup() {
   state.selectedPlayers = null;
   setView("players");
@@ -175,6 +193,7 @@ function startGameNow() {
     playerCount: state.selectedPlayers,
     boardLayout
   });
+  resetTradeOfferDraft();
   state.selectedPlayers = state.gameState.playerCount;
   saveCurrentGameState();
   setView("board");
@@ -219,6 +238,7 @@ function selectBoardElement(type, id) {
   if (!state.gameState) return;
 
   if (type === "spacePoint" && placePendingShipAt(id)) return;
+  if (type === "structure" && confirmPendingSpaceportAt(id)) return;
   if (type === "spacePoint" && handlePlacementPointSelection(id)) return;
   if (type === "spacePoint" && moveSelectedShipTo(id)) return;
 
@@ -295,6 +315,56 @@ function drawSupplyForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
 
   state.gameState = drawSupply(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function updateTradeOfferResource(side, resource, delta) {
+  const target = side === "requested" ? state.tradeRequestedResources : state.tradeOfferedResources;
+  const nextValue = Math.max(0, (target[resource] ?? 0) + delta);
+  target[resource] = nextValue;
+  render();
+}
+
+function setTradeOfferTarget(playerId) {
+  state.tradeOfferTargetPlayerId = playerId;
+  render();
+}
+
+function offerTradeToPlayer() {
+  if (!state.gameState) return;
+  const activePlayer = getActivePlayer();
+  state.gameState = createTradeOffer(state.gameState, {
+    fromPlayerId: activePlayer?.id,
+    toPlayerId: state.tradeOfferTargetPlayerId,
+    offeredResources: state.tradeOfferedResources,
+    requestedResources: state.tradeRequestedResources
+  });
+  resetTradeOfferDraft();
+  saveCurrentGameState();
+  render();
+}
+
+function acceptTradeOffer(playerId) {
+  if (!state.gameState) return;
+  const previousLogLength = state.gameState.log?.length ?? 0;
+  state.gameState = respondToTradeOffer(state.gameState, playerId, "accept");
+  const latestLog = state.gameState.log?.[previousLogLength];
+  state.notice = latestLog?.messageKey === "logTradeInvalid" ? t("tradeNotPossible") : "";
+  saveCurrentGameState();
+  render();
+}
+
+function declineTradeOffer(playerId) {
+  if (!state.gameState) return;
+  state.gameState = respondToTradeOffer(state.gameState, playerId, "decline");
+  saveCurrentGameState();
+  render();
+}
+
+function cancelOpenTradeOffer() {
+  if (!state.gameState) return;
+  state.gameState = cancelTradeOffer(state.gameState, getActivePlayer()?.id);
   saveCurrentGameState();
   render();
 }
@@ -390,7 +460,25 @@ function cancelActiveShipBuild() {
 function buildActivePlayerSpaceport() {
   if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
 
-  state.gameState = upgradeColonyToSpaceport(state.gameState);
+  state.gameState = startPendingSpaceportUpgrade(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function confirmPendingSpaceportAt(structureId) {
+  if (!state.gameState || state.gameState.phase !== "tradeBuild") return false;
+  if (!state.gameState.board?.pendingSpaceportUpgrade || !isValidPendingSpaceportTarget(structureId)) return false;
+
+  state.gameState = confirmPendingSpaceportUpgrade(state.gameState, structureId);
+  saveCurrentGameState();
+  render();
+  return true;
+}
+
+function cancelActiveSpaceportBuild() {
+  if (!state.gameState?.board?.pendingSpaceportUpgrade) return;
+
+  state.gameState = cancelPendingSpaceportUpgrade(state.gameState);
   saveCurrentGameState();
   render();
 }
@@ -694,7 +782,7 @@ function renderPlayerHudTabContent(player) {
   content.className = "player-hud-tab-content";
 
   if (state.hudTab === "resources") {
-    content.append(renderBankTradeControls(player));
+    content.append(renderPlayerTradeControls(player), renderBankTradeControls(player));
   } else if (state.hudTab === "upgrades") {
     content.append(renderUpgradeSummary(player));
     content.append(renderUpgradeControls(player));
@@ -1124,10 +1212,16 @@ function renderBuildControls(player = getActivePlayer()) {
   wrapper.append(title);
 
   const pendingShipPlacement = state.gameState?.board?.pendingShipPlacement;
+  const pendingSpaceportUpgrade = state.gameState?.board?.pendingSpaceportUpgrade;
   if (pendingShipPlacement) {
     const pending = document.createElement("p");
     pending.textContent = `${t("chooseStartPoint")}: ${getShipTypeLabel(pendingShipPlacement.shipType)}. ${t("chooseStartPointHint")}`;
     wrapper.append(pending, createButton(t("cancelShipBuild"), cancelActiveShipBuild, "small-button secondary-small-button"));
+  }
+  if (pendingSpaceportUpgrade) {
+    const pending = document.createElement("p");
+    pending.textContent = `${t("selectColony")}: ${t("chooseSpaceportColonyHint")}`;
+    wrapper.append(pending, createButton(t("cancelSpaceportBuild"), cancelActiveSpaceportBuild, "small-button secondary-small-button"));
   }
 
   for (const action of buildActionDefinitions) {
@@ -1141,7 +1235,7 @@ function renderBuildControls(player = getActivePlayer()) {
     cost.textContent = `${t("cost")}: ${formatCost(action.cost)}`;
 
     const button = createButton(t("build"), () => runBuildAction(action.id), "small-button");
-    button.disabled = Boolean(pendingShipPlacement) || !canTradeBuildActions(player) || !canPlayerBuild(player, action);
+    button.disabled = Boolean(pendingShipPlacement) || Boolean(pendingSpaceportUpgrade) || !canTradeBuildActions(player) || !canPlayerBuild(player, action);
 
     card.append(label, cost, button);
     wrapper.append(card);
@@ -1180,6 +1274,126 @@ function renderBankTradeControls(player = getActivePlayer()) {
     .replace("{receive}", "1");
 
   wrapper.append(title, fields, hint, tradeButton);
+  return wrapper;
+}
+
+function renderPlayerTradeControls(player = getActivePlayer()) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "trade-build-section player-trade-controls";
+
+  const title = document.createElement("strong");
+  title.textContent = t("playerTrade");
+  wrapper.append(title);
+
+  const activeTradeOffer = state.gameState?.activeTradeOffer;
+  const activePlayer = getActivePlayer();
+
+  if (activeTradeOffer) {
+    wrapper.append(renderActiveTradeOffer(player, activeTradeOffer));
+    return wrapper;
+  }
+
+  if (!canTradeBuildActions(player)) {
+    const hint = document.createElement("p");
+    hint.textContent = player?.id === activePlayer?.id ? t("tradeOnlyInTradeBuild") : t("notYourTurn");
+    wrapper.append(hint);
+    return wrapper;
+  }
+
+  wrapper.append(renderTradeTargetSelect(), renderTradeResourceConfigurator("offered"), renderTradeResourceConfigurator("requested"));
+
+  const offerButton = createButton(t("offerTrade"), offerTradeToPlayer, "small-button");
+  offerButton.disabled = !canCreatePlayerTradeOffer(activePlayer);
+  wrapper.append(offerButton);
+  return wrapper;
+}
+
+function renderActiveTradeOffer(player, activeTradeOffer) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "active-trade-offer";
+  const fromPlayer = state.gameState?.players?.find((candidate) => candidate.id === activeTradeOffer.fromPlayerId);
+  const toPlayer = state.gameState?.players?.find((candidate) => candidate.id === activeTradeOffer.toPlayerId);
+
+  const title = document.createElement("p");
+  title.textContent = t("openTradeOffer");
+  const summary = document.createElement("p");
+  summary.textContent = `${fromPlayer?.name ?? activeTradeOffer.fromPlayerId} -> ${toPlayer?.name ?? activeTradeOffer.toPlayerId}`;
+  const offered = document.createElement("p");
+  offered.textContent = `${t("youGive")}: ${formatResourceSelection(activeTradeOffer.offeredResources)}`;
+  const requested = document.createElement("p");
+  requested.textContent = `${t("youReceive")}: ${formatResourceSelection(activeTradeOffer.requestedResources)}`;
+  wrapper.append(title, summary, offered, requested);
+
+  if (player?.id === activeTradeOffer.toPlayerId) {
+    const actions = document.createElement("div");
+    actions.className = "trade-offer-actions";
+    actions.append(
+      createButton(t("accept"), () => acceptTradeOffer(player.id), "small-button"),
+      createButton(t("decline"), () => declineTradeOffer(player.id), "small-button secondary-small-button")
+    );
+    wrapper.append(actions);
+  } else if (player?.id === activeTradeOffer.fromPlayerId) {
+    wrapper.append(createButton(t("cancelOffer"), cancelOpenTradeOffer, "small-button secondary-small-button"));
+  } else {
+    const waiting = document.createElement("p");
+    waiting.textContent = t("tradeOfferPending");
+    wrapper.append(waiting);
+  }
+
+  return wrapper;
+}
+
+function renderTradeTargetSelect() {
+  const label = document.createElement("label");
+  label.className = "resource-select";
+  const caption = document.createElement("span");
+  caption.textContent = t("targetPlayer");
+
+  const select = document.createElement("select");
+  select.value = state.tradeOfferTargetPlayerId ?? "";
+
+  const emptyOption = document.createElement("option");
+  emptyOption.value = "";
+  emptyOption.textContent = t("selectTargetPlayer");
+  select.append(emptyOption);
+
+  for (const player of state.gameState?.players ?? []) {
+    if (player.id === getActivePlayer()?.id) continue;
+    const option = document.createElement("option");
+    option.value = player.id;
+    option.textContent = player.name;
+    select.append(option);
+  }
+
+  select.addEventListener("change", (event) => {
+    setTradeOfferTarget(event.target.value || null);
+  });
+
+  label.append(caption, select);
+  return label;
+}
+
+function renderTradeResourceConfigurator(side) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "trade-resource-configurator";
+  const title = document.createElement("strong");
+  title.textContent = side === "offered" ? t("youGive") : t("youReceive");
+  wrapper.append(title);
+
+  const selection = side === "offered" ? state.tradeOfferedResources : state.tradeRequestedResources;
+
+  for (const resource of resourceTypes) {
+    const row = document.createElement("div");
+    row.className = "seven-discard-row";
+    const label = document.createElement("span");
+    label.textContent = `${getResourceLabel(resource)}: ${selection[resource] ?? 0}`;
+    const decreaseButton = createButton("-", () => updateTradeOfferResource(side, resource, -1), "small-button secondary-small-button");
+    decreaseButton.disabled = (selection[resource] ?? 0) <= 0;
+    const increaseButton = createButton("+", () => updateTradeOfferResource(side, resource, 1), "small-button");
+    row.append(label, decreaseButton, increaseButton);
+    wrapper.append(row);
+  }
+
   return wrapper;
 }
 
@@ -1801,6 +2015,14 @@ function canTradeBuildActions(player) {
   return Boolean(player?.id === getActivePlayer()?.id && state.gameState?.phase === "tradeBuild");
 }
 
+function canCreatePlayerTradeOffer(player) {
+  if (!canTradeBuildActions(player) || !state.tradeOfferTargetPlayerId) return false;
+  const totalOffered = getSelectedResourceCount(state.tradeOfferedResources);
+  const totalRequested = getSelectedResourceCount(state.tradeRequestedResources);
+  if (totalOffered <= 0 && totalRequested <= 0) return false;
+  return resourceTypes.every((resource) => (state.tradeOfferedResources?.[resource] ?? 0) <= (player?.resources?.[resource] ?? 0));
+}
+
 function canPlayerTrade(player) {
   if (!player || state.tradeFromResource === state.tradeToResource) return false;
   return (player.resources?.[state.tradeFromResource] ?? 0) >= getBankTradeRate(state.tradeFromResource);
@@ -1839,6 +2061,17 @@ function hasUpgradeableColony(playerId) {
     .some((structure) => structure.ownerPlayerId === playerId && structure.type === "colony");
 }
 
+function isValidPendingSpaceportTarget(structureId) {
+  const pending = state.gameState?.board?.pendingSpaceportUpgrade;
+  if (!pending || state.gameState?.phase !== "tradeBuild") return false;
+  const structure = getStructureById(structureId);
+  return Boolean(
+    structure &&
+    structure.ownerPlayerId === pending.ownerPlayerId &&
+    structure.type === "colony"
+  );
+}
+
 function findFreeLaunchPointForActivePlayer(playerId) {
   return findFreeLaunchPointsForPlayer(playerId)[0] ?? null;
 }
@@ -1862,6 +2095,13 @@ function formatCost(cost) {
   return Object.entries(cost)
     .map(([resource, amount]) => `${amount} ${getResourceLabel(resource)}`)
     .join(", ");
+}
+
+function formatResourceSelection(resources) {
+  const entries = Object.entries(resources ?? {})
+    .filter(([, amount]) => amount > 0)
+    .map(([resource, amount]) => `${amount} ${getResourceLabel(resource)}`);
+  return entries.length > 0 ? entries.join(", ") : t("none");
 }
 
 function formatIdList(ids = []) {
@@ -2104,9 +2344,10 @@ function renderStructuresLayer() {
     const site = getStructureRenderPoint(structure);
     if (!site) continue;
     const selectedClass = isSelectedElement("structure", structure.id) ? " is-selected" : "";
+    const pendingSpaceportClass = isValidPendingSpaceportTarget(structure.id) ? " is-spaceport-build-target" : "";
     const ownerIndex = Number.parseInt(structure.ownerPlayerId.replace("player-", ""), 10);
     const structureGroup = createSvgElement("g", {
-      class: `structure structure--${structure.type}${selectedClass}`
+      class: `structure structure--${structure.type}${selectedClass}${pendingSpaceportClass}`
     });
     enableBoardElementSelection(structureGroup, "structure", structure.id);
 
@@ -2383,6 +2624,7 @@ function loadSave(save) {
   state.language = language;
   saveLanguage(language);
   state.selectedPlayers = state.gameState.playerCount;
+  resetTradeOfferDraft();
   state.view = "board";
   state.modal = null;
   state.notice = t("loadSuccess");

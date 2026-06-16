@@ -46,6 +46,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
     supplyDiscard: [],
     hasDrawnSupplyThisTurn: false,
     supplyDrawTurnKey: null,
+    activeTradeOffer: null,
     sevenResolution: null,
     placement: createPlacementState(safePlayerCount),
     board: {
@@ -62,6 +63,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
         (boardLayout.startSystems ?? []).map((system) => system.id)
       ),
       pendingShipPlacement: null,
+      pendingSpaceportUpgrade: null,
       structures: startingStructures,
       colonies: startingStructures.filter((structure) => structure.type === "colony"),
       stations: [],
@@ -573,6 +575,7 @@ export function distributeSevenSupply(gameState) {
 export function advanceToFlightPhase(gameState) {
   return updateGameState(gameState, {
     phase: "flight",
+    activeTradeOffer: null,
     flightSpeedBase: null,
     flightSpeedTotal: null,
     remainingMovementByShipId: {},
@@ -580,7 +583,8 @@ export function advanceToFlightPhase(gameState) {
     board: {
       ...gameState.board,
       selectedElement: null,
-      pendingShipPlacement: null
+      pendingShipPlacement: null,
+      pendingSpaceportUpgrade: null
     },
     logEntry: {
       type: "turn",
@@ -894,6 +898,149 @@ export function tradeWithSupply(gameState, { fromResource, toResource }) {
   });
 }
 
+export function createTradeOffer(gameState, { fromPlayerId, toPlayerId, offeredResources, requestedResources }) {
+  if (gameState.phase !== "tradeBuild") return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const targetPlayer = gameState.players.find((player) => player.id === toPlayerId);
+  const normalizedOffered = normalizeResources(offeredResources);
+  const normalizedRequested = normalizeResources(requestedResources);
+  const hasOfferContent = countResources(normalizedOffered) > 0 || countResources(normalizedRequested) > 0;
+
+  if (
+    !activePlayer ||
+    activePlayer.id !== fromPlayerId ||
+    !targetPlayer ||
+    targetPlayer.id === activePlayer.id ||
+    !hasOfferContent ||
+    !canPay(activePlayer.resources, normalizedOffered)
+  ) {
+    return gameState;
+  }
+
+  return updateGameState(gameState, {
+    activeTradeOffer: {
+      offerId: createId("trade-offer"),
+      fromPlayerId: activePlayer.id,
+      toPlayerId: targetPlayer.id,
+      offeredResources: normalizedOffered,
+      requestedResources: normalizedRequested,
+      status: "pending",
+      createdAt: new Date().toISOString()
+    },
+    logEntry: {
+      type: "trade",
+      messageKey: "logTradeOffered",
+      messageParams: {
+        player: activePlayer.name,
+        target: targetPlayer.name
+      }
+    }
+  });
+}
+
+export function cancelTradeOffer(gameState, playerId) {
+  if (gameState.phase !== "tradeBuild") return gameState;
+  const activeTradeOffer = normalizeActiveTradeOffer(gameState.activeTradeOffer, gameState.players);
+  if (!activeTradeOffer || activeTradeOffer.fromPlayerId !== playerId) return gameState;
+
+  const player = gameState.players.find((candidate) => candidate.id === playerId);
+  return updateGameState(gameState, {
+    activeTradeOffer: null,
+    logEntry: {
+      type: "trade",
+      messageKey: "logTradeCancelled",
+      messageParams: {
+        player: player?.name ?? playerId
+      }
+    }
+  });
+}
+
+export function respondToTradeOffer(gameState, playerId, decision) {
+  if (gameState.phase !== "tradeBuild") return gameState;
+  const activeTradeOffer = normalizeActiveTradeOffer(gameState.activeTradeOffer, gameState.players);
+  if (!activeTradeOffer || !["accept", "decline"].includes(decision) || activeTradeOffer.toPlayerId !== playerId) {
+    return gameState;
+  }
+
+  const sourcePlayer = gameState.players.find((player) => player.id === activeTradeOffer.fromPlayerId);
+  const targetPlayer = gameState.players.find((player) => player.id === activeTradeOffer.toPlayerId);
+  if (!sourcePlayer || !targetPlayer) {
+    return updateGameState(gameState, {
+      activeTradeOffer: null,
+      logEntry: {
+        type: "trade",
+        messageKey: "logTradeInvalid",
+        messageParams: {}
+      }
+    });
+  }
+
+  if (decision === "decline") {
+    return updateGameState(gameState, {
+      activeTradeOffer: null,
+      logEntry: {
+        type: "trade",
+        messageKey: "logTradeDeclined",
+        messageParams: {
+          player: targetPlayer.name,
+          source: sourcePlayer.name
+        }
+      }
+    });
+  }
+
+  if (
+    !canPay(sourcePlayer.resources, activeTradeOffer.offeredResources) ||
+    !canPay(targetPlayer.resources, activeTradeOffer.requestedResources)
+  ) {
+    return updateGameState(gameState, {
+      activeTradeOffer: null,
+      logEntry: {
+        type: "trade",
+        messageKey: "logTradeInvalid",
+        messageParams: {}
+      }
+    });
+  }
+
+  const players = gameState.players.map((player) => {
+    if (player.id === sourcePlayer.id) {
+      return {
+        ...player,
+        resources: mergeResources(
+          payCost(player.resources, activeTradeOffer.offeredResources),
+          activeTradeOffer.requestedResources
+        )
+      };
+    }
+    if (player.id === targetPlayer.id) {
+      return {
+        ...player,
+        resources: mergeResources(
+          payCost(player.resources, activeTradeOffer.requestedResources),
+          activeTradeOffer.offeredResources
+        )
+      };
+    }
+    return player;
+  });
+
+  return updateGameState(gameState, {
+    players,
+    activeTradeOffer: null,
+    logEntry: {
+      type: "trade",
+      messageKey: "logTradeAccepted",
+      messageParams: {
+        player: targetPlayer.name,
+        source: sourcePlayer.name
+      }
+    }
+  });
+}
+
 export function buyUpgrade(gameState, upgradeId) {
   if (gameState.phase !== "tradeBuild") return gameState;
 
@@ -944,6 +1091,7 @@ export function buildShip(gameState, boardLayout, shipType) {
     board: {
       ...gameState.board,
       selectedElement: null,
+      pendingSpaceportUpgrade: null,
       pendingShipPlacement: {
         shipType,
         ownerPlayerId: activePlayer.id,
@@ -1016,13 +1164,45 @@ export function cancelPendingShipPlacement(gameState) {
   });
 }
 
-export function upgradeColonyToSpaceport(gameState) {
+export function startPendingSpaceportUpgrade(gameState) {
   if (gameState.phase !== "tradeBuild") return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const definition = buildActionDefinitions.find((action) => action.id === "spaceport");
-  const colony = findUpgradeableColony(gameState, activePlayer?.id);
-  if (!activePlayer || !definition || !colony || !canPay(activePlayer.resources, definition.cost)) {
+  const colonies = findUpgradeableColonies(gameState, activePlayer?.id);
+  if (!activePlayer || !definition || colonies.length === 0 || !canPay(activePlayer.resources, definition.cost)) {
+    return gameState;
+  }
+
+  return updateGameState(gameState, {
+    board: {
+      ...gameState.board,
+      selectedElement: null,
+      pendingShipPlacement: null,
+      pendingSpaceportUpgrade: {
+        ownerPlayerId: activePlayer.id,
+        cost: definition.cost
+      }
+    },
+    logEntry: {
+      type: "build",
+      messageKey: "logSpaceportSelectionStarted",
+      messageParams: {
+        player: activePlayer.name
+      }
+    }
+  });
+}
+
+export function confirmPendingSpaceportUpgrade(gameState, structureId) {
+  if (gameState.phase !== "tradeBuild") return gameState;
+
+  const pending = normalizePendingSpaceportUpgrade(gameState.board?.pendingSpaceportUpgrade, gameState.players);
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const definition = buildActionDefinitions.find((action) => action.id === "spaceport");
+  const colony = findUpgradeableColonies(gameState, activePlayer?.id)
+    .find((structure) => structure.id === structureId);
+  if (!pending || !activePlayer || pending.ownerPlayerId !== activePlayer.id || !definition || !colony || !canPay(activePlayer.resources, definition.cost)) {
     return gameState;
   }
 
@@ -1040,13 +1220,34 @@ export function upgradeColonyToSpaceport(gameState) {
     board: {
       ...gameState.board,
       structures,
-      colonies: structures.filter((structure) => structure.type === "colony")
+      colonies: structures.filter((structure) => structure.type === "colony"),
+      selectedElement: { type: "structure", id: colony.id },
+      pendingSpaceportUpgrade: null
     },
     logEntry: {
       type: "build",
       messageKey: "logSpaceportBuilt",
       messageParams: {
         player: activePlayer.name
+      }
+    }
+  });
+}
+
+export function cancelPendingSpaceportUpgrade(gameState) {
+  if (!gameState.board?.pendingSpaceportUpgrade) return gameState;
+
+  return updateGameState(gameState, {
+    board: {
+      ...gameState.board,
+      selectedElement: null,
+      pendingSpaceportUpgrade: null
+    },
+    logEntry: {
+      type: "build",
+      messageKey: "logSpaceportSelectionCancelled",
+      messageParams: {
+        player: getActivePlayerName(gameState)
       }
     }
   });
@@ -1067,11 +1268,13 @@ export function endCurrentTurn(gameState) {
     hasRolledFlightSpeed: false,
     hasDrawnSupplyThisTurn: false,
     supplyDrawTurnKey: null,
+    activeTradeOffer: null,
     sevenResolution: null,
     board: {
       ...gameState.board,
       selectedElement: null,
-      pendingShipPlacement: null
+      pendingShipPlacement: null,
+      pendingSpaceportUpgrade: null
     },
     logEntry: {
       type: "turn",
@@ -1144,6 +1347,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     supplyDiscard: Array.isArray(gameState.supplyDiscard) ? gameState.supplyDiscard.filter((resource) => supplyResourceTypes.includes(resource)) : [],
     hasDrawnSupplyThisTurn: Boolean(gameState.hasDrawnSupplyThisTurn),
     supplyDrawTurnKey: typeof gameState.supplyDrawTurnKey === "string" ? gameState.supplyDrawTurnKey : null,
+    activeTradeOffer: normalizeActiveTradeOffer(gameState.activeTradeOffer, normalizedPlayers),
     sevenResolution: normalizeSevenResolution(gameState.sevenResolution, normalizedPlayers),
     placement: normalizePlacementState(gameState.placement, normalizedPlayerCount),
     board: {
@@ -1156,6 +1360,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
       exploredSystems: normalizedExploredSystems,
       numberTokens: normalizedNumberTokens,
       pendingShipPlacement: normalizePendingShipPlacement(gameState.board?.pendingShipPlacement, normalizedPlayers),
+      pendingSpaceportUpgrade: normalizePendingSpaceportUpgrade(gameState.board?.pendingSpaceportUpgrade, normalizedPlayers),
       structures: normalizedStructures,
       colonies: normalizedStructures.filter((structure) => structure.type === "colony"),
       stations: normalizedStructures.filter((structure) => structure.type === "tradeStation"),
@@ -1661,6 +1866,37 @@ function normalizePendingShipPlacement(pendingShipPlacement, players = []) {
   };
 }
 
+function normalizePendingSpaceportUpgrade(pendingSpaceportUpgrade, players = []) {
+  if (!pendingSpaceportUpgrade || typeof pendingSpaceportUpgrade !== "object") return null;
+  const playerIds = new Set((players ?? []).map((player) => player.id));
+  if (!playerIds.has(pendingSpaceportUpgrade.ownerPlayerId)) return null;
+
+  return {
+    ownerPlayerId: pendingSpaceportUpgrade.ownerPlayerId,
+    cost: pendingSpaceportUpgrade.cost && typeof pendingSpaceportUpgrade.cost === "object"
+      ? pendingSpaceportUpgrade.cost
+      : {}
+  };
+}
+
+function normalizeActiveTradeOffer(activeTradeOffer, players = []) {
+  if (!activeTradeOffer || typeof activeTradeOffer !== "object") return null;
+  const playerIds = new Set((players ?? []).map((player) => player.id));
+  if (!playerIds.has(activeTradeOffer.fromPlayerId) || !playerIds.has(activeTradeOffer.toPlayerId)) return null;
+
+  return {
+    offerId: activeTradeOffer.offerId || createId("trade-offer"),
+    fromPlayerId: activeTradeOffer.fromPlayerId,
+    toPlayerId: activeTradeOffer.toPlayerId,
+    offeredResources: normalizeResources(activeTradeOffer.offeredResources),
+    requestedResources: normalizeResources(activeTradeOffer.requestedResources),
+    status: ["draft", "pending", "accepted", "declined", "cancelled"].includes(activeTradeOffer.status)
+      ? activeTradeOffer.status
+      : "pending",
+    createdAt: activeTradeOffer.createdAt || new Date().toISOString()
+  };
+}
+
 function findFreeLaunchPoint(gameState, boardLayout, ownerPlayerId) {
   return getAvailableShipLaunchPoints(gameState, boardLayout, ownerPlayerId)[0] ?? null;
 }
@@ -1694,9 +1930,9 @@ function findFreeLaunchPointForStructures(boardLayout, structures, occupiedLaunc
     .find((point) => ownSpaceportLocationIds.has(point.spaceportLocationId) && !occupiedLaunchPointIds.has(point.id));
 }
 
-function findUpgradeableColony(gameState, ownerPlayerId) {
+function findUpgradeableColonies(gameState, ownerPlayerId) {
   return normalizeStructures(gameState.board?.structures, gameState.playerCount, { startSites: [], startAssignments: [] })
-    .find((structure) => structure.ownerPlayerId === ownerPlayerId && structure.type === "colony");
+    .filter((structure) => structure.ownerPlayerId === ownerPlayerId && structure.type === "colony");
 }
 
 function updatePlayerById(players, playerId, updatePlayer) {
@@ -1709,6 +1945,14 @@ function syncPlayersWithBoardAssets(players, structures, ships) {
     structures: structures.filter((structure) => structure.ownerPlayerId === player.id),
     ships: ships.filter((ship) => ship.ownerPlayerId === player.id)
   }));
+}
+
+function mergeResources(resources, additions) {
+  const merged = normalizeResources(resources);
+  for (const [resource, amount] of Object.entries(normalizeResources(additions))) {
+    merged[resource] = (merged[resource] ?? 0) + amount;
+  }
+  return merged;
 }
 
 function getPlayerIndexById(gameState, playerId) {
