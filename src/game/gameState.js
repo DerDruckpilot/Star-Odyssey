@@ -1,3 +1,4 @@
+import { boardLayout as defaultBoardLayout } from "../data/boardLayout.js";
 import { bankTradeRates, buildActionDefinitions, upgradeDefinitions } from "../data/buildCosts.js";
 import { getEncounterCardById, getEncounterDeckIds } from "../data/encounterCards.js";
 import { getFriendshipCardById } from "../data/friendshipCards.js";
@@ -885,30 +886,88 @@ export function resolveEncounterChoice(gameState, payload = {}) {
   if (gameState.phase !== "flight" || !gameState.activeEncounter) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
-  const card = getEncounterCardById(gameState.activeEncounter.cardId);
-  if (!activePlayer || !card) return gameState;
+  const encounter = normalizeActiveEncounter(gameState.activeEncounter);
+  const card = getEncounterCardById(encounter?.cardId);
+  if (!activePlayer || !card || encounter?.status === "resolved" || encounter?.pendingStep) return gameState;
 
-  const resolution = applyEncounterEffects(
+  const choice = card.choices?.find((entry) => entry.id === payload.choiceId) ?? null;
+  if (!choice) return gameState;
+
+  const resolution = runEncounterEffectSequence(
     gameState,
-    activePlayer,
+    createEncounterWorkingState(gameState),
+    activePlayer.id,
+    choice.effects ?? [],
     card,
-    payload
+    payload,
+    {
+      choiceId: choice.id,
+      resultText: card.results ?? null
+    }
   );
   if (!resolution) return gameState;
 
+  return applyEncounterResolution(gameState, encounter, resolution, {
+    choiceId: choice.id,
+    chosenResource: payload.resource ?? null,
+    chosenUpgrade: payload.upgrade ?? null
+  });
+}
+
+export function updateEncounterResourceSelection(gameState, resource, delta) {
+  if (isGameOverState(gameState)) return gameState;
+  const encounter = normalizeActiveEncounter(gameState.activeEncounter);
+  const pendingStep = encounter?.pendingStep;
+  if (!encounter || pendingStep?.type !== "resourceSelection" || !supplyResourceTypes.includes(resource)) {
+    return gameState;
+  }
+
+  const currentSelection = normalizeResources(pendingStep.selectedResources);
+  const nextSelection = { ...currentSelection };
+  const selectedTotal = countResources(currentSelection);
+  const maxAmount = pendingStep.amount ?? 0;
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const availableResources = normalizeResources(activePlayer?.resources);
+
+  if (delta > 0) {
+    if (selectedTotal >= maxAmount) return gameState;
+    if (pendingStep.mode === "loss" && nextSelection[resource] >= availableResources[resource]) return gameState;
+    nextSelection[resource] += 1;
+  } else if (delta < 0) {
+    if (nextSelection[resource] <= 0) return gameState;
+    nextSelection[resource] -= 1;
+  } else {
+    return gameState;
+  }
+
   return updateGameState(gameState, {
-    players: resolution.players,
     activeEncounter: {
-      ...gameState.activeEncounter,
-      status: "resolved",
-      choiceId: payload.choiceId ?? null,
-      chosenResource: payload.resource ?? null,
-      chosenUpgrade: payload.upgrade ?? null,
-      combat: resolution.combat ?? null,
-      resultText: resolution.resultText
-    },
-    encounterStep: "resolved",
-    logEntries: resolution.logEntries
+      ...encounter,
+      pendingStep: {
+        ...pendingStep,
+        selectedResources: nextSelection
+      }
+    }
+  });
+}
+
+export function submitEncounterPending(gameState, payload = {}) {
+  if (isGameOverState(gameState)) return gameState;
+  if (gameState.phase !== "flight" || !gameState.activeEncounter) return gameState;
+
+  const encounter = normalizeActiveEncounter(gameState.activeEncounter);
+  const card = getEncounterCardById(encounter?.cardId);
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const pendingStep = encounter?.pendingStep;
+  if (!encounter || !card || !activePlayer || !pendingStep) return gameState;
+
+  const pendingResolution = resolveEncounterPendingStep(gameState, encounter, card, activePlayer, pendingStep, payload);
+  if (!pendingResolution) return gameState;
+
+  return applyEncounterResolution(gameState, encounter, pendingResolution, {
+    choiceId: encounter.choiceId ?? null,
+    chosenResource: encounter.chosenResource ?? null,
+    chosenUpgrade: encounter.chosenUpgrade ?? null
   });
 }
 
@@ -2286,7 +2345,8 @@ function normalizeActiveEncounter(activeEncounter) {
     chosenResource: supplyResourceTypes.includes(activeEncounter.chosenResource) ? activeEncounter.chosenResource : null,
     chosenUpgrade: ["drive", "cargo", "cannon"].includes(activeEncounter.chosenUpgrade) ? activeEncounter.chosenUpgrade : null,
     combat: normalizeEncounterCombat(activeEncounter.combat),
-    resultText: normalizeLocalizedText(activeEncounter.resultText)
+    resultText: normalizeLocalizedText(activeEncounter.resultText),
+    pendingStep: normalizePendingEncounterStep(activeEncounter.pendingStep)
   };
 }
 
@@ -2296,6 +2356,11 @@ function normalizeEncounterCombat(combat) {
     enemyStrength: Number.isInteger(combat.enemyStrength) ? combat.enemyStrength : 0,
     rollTotal: Number.isInteger(combat.rollTotal) ? combat.rollTotal : 0,
     strength: Number.isInteger(combat.strength) ? combat.strength : 0,
+    balls: Array.isArray(combat.balls) ? combat.balls.filter((ball) => Object.hasOwn(mothershipBallValues, ball)).slice(0, 2) : [],
+    opponentRollTotal: Number.isInteger(combat.opponentRollTotal) ? combat.opponentRollTotal : null,
+    opponentBalls: Array.isArray(combat.opponentBalls) ? combat.opponentBalls.filter((ball) => Object.hasOwn(mothershipBallValues, ball)).slice(0, 2) : [],
+    enemyPlayerId: typeof combat.enemyPlayerId === "string" ? combat.enemyPlayerId : null,
+    enemyName: typeof combat.enemyName === "string" ? combat.enemyName : null,
     outcome: ["win", "lose"].includes(combat.outcome) ? combat.outcome : "lose"
   };
 }
@@ -2306,6 +2371,59 @@ function normalizeLocalizedText(text) {
     de: typeof text.de === "string" ? text.de : "",
     en: typeof text.en === "string" ? text.en : ""
   };
+}
+
+function normalizePendingEncounterStep(pendingStep) {
+  if (!pendingStep || typeof pendingStep !== "object") return null;
+
+  if (pendingStep.type === "resourceSelection") {
+    return {
+      type: "resourceSelection",
+      mode: pendingStep.mode === "loss" ? "loss" : "gain",
+      amount: Number.isInteger(pendingStep.amount) ? Math.max(0, pendingStep.amount) : 1,
+      selectedResources: normalizeResources(pendingStep.selectedResources),
+      remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
+    };
+  }
+
+  if (pendingStep.type === "upgradeSelection") {
+    return {
+      type: "upgradeSelection",
+      mode: pendingStep.mode === "loss" ? "loss" : "gain",
+      amount: Number.isInteger(pendingStep.amount) ? Math.max(0, pendingStep.amount) : 1,
+      selectedUpgrade: isValidUpgradeId(pendingStep.selectedUpgrade) ? pendingStep.selectedUpgrade : null,
+      remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
+    };
+  }
+
+  if (pendingStep.type === "boardTargetSelection") {
+    return {
+      type: "boardTargetSelection",
+      shipId: typeof pendingStep.shipId === "string" ? pendingStep.shipId : null,
+      validNodeIds: Array.isArray(pendingStep.validNodeIds)
+        ? pendingStep.validNodeIds.filter((nodeId) => typeof nodeId === "string")
+        : [],
+      hint: normalizeLocalizedText(pendingStep.hint),
+      remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
+    };
+  }
+
+  if (pendingStep.type === "globalUpgradeLossSelection") {
+    return {
+      type: "globalUpgradeLossSelection",
+      threshold: Number.isInteger(pendingStep.threshold) ? pendingStep.threshold : 0,
+      amount: Number.isInteger(pendingStep.amount) ? Math.max(1, pendingStep.amount) : 1,
+      currentTargetPlayerId: typeof pendingStep.currentTargetPlayerId === "string"
+        ? pendingStep.currentTargetPlayerId
+        : null,
+      targetPlayerIds: Array.isArray(pendingStep.targetPlayerIds)
+        ? pendingStep.targetPlayerIds.filter((playerId) => typeof playerId === "string")
+        : [],
+      remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
+    };
+  }
+
+  return null;
 }
 
 function hasSupplyDrawnThisTurn(gameState) {
@@ -2426,7 +2544,8 @@ function startEncounter(gameState, forcedEncounterCardId = null) {
       chosenResource: null,
       chosenUpgrade: null,
       combat: null,
-      resultText: null
+      resultText: null,
+      pendingStep: null
     },
     encounterStep: "choice"
   };
@@ -2437,7 +2556,7 @@ function drawEncounterCard(encounterDeck, encounterDiscard, forcedEncounterCardI
   let deck = normalizeEncounterDeck(encounterDeck, { allowEmpty: true });
   let discard = Array.isArray(encounterDiscard) ? [...encounterDiscard] : [];
 
-  if (forcedEncounterCardId && validIds.includes(forcedEncounterCardId)) {
+  if (forcedEncounterCardId && getEncounterCardById(forcedEncounterCardId)?.implemented) {
     deck = deck.filter((cardId) => cardId !== forcedEncounterCardId);
     discard = discard.filter((cardId) => cardId !== forcedEncounterCardId);
     return { cardId: forcedEncounterCardId, deck, discard };
@@ -2456,188 +2575,1015 @@ function drawEncounterCard(encounterDeck, encounterDiscard, forcedEncounterCardI
   };
 }
 
-function applyEncounterEffects(gameState, activePlayer, card, payload) {
-  const choice = card.choices?.find((entry) => entry.id === payload.choiceId) ?? card.choices?.[0] ?? null;
-  const effects = choice?.effects ?? card.effects ?? [];
-  let players = gameState.players.map((player) => ({ ...player, resources: normalizeResources(player.resources), upgrades: normalizeUpgrades(player.upgrades) }));
-  const logEntries = [];
-  let combat = null;
-  let resultText = card.results ?? null;
-
-  for (const effect of effects) {
-    const result = applyEncounterEffect(gameState, players, activePlayer.id, effect, payload, card);
-    if (!result) return null;
-    players = result.players;
-    combat = result.combat ?? combat;
-    if (result.resultText) resultText = result.resultText;
-    if (result.logEntry) logEntries.push(result.logEntry);
-  }
-
-  return { players, combat, resultText, logEntries };
-}
-
-function applyEncounterEffect(gameState, players, activePlayerId, effect, payload, card) {
-  const activePlayerIndex = players.findIndex((player) => player.id === activePlayerId);
-  if (activePlayerIndex < 0) return { players, combat: null, resultText: card.results ?? null, logEntry: null };
-
-  const activePlayer = players[activePlayerIndex];
-  const updatedPlayers = [...players];
-  let combat = null;
-  let logEntry = null;
-
-  if (effect.type === "gainResource") {
-    updatedPlayers[activePlayerIndex] = withResourceDelta(activePlayer, effect.resource, effect.amount);
-    logEntry = {
-      type: "encounter",
-      messageKey: "logEncounterResourceGain",
-      messageParams: {
-        player: activePlayer.name,
-        amount: effect.amount,
-        resource: effect.resource
-      }
-    };
-  } else if (effect.type === "loseResource") {
-    const owned = activePlayer.resources?.[effect.resource] ?? 0;
-    const loss = Math.min(owned, effect.amount);
-    updatedPlayers[activePlayerIndex] = withResourceDelta(activePlayer, effect.resource, -loss);
-    logEntry = {
-      type: "encounter",
-      messageKey: "logEncounterResourceLoss",
-      messageParams: {
-        player: activePlayer.name,
-        amount: loss,
-        resource: effect.resource
-      }
-    };
-  } else if (effect.type === "chooseResourceGain") {
-    if (!supplyResourceTypes.includes(payload.resource)) return null;
-    updatedPlayers[activePlayerIndex] = withResourceDelta(activePlayer, payload.resource, effect.amount ?? 1);
-    logEntry = {
-      type: "encounter",
-      messageKey: "logEncounterResourceGain",
-      messageParams: {
-        player: activePlayer.name,
-        amount: effect.amount ?? 1,
-        resource: payload.resource
-      }
-    };
-  } else if (effect.type === "gainHalfMedal") {
-    updatedPlayers[activePlayerIndex] = withHalfMedalDelta(activePlayer, effect.amount ?? 1);
-    logEntry = {
-      type: "encounter",
-      messageKey: "logEncounterHalfMedalGain",
-      messageParams: {
-        player: activePlayer.name,
-        amount: effect.amount ?? 1
-      }
-    };
-  } else if (effect.type === "loseHalfMedal") {
-    updatedPlayers[activePlayerIndex] = withHalfMedalDelta(activePlayer, -(effect.amount ?? 1));
-    logEntry = {
-      type: "encounter",
-      messageKey: "logEncounterHalfMedalLoss",
-      messageParams: {
-        player: activePlayer.name,
-        amount: effect.amount ?? 1
-      }
-    };
-  } else if (effect.type === "chooseUpgradeGain") {
-    if (!isValidUpgradeId(payload.upgrade)) return null;
-    updatedPlayers[activePlayerIndex] = withUpgradeDelta(activePlayer, payload.upgrade, effect.amount ?? 1);
-    logEntry = {
-      type: "encounter",
-      messageKey: "logEncounterUpgradeGain",
-      messageParams: {
-        player: activePlayer.name,
-        upgrade: payload.upgrade
-      }
-    };
-  } else if (effect.type === "chooseUpgradeLoss") {
-    if (!isValidUpgradeId(payload.upgrade)) {
-      if (!Object.values(activePlayer.upgrades ?? {}).some((value) => value > 0)) {
-        return { players: updatedPlayers, combat: null, resultText: card.results ?? null, logEntry: null };
-      }
-      return null;
-    }
-    updatedPlayers[activePlayerIndex] = withUpgradeDelta(activePlayer, payload.upgrade, -(effect.amount ?? 1));
-    logEntry = {
-      type: "encounter",
-      messageKey: "logEncounterUpgradeLoss",
-      messageParams: {
-        player: activePlayer.name,
-        upgrade: payload.upgrade
-      }
-    };
-  } else if (effect.type === "loseUpgrade") {
-    updatedPlayers[activePlayerIndex] = withUpgradeDelta(activePlayer, effect.upgrade, -(effect.amount ?? 1));
-    logEntry = {
-      type: "encounter",
-      messageKey: "logEncounterUpgradeLoss",
-      messageParams: {
-        player: activePlayer.name,
-        upgrade: effect.upgrade
-      }
-    };
-  } else if (effect.type === "combat") {
-    combat = resolveEncounterCombat(gameState, activePlayer, effect);
-    updatedPlayers[activePlayerIndex] = applyCombatOutcome(activePlayer, combat.outcome === "win" ? effect.onWin : effect.onLose);
-    logEntry = {
-      type: "encounter",
-      messageKey: combat.outcome === "win" ? "logEncounterCombatWin" : "logEncounterCombatLoss",
-      messageParams: {
-        player: activePlayer.name,
-        strength: combat.strength,
-        enemy: combat.enemyStrength
-      }
-    };
-  }
-
+function createEncounterWorkingState(gameState) {
   return {
-    players: updatedPlayers,
-    combat,
-    resultText: card.results ?? null,
-    logEntry
+    players: gameState.players.map((player) => ({
+      ...player,
+      resources: normalizeResources(player.resources),
+      upgrades: normalizeUpgrades(player.upgrades),
+      friendshipCards: normalizeFriendshipCards(player.friendshipCards),
+      friendshipMarkers: normalizeFriendshipMarkers(player.friendshipMarkers),
+      specialMedals: normalizeSpecialMedals(player.specialMedals)
+    })),
+    board: {
+      ...gameState.board,
+      ships: normalizeShips(gameState.board?.ships),
+      structures: normalizeStructures(gameState.board?.structures, gameState.playerCount, defaultBoardLayout, { useFallback: false })
+    },
+    remainingMovementByShipId: { ...(gameState.remainingMovementByShipId ?? {}) }
   };
 }
 
-function applyCombatOutcome(player, effects = []) {
-  let updatedPlayer = { ...player, resources: normalizeResources(player.resources), upgrades: normalizeUpgrades(player.upgrades) };
-  for (const effect of effects) {
-    if (effect.type === "gainHalfMedal") {
-      updatedPlayer = withHalfMedalDelta(updatedPlayer, effect.amount ?? 1);
-    } else if (effect.type === "loseResource") {
-      const owned = updatedPlayer.resources?.[effect.resource] ?? 0;
-      updatedPlayer = withResourceDelta(updatedPlayer, effect.resource, -Math.min(owned, effect.amount ?? 1));
-    } else if (effect.type === "gainResource") {
-      updatedPlayer = withResourceDelta(updatedPlayer, effect.resource, effect.amount ?? 1);
-    } else if (effect.type === "loseUpgrade") {
-      updatedPlayer = withUpgradeDelta(updatedPlayer, effect.upgrade, -(effect.amount ?? 1));
-    } else if (effect.type === "gainUpgrade") {
-      updatedPlayer = withUpgradeDelta(updatedPlayer, effect.upgrade, effect.amount ?? 1);
-    }
+function applyEncounterResolution(gameState, encounter, resolution, metadata = {}) {
+  if (!resolution) return gameState;
+  const baseUpdate = {
+    players: resolution.players ?? gameState.players,
+    board: resolution.board ? { ...gameState.board, ...resolution.board } : gameState.board,
+    remainingMovementByShipId: resolution.remainingMovementByShipId ?? gameState.remainingMovementByShipId,
+    logEntries: resolution.logEntries ?? []
+  };
+
+  if (resolution.nextEncounter) {
+    const intermediateState = updateGameState(gameState, {
+      ...baseUpdate,
+      activeEncounter: null,
+      encounterStep: null,
+      encounterDiscard: resolution.nextEncounter.reshuffleAll
+        ? []
+        : [...(gameState.encounterDiscard ?? []), encounter.cardId]
+    });
+    const encounterDeck = resolution.nextEncounter.reshuffleAll
+      ? createEncounterDeck()
+      : intermediateState.encounterDeck;
+    const encounterStart = startEncounter(
+      {
+        ...intermediateState,
+        encounterDeck,
+        encounterDiscard: resolution.nextEncounter.reshuffleAll ? [] : intermediateState.encounterDiscard
+      },
+      resolution.nextEncounter.forcedCardId
+    );
+
+    return updateGameState(intermediateState, {
+      encounterDeck: encounterStart.encounterDeck,
+      encounterDiscard: encounterStart.encounterDiscard,
+      activeEncounter: encounterStart.activeEncounter,
+      encounterStep: encounterStart.encounterStep,
+      logEntry: {
+        type: "encounter",
+        messageKey: "logEncounterChain",
+        messageParams: {
+          player: getActivePlayerName(intermediateState),
+          title: getEncounterCardById(encounterStart.activeEncounter?.cardId)?.title?.[intermediateState.language] ?? ""
+        }
+      }
+    });
   }
-  return updatedPlayer;
+
+  const nextEncounter = {
+    ...encounter,
+    choiceId: metadata.choiceId ?? encounter.choiceId ?? null,
+    chosenResource: metadata.chosenResource ?? encounter.chosenResource ?? null,
+    chosenUpgrade: metadata.chosenUpgrade ?? encounter.chosenUpgrade ?? null,
+    combat: resolution.combat ?? encounter.combat ?? null,
+    resultText: resolution.resultText ?? encounter.resultText ?? null,
+    pendingStep: resolution.pendingStep ? normalizePendingEncounterStep(resolution.pendingStep) : null,
+    status: resolution.pendingStep ? "pending" : (resolution.status ?? "resolved")
+  };
+
+  return updateGameState(gameState, {
+    ...baseUpdate,
+    activeEncounter: nextEncounter,
+    encounterStep: nextEncounter.pendingStep
+      ? nextEncounter.pendingStep.type
+      : nextEncounter.status === "resolved"
+        ? "resolved"
+        : "choice"
+  });
 }
 
-function resolveEncounterCombat(gameState, player, effect) {
-  const roll = createCombatRoll();
-  const strength = roll.total + getPlayerCombatBonus(gameState, player.id);
+function runEncounterEffectSequence(gameState, state, activePlayerId, effects, card, payload, context = {}) {
+  let workingState = state;
+  const logEntries = [];
+  let combat = context.combat ?? null;
+  let resultText = normalizeLocalizedText(context.resultText) ?? normalizeLocalizedText(card.results);
+
+  for (let index = 0; index < effects.length; index += 1) {
+    const effect = effects[index];
+    const result = applyEncounterEffectSequence(gameState, workingState, activePlayerId, effect, payload, card);
+    if (!result) return null;
+
+    workingState = result.state ?? workingState;
+    if (Array.isArray(result.logEntries) && result.logEntries.length > 0) {
+      logEntries.push(...result.logEntries);
+    }
+    if (result.combat) combat = result.combat;
+    if (result.resultText) resultText = result.resultText;
+
+    if (result.pendingStep) {
+      return {
+        players: workingState.players,
+        board: workingState.board,
+        remainingMovementByShipId: workingState.remainingMovementByShipId,
+        logEntries,
+        combat,
+        resultText,
+        status: "pending",
+        pendingStep: {
+          ...result.pendingStep,
+          remainingEffects: [
+            ...(result.pendingStep.remainingEffects ?? []),
+            ...effects.slice(index + 1)
+          ]
+        }
+      };
+    }
+
+    if (result.nextEncounter) {
+      return {
+        players: workingState.players,
+        board: workingState.board,
+        remainingMovementByShipId: workingState.remainingMovementByShipId,
+        logEntries,
+        combat,
+        resultText,
+        status: "resolved",
+        pendingStep: null,
+        nextEncounter: result.nextEncounter
+      };
+    }
+  }
 
   return {
-    enemyStrength: effect.enemyStrength ?? 0,
+    players: workingState.players,
+    board: workingState.board,
+    remainingMovementByShipId: workingState.remainingMovementByShipId,
+    logEntries,
+    combat,
+    resultText,
+    status: "resolved",
+    pendingStep: null
+  };
+}
+
+function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, payload, card) {
+  const activePlayer = state.players.find((player) => player.id === activePlayerId);
+  if (!activePlayer || !effect) return null;
+
+  switch (effect.type) {
+    case "none":
+      return { state };
+    case "gainResource": {
+      const nextState = updateEncounterWorkingPlayer(state, activePlayerId, (player) => withResourceDelta(player, effect.resource, effect.amount ?? 1));
+      return {
+        state: nextState,
+        logEntries: [createEncounterLog("logEncounterResourceGain", {
+          player: activePlayer.name,
+          amount: effect.amount ?? 1,
+          resource: effect.resource
+        })]
+      };
+    }
+    case "loseResource": {
+      const owned = activePlayer.resources?.[effect.resource] ?? 0;
+      const amount = Math.min(owned, effect.amount ?? 1);
+      const nextState = updateEncounterWorkingPlayer(state, activePlayerId, (player) => withResourceDelta(player, effect.resource, -amount));
+      return {
+        state: nextState,
+        logEntries: amount > 0 ? [createEncounterLog("logEncounterResourceLoss", {
+          player: activePlayer.name,
+          amount,
+          resource: effect.resource
+        })] : []
+      };
+    }
+    case "chooseResourceGain": {
+      if (supplyResourceTypes.includes(payload.resource) && (effect.amount ?? 1) === 1) {
+        const nextState = updateEncounterWorkingPlayer(state, activePlayerId, (player) => withResourceDelta(player, payload.resource, 1));
+        return {
+          state: nextState,
+          logEntries: [createEncounterLog("logEncounterResourceGain", {
+            player: activePlayer.name,
+            amount: 1,
+            resource: payload.resource
+          })]
+        };
+      }
+
+      return {
+        state,
+        pendingStep: {
+          type: "resourceSelection",
+          mode: "gain",
+          amount: effect.amount ?? 1,
+          selectedResources: createEmptyResources(),
+          remainingEffects: []
+        }
+      };
+    }
+    case "chooseResourceLoss": {
+      const requiredAmount = effect.amount ?? 1;
+      if (countResources(activePlayer.resources) < requiredAmount) {
+        return null;
+      }
+
+      return {
+        state,
+        pendingStep: {
+          type: "resourceSelection",
+          mode: "loss",
+          amount: requiredAmount,
+          selectedResources: createEmptyResources(),
+          remainingEffects: []
+        }
+      };
+    }
+    case "gainHalfMedal": {
+      const nextState = updateEncounterWorkingPlayer(state, activePlayerId, (player) => withHalfMedalDelta(player, effect.amount ?? 1));
+      return {
+        state: nextState,
+        logEntries: [createEncounterLog("logEncounterHalfMedalGain", {
+          player: activePlayer.name,
+          amount: effect.amount ?? 1
+        })]
+      };
+    }
+    case "globalLeaderHalfMedal": {
+      const amount = effect.amount ?? 1;
+      const metric = effect.metric === "cargo" ? "cargo" : "cargo";
+      const metricValues = state.players.map((player) => ({
+        playerId: player.id,
+        playerName: player.name,
+        value: metric === "cargo"
+          ? getCargoValueForPlayer({ ...gameState, players: state.players }, player.id)
+          : 0
+      }));
+      const maxValue = Math.max(...metricValues.map((entry) => entry.value), 0);
+      const targetIds = metricValues
+        .filter((entry) => entry.value === maxValue)
+        .map((entry) => entry.playerId);
+      const nextPlayers = state.players.map((player) => targetIds.includes(player.id)
+        ? withHalfMedalDelta(player, amount)
+        : player);
+      return {
+        state: {
+          ...state,
+          players: nextPlayers
+        },
+        logEntries: targetIds.map((playerId) => createEncounterLog("logEncounterHalfMedalGain", {
+          player: getPlayerNameById(nextPlayers, playerId),
+          amount
+        }))
+      };
+    }
+    case "loseHalfMedal": {
+      const nextState = updateEncounterWorkingPlayer(state, activePlayerId, (player) => withHalfMedalDelta(player, -(effect.amount ?? 1)));
+      return {
+        state: nextState,
+        logEntries: [createEncounterLog("logEncounterHalfMedalLoss", {
+          player: activePlayer.name,
+          amount: effect.amount ?? 1
+        })]
+      };
+    }
+    case "chooseUpgradeGain": {
+      if (isValidUpgradeId(payload.upgrade) && (effect.amount ?? 1) === 1) {
+        const nextState = updateEncounterWorkingPlayer(state, activePlayerId, (player) => withUpgradeDelta(player, payload.upgrade, 1));
+        return {
+          state: nextState,
+          logEntries: [createEncounterLog("logEncounterUpgradeGain", {
+            player: activePlayer.name,
+            upgrade: payload.upgrade
+          })]
+        };
+      }
+
+      return {
+        state,
+        pendingStep: {
+          type: "upgradeSelection",
+          mode: "gain",
+          amount: effect.amount ?? 1,
+          selectedUpgrade: null,
+          remainingEffects: []
+        }
+      };
+    }
+    case "chooseUpgradeLoss": {
+      if (!Object.values(activePlayer.upgrades ?? {}).some((value) => value > 0)) {
+        return {
+          state,
+          logEntries: [createEncounterLog("logEncounterNoUpgradeLoss", {
+            player: activePlayer.name
+          })]
+        };
+      }
+
+      if (isValidUpgradeId(payload.upgrade) && (activePlayer.upgrades?.[payload.upgrade] ?? 0) > 0) {
+        const nextState = updateEncounterWorkingPlayer(state, activePlayerId, (player) => withUpgradeDelta(player, payload.upgrade, -(effect.amount ?? 1)));
+        return {
+          state: nextState,
+          logEntries: [createEncounterLog("logEncounterUpgradeLoss", {
+            player: activePlayer.name,
+            upgrade: payload.upgrade
+          })]
+        };
+      }
+
+      return {
+        state,
+        pendingStep: {
+          type: "upgradeSelection",
+          mode: "loss",
+          amount: effect.amount ?? 1,
+          selectedUpgrade: null,
+          remainingEffects: []
+        }
+      };
+    }
+    case "gainUpgrade": {
+      const nextState = updateEncounterWorkingPlayer(state, activePlayerId, (player) => withUpgradeDelta(player, effect.upgrade, effect.amount ?? 1));
+      return {
+        state: nextState,
+        logEntries: [createEncounterLog("logEncounterUpgradeGain", {
+          player: activePlayer.name,
+          upgrade: effect.upgrade
+        })]
+      };
+    }
+    case "loseUpgrade": {
+      const nextState = updateEncounterWorkingPlayer(state, activePlayerId, (player) => withUpgradeDelta(player, effect.upgrade, -(effect.amount ?? 1)));
+      return {
+        state: nextState,
+        logEntries: [createEncounterLog("logEncounterUpgradeLoss", {
+          player: activePlayer.name,
+          upgrade: effect.upgrade
+        })]
+      };
+    }
+    case "comparison": {
+      const comparison = resolveEncounterComparison(gameState, activePlayer, effect, payload);
+      if (!comparison) return null;
+      const comparisonLog = createEncounterLog("logEncounterComparison", {
+        player: activePlayer.name,
+        target: comparison.targetName,
+        metric: comparison.metric === "speed" ? "speed" : "drive",
+        own: comparison.ownValue,
+        other: comparison.otherValue,
+        outcome: comparison.success ? "success" : "failure"
+      });
+      const followUp = runEncounterEffectSequence(
+        gameState,
+        state,
+        activePlayerId,
+        comparison.success ? (effect.onSuccess ?? []) : (effect.onFailure ?? []),
+        card,
+        payload,
+        {}
+      );
+      if (!followUp) {
+        return {
+          state,
+          logEntries: [comparisonLog]
+        };
+      }
+      return {
+        state: {
+          players: followUp.players,
+          board: followUp.board,
+          remainingMovementByShipId: followUp.remainingMovementByShipId
+        },
+        logEntries: [comparisonLog, ...(followUp.logEntries ?? [])],
+        combat: followUp.combat ?? null,
+        resultText: followUp.resultText,
+        pendingStep: followUp.pendingStep ?? null,
+        nextEncounter: followUp.nextEncounter ?? null
+      };
+    }
+    case "combat": {
+      const combat = resolveEncounterCombat(gameState, activePlayer, effect, payload);
+      if (!combat) return null;
+      const combatLog = createEncounterLog(
+        combat.outcome === "win" ? "logEncounterCombatWin" : "logEncounterCombatLoss",
+        {
+          player: activePlayer.name,
+          strength: combat.strength,
+          enemy: combat.enemyStrength,
+          target: combat.enemyName ?? ""
+        }
+      );
+      const followUp = runEncounterEffectSequence(
+        gameState,
+        state,
+        activePlayerId,
+        combat.outcome === "win" ? (effect.onWin ?? []) : (effect.onLose ?? []),
+        card,
+        payload,
+        { combat }
+      );
+      if (!followUp) {
+        return {
+          state,
+          logEntries: [combatLog],
+          combat
+        };
+      }
+      return {
+        state: {
+          players: followUp.players,
+          board: followUp.board,
+          remainingMovementByShipId: followUp.remainingMovementByShipId
+        },
+        logEntries: [combatLog, ...(followUp.logEntries ?? [])],
+        combat: followUp.combat ?? combat,
+        resultText: followUp.resultText,
+        pendingStep: followUp.pendingStep ?? null,
+        nextEncounter: followUp.nextEncounter ?? null
+      };
+    }
+    case "mothershipOutcomeRoll": {
+      const outcomeRoll = createEncounterRoll(payload.forcedRoll);
+      const outcome = (effect.outcomes ?? []).find((entry) => {
+        const [minValue, maxValue] = entry.range ?? [];
+        return Number.isInteger(minValue) && Number.isInteger(maxValue)
+          ? outcomeRoll.total >= minValue && outcomeRoll.total <= maxValue
+          : false;
+      });
+      const followUp = runEncounterEffectSequence(
+        gameState,
+        state,
+        activePlayerId,
+        outcome?.effects ?? [],
+        card,
+        payload,
+        {}
+      );
+      const outcomeLog = createEncounterLog("logEncounterOutcomeRoll", {
+        player: activePlayer.name,
+        total: outcomeRoll.total
+      });
+      if (!followUp) {
+        return {
+          state,
+          logEntries: [outcomeLog]
+        };
+      }
+      return {
+        state: {
+          players: followUp.players,
+          board: followUp.board,
+          remainingMovementByShipId: followUp.remainingMovementByShipId
+        },
+        logEntries: [outcomeLog, ...(followUp.logEntries ?? [])],
+        combat: followUp.combat ?? null,
+        resultText: followUp.resultText,
+        pendingStep: followUp.pendingStep ?? null,
+        nextEncounter: followUp.nextEncounter ?? null
+      };
+    }
+    case "jumpFirstShip": {
+      const ship = getEncounterShipForJump(state, activePlayerId);
+      if (!ship) {
+        return {
+          state,
+          logEntries: [createEncounterLog("logEncounterNoJumpShip", {
+            player: activePlayer.name
+          })]
+        };
+      }
+
+      const validNodeIds = getEncounterJumpTargets(
+        {
+          ...gameState,
+          players: state.players,
+          board: state.board
+        },
+        ship.id,
+        defaultBoardLayout
+      );
+      if (validNodeIds.length === 0) {
+        return {
+          state,
+          logEntries: [createEncounterLog("logEncounterNoJumpShip", {
+            player: activePlayer.name
+          })]
+        };
+      }
+
+      return {
+        state,
+        pendingStep: {
+          type: "boardTargetSelection",
+          shipId: ship.id,
+          validNodeIds,
+          hint: {
+            de: "Waehle einen gueltigen Zielpunkt fuer den Raumsprung.",
+            en: "Choose a valid destination for the spatial jump."
+          },
+          remainingEffects: []
+        }
+      };
+    }
+    case "drawNextEncounter":
+      return {
+        state,
+        nextEncounter: {
+          reshuffleAll: Boolean(effect.reshuffleAll),
+          forcedCardId: typeof effect.forcedCardId === "string" ? effect.forcedCardId : null
+        }
+      };
+    case "globalUpgradeLossAbove": {
+      const threshold = Number.isInteger(effect.threshold) ? effect.threshold : 0;
+      const amount = Number.isInteger(effect.amount) ? Math.max(1, effect.amount) : 1;
+      const targetPlayerIds = state.players
+        .filter((player) => getPlayerUpgradeTotal(player) > threshold && hasAnyUpgrades(player))
+        .map((player) => player.id);
+      if (targetPlayerIds.length === 0) {
+        return { state };
+      }
+
+      return {
+        state,
+        pendingStep: {
+          type: "globalUpgradeLossSelection",
+          threshold,
+          amount,
+          currentTargetPlayerId: targetPlayerIds[0],
+          targetPlayerIds,
+          remainingEffects: []
+        }
+      };
+    }
+    case "drawFromOpponents": {
+      const drawResult = applyEncounterDrawFromOpponents(state, activePlayerId, effect.amountPerOpponent ?? 1);
+      return {
+        state: drawResult.state,
+        logEntries: [createEncounterLog("logEncounterDrawFromOpponents", {
+          player: activePlayer.name,
+          count: drawResult.drawCount
+        })]
+      };
+    }
+    case "grantShip":
+      return applyEncounterShipGift(gameState, state, activePlayerId, effect.shipType ?? "tradeShip");
+    case "blockFirstShip":
+      return applyEncounterShipBlock(state, activePlayerId);
+    default:
+      return { state };
+  }
+}
+
+function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, pendingStep, payload = {}) {
+  const state = createEncounterWorkingState(gameState);
+  const remainingEffects = pendingStep.remainingEffects ?? [];
+
+  if (pendingStep.type === "resourceSelection") {
+    const selectedResources = normalizeResources(pendingStep.selectedResources);
+    if (countResources(selectedResources) !== (pendingStep.amount ?? 0)) return null;
+
+    const player = state.players.find((candidate) => candidate.id === activePlayer.id);
+    if (!player) return null;
+    if (pendingStep.mode === "loss" && !canPay(player.resources, selectedResources)) return null;
+
+    let nextState = state;
+    for (const resource of supplyResourceTypes) {
+      const amount = selectedResources[resource] ?? 0;
+      if (amount <= 0) continue;
+      nextState = updateEncounterWorkingPlayer(
+        nextState,
+        activePlayer.id,
+        (candidate) => withResourceDelta(candidate, resource, pendingStep.mode === "loss" ? -amount : amount)
+      );
+    }
+
+    const stepLogKey = pendingStep.mode === "loss"
+      ? "logEncounterResourceSelectionLoss"
+      : "logEncounterResourceSelectionGain";
+    const baseLog = createEncounterLog(stepLogKey, {
+      player: activePlayer.name,
+      resources: formatResourceSelectionForLog(selectedResources)
+    });
+    const followUp = runEncounterEffectSequence(gameState, nextState, activePlayer.id, remainingEffects, card, payload, {});
+    if (!followUp) return null;
+
+    return {
+      ...followUp,
+      logEntries: [baseLog, ...(followUp.logEntries ?? [])]
+    };
+  }
+
+  if (pendingStep.type === "upgradeSelection") {
+    const upgradeId = payload.upgrade;
+    const player = state.players.find((candidate) => candidate.id === activePlayer.id);
+    if (!player) return null;
+    const hasAnyLossTarget = Object.entries(normalizeUpgrades(player.upgrades))
+      .some(([, amount]) => amount > 0);
+
+    if (pendingStep.mode === "loss" && !hasAnyLossTarget) {
+      const followUp = runEncounterEffectSequence(gameState, state, activePlayer.id, remainingEffects, card, payload, {});
+      if (!followUp) return null;
+      return {
+        ...followUp,
+        logEntries: [
+          createEncounterLog("logEncounterNoUpgradeLoss", { player: activePlayer.name }),
+          ...(followUp.logEntries ?? [])
+        ]
+      };
+    }
+
+    if (!isValidUpgradeId(upgradeId)) return null;
+    if (pendingStep.mode === "loss" && (player.upgrades?.[upgradeId] ?? 0) <= 0) return null;
+
+    const nextState = updateEncounterWorkingPlayer(
+      state,
+      activePlayer.id,
+      (candidate) => withUpgradeDelta(candidate, upgradeId, pendingStep.mode === "loss" ? -(pendingStep.amount ?? 1) : (pendingStep.amount ?? 1))
+    );
+    const baseLog = createEncounterLog(
+      pendingStep.mode === "loss" ? "logEncounterUpgradeLoss" : "logEncounterUpgradeGain",
+      {
+        player: activePlayer.name,
+        upgrade: upgradeId
+      }
+    );
+    const followUp = runEncounterEffectSequence(gameState, nextState, activePlayer.id, remainingEffects, card, payload, {});
+    if (!followUp) return null;
+
+    return {
+      ...followUp,
+      logEntries: [baseLog, ...(followUp.logEntries ?? [])]
+    };
+  }
+
+  if (pendingStep.type === "boardTargetSelection") {
+    const targetNodeId = payload.targetNodeId;
+    if (typeof targetNodeId !== "string" || !pendingStep.validNodeIds?.includes(targetNodeId)) {
+      return null;
+    }
+
+    const shipId = pendingStep.shipId;
+    const ships = normalizeShips(state.board?.ships);
+    const ship = ships.find((candidate) => candidate.id === shipId && candidate.ownerPlayerId === activePlayer.id);
+    if (!ship) return null;
+
+    const nextShips = ships.map((candidate) => candidate.id === shipId
+      ? { ...candidate, locationId: targetNodeId, status: "active" }
+      : candidate);
+    const nextState = {
+      ...state,
+      board: {
+        ...state.board,
+        ships: nextShips
+      },
+      remainingMovementByShipId: {
+        ...state.remainingMovementByShipId,
+        [shipId]: 0
+      }
+    };
+    const baseLog = createEncounterLog("logEncounterJumpShip", {
+      player: activePlayer.name,
+      ship: ship.type,
+      target: targetNodeId
+    });
+    const followUp = runEncounterEffectSequence(gameState, nextState, activePlayer.id, remainingEffects, card, payload, {});
+    if (!followUp) return null;
+
+    return {
+      ...followUp,
+      logEntries: [baseLog, ...(followUp.logEntries ?? [])]
+    };
+  }
+
+  if (pendingStep.type === "globalUpgradeLossSelection") {
+    const currentTargetPlayerId = pendingStep.currentTargetPlayerId;
+    const targetPlayer = state.players.find((candidate) => candidate.id === currentTargetPlayerId);
+    if (!targetPlayer) {
+      const followUp = runEncounterEffectSequence(gameState, state, activePlayer.id, remainingEffects, card, payload, {});
+      return followUp;
+    }
+
+    const nextTargetPlayerIds = (pendingStep.targetPlayerIds ?? []).filter((playerId) => playerId !== currentTargetPlayerId);
+    if (!hasAnyUpgrades(targetPlayer)) {
+      if (nextTargetPlayerIds.length > 0) {
+        return {
+          players: state.players,
+          board: state.board,
+          remainingMovementByShipId: state.remainingMovementByShipId,
+          logEntries: [],
+          combat: encounter.combat ?? null,
+          resultText: encounter.resultText ?? null,
+          status: "pending",
+          pendingStep: {
+            ...pendingStep,
+            currentTargetPlayerId: nextTargetPlayerIds[0],
+            targetPlayerIds: nextTargetPlayerIds
+          }
+        };
+      }
+
+      return runEncounterEffectSequence(gameState, state, activePlayer.id, remainingEffects, card, payload, {});
+    }
+
+    const upgradeId = payload.upgrade;
+    if (!isValidUpgradeId(upgradeId) || (targetPlayer.upgrades?.[upgradeId] ?? 0) <= 0) return null;
+
+    const nextState = updateEncounterWorkingPlayer(
+      state,
+      currentTargetPlayerId,
+      (player) => withUpgradeDelta(player, upgradeId, -(pendingStep.amount ?? 1))
+    );
+    const baseLog = createEncounterLog("logEncounterUpgradeLoss", {
+      player: targetPlayer.name,
+      upgrade: upgradeId
+    });
+
+    if (nextTargetPlayerIds.length > 0) {
+      return {
+        players: nextState.players,
+        board: nextState.board,
+        remainingMovementByShipId: nextState.remainingMovementByShipId,
+        logEntries: [baseLog],
+        combat: encounter.combat ?? null,
+        resultText: encounter.resultText ?? null,
+        status: "pending",
+        pendingStep: {
+          ...pendingStep,
+          currentTargetPlayerId: nextTargetPlayerIds[0],
+          targetPlayerIds: nextTargetPlayerIds
+        }
+      };
+    }
+
+    const followUp = runEncounterEffectSequence(gameState, nextState, activePlayer.id, remainingEffects, card, payload, {});
+    if (!followUp) return null;
+
+    return {
+      ...followUp,
+      logEntries: [baseLog, ...(followUp.logEntries ?? [])]
+    };
+  }
+
+  return null;
+}
+
+function resolveEncounterComparison(gameState, activePlayer, effect, payload = {}) {
+  const targetPlayer = getNeighborPlayer(gameState, activePlayer.id, effect.neighborOffset ?? 1);
+  if (!targetPlayer) return null;
+
+  if (effect.metric === "speed") {
+    const ownRoll = createEncounterRoll(payload.forcedRoll);
+    const targetRoll = createEncounterRoll(payload.forcedOpponentRoll);
+    const ownValue = ownRoll.total + getPlayerFlightBonus(gameState, activePlayer.id);
+    const otherValue = targetRoll.total + getPlayerFlightBonus(gameState, targetPlayer.id);
+    return {
+      metric: "speed",
+      ownValue,
+      otherValue,
+      success: otherValue > ownValue,
+      targetPlayerId: targetPlayer.id,
+      targetName: targetPlayer.name
+    };
+  }
+
+  const ownValue = getPlayerFlightBonus(gameState, activePlayer.id);
+  const otherValue = getPlayerFlightBonus(gameState, targetPlayer.id);
+  return {
+    metric: "drive",
+    ownValue,
+    otherValue,
+    success: otherValue > ownValue,
+    targetPlayerId: targetPlayer.id,
+    targetName: targetPlayer.name
+  };
+}
+
+function resolveEncounterCombat(gameState, player, effect, payload = {}) {
+  const roll = createCombatRoll(payload.forcedRoll);
+  const strength = roll.total + getPlayerCombatBonus(gameState, player.id);
+
+  if (Number.isInteger(effect.enemyStrength)) {
+    return {
+      enemyStrength: effect.enemyStrength,
+      rollTotal: roll.total,
+      strength,
+      balls: roll.balls,
+      opponentRollTotal: null,
+      opponentBalls: [],
+      enemyPlayerId: null,
+      enemyName: null,
+      outcome: strength >= effect.enemyStrength ? "win" : "lose"
+    };
+  }
+
+  const targetPlayer = getNeighborPlayer(gameState, player.id, effect.neighborOffset ?? 1);
+  if (!targetPlayer) return null;
+  const opponentRoll = createCombatRoll(payload.forcedOpponentRoll);
+  const enemyStrength = opponentRoll.total + getPlayerCombatBonus(gameState, targetPlayer.id);
+
+  return {
+    enemyStrength,
     rollTotal: roll.total,
     strength,
     balls: roll.balls,
-    outcome: strength >= (effect.enemyStrength ?? 0) ? "win" : "lose"
+    opponentRollTotal: opponentRoll.total,
+    opponentBalls: opponentRoll.balls,
+    enemyPlayerId: targetPlayer.id,
+    enemyName: targetPlayer.name,
+    outcome: strength >= enemyStrength ? "win" : "lose"
   };
 }
 
-function createCombatRoll() {
-  const balls = shuffle(mothershipBallPool).slice(0, 2);
+function createCombatRoll(forcedRoll = null) {
+  return createEncounterRoll(forcedRoll);
+}
+
+function createEncounterRoll(forcedRoll = null) {
+  const balls = Array.isArray(forcedRoll?.balls) && forcedRoll.balls.length === 2
+    ? forcedRoll.balls
+    : shuffle(mothershipBallPool).slice(0, 2);
   return {
     balls,
     total: balls.reduce((sum, ball) => sum + (mothershipBallValues[ball] ?? 0), 0)
   };
+}
+
+function updateEncounterWorkingPlayer(state, playerId, updatePlayer) {
+  return {
+    ...state,
+    players: state.players.map((player) => player.id === playerId ? updatePlayer(player) : player)
+  };
+}
+
+function applyEncounterDrawFromOpponents(state, activePlayerId, amountPerOpponent) {
+  const players = state.players.map((player) => ({
+    ...player,
+    resources: normalizeResources(player.resources)
+  }));
+  const activePlayer = players.find((player) => player.id === activePlayerId);
+  if (!activePlayer) {
+    return { state, drawCount: 0 };
+  }
+
+  let drawCount = 0;
+  for (const player of players) {
+    if (player.id === activePlayerId) continue;
+    for (let index = 0; index < amountPerOpponent; index += 1) {
+      const resource = drawRandomResource(player.resources);
+      if (!resource) break;
+      player.resources[resource] = Math.max(0, (player.resources[resource] ?? 0) - 1);
+      activePlayer.resources[resource] = (activePlayer.resources[resource] ?? 0) + 1;
+      drawCount += 1;
+    }
+  }
+
+  return {
+    state: {
+      ...state,
+      players
+    },
+    drawCount
+  };
+}
+
+function applyEncounterShipGift(gameState, state, activePlayerId, shipType) {
+  if (!["colonyShip", "tradeShip"].includes(shipType)) {
+    return { state };
+  }
+
+  const tempGameState = {
+    ...gameState,
+    players: state.players,
+    board: state.board
+  };
+  const inventory = getPlayerInventory(tempGameState, activePlayerId);
+  const stockKey = shipType === "tradeShip" ? "tradeStation" : "colony";
+  if ((inventory.transporter?.available ?? 0) <= 0 || (inventory[stockKey]?.available ?? 0) <= 0) {
+    return {
+      state,
+      logEntries: [createEncounterLog("logEncounterShipGiftFailed", {
+        player: getPlayerNameById(state.players, activePlayerId),
+        ship: shipType
+      })]
+    };
+  }
+
+  const launchPoint = findFreeLaunchPoint(tempGameState, defaultBoardLayout, activePlayerId);
+  if (!launchPoint) {
+    return {
+      state,
+      logEntries: [createEncounterLog("logEncounterShipGiftFailed", {
+        player: getPlayerNameById(state.players, activePlayerId),
+        ship: shipType
+      })]
+    };
+  }
+
+  const ship = {
+    id: createId(shipType === "tradeShip" ? "trade-ship" : "colony-ship"),
+    ownerPlayerId: activePlayerId,
+    type: shipType,
+    locationId: launchPoint.id,
+    status: "docked"
+  };
+
+  return {
+    state: {
+      ...state,
+      board: {
+        ...state.board,
+        ships: [...normalizeShips(state.board?.ships), ship]
+      },
+      remainingMovementByShipId: {
+        ...state.remainingMovementByShipId,
+        [ship.id]: 0
+      }
+    },
+    logEntries: [createEncounterLog("logEncounterShipGift", {
+      player: getPlayerNameById(state.players, activePlayerId),
+      ship: shipType
+    })]
+  };
+}
+
+function applyEncounterShipBlock(state, activePlayerId) {
+  const ships = normalizeShips(state.board?.ships)
+    .filter((ship) => ship.ownerPlayerId === activePlayerId)
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const blockedShip = ships[0];
+  if (!blockedShip) {
+    return {
+      state,
+      logEntries: [createEncounterLog("logEncounterNoShipBlocked", {
+        player: getPlayerNameById(state.players, activePlayerId)
+      })]
+    };
+  }
+
+  return {
+    state: {
+      ...state,
+      remainingMovementByShipId: {
+        ...state.remainingMovementByShipId,
+        [blockedShip.id]: 0
+      }
+    },
+    logEntries: [createEncounterLog("logEncounterShipBlocked", {
+      player: getPlayerNameById(state.players, activePlayerId),
+      ship: blockedShip.type
+    })]
+  };
+}
+
+function getEncounterShipForJump(state, activePlayerId) {
+  return normalizeShips(state.board?.ships)
+    .filter((ship) => ship.ownerPlayerId === activePlayerId)
+    .sort((left, right) => left.id.localeCompare(right.id))[0] ?? null;
+}
+
+function getEncounterJumpTargets(gameState, shipId, boardLayout) {
+  return (boardLayout.points ?? [])
+    .filter((point) => point.id !== getShipById(gameState, shipId)?.locationId)
+    .filter((point) => getShipDestinationState(gameState, boardLayout, shipId, point.id).validDestination)
+    .map((point) => point.id);
+}
+
+function getShipById(gameState, shipId) {
+  return normalizeShips(gameState.board?.ships).find((ship) => ship.id === shipId) ?? null;
+}
+
+function getPlayerUpgradeTotal(player) {
+  return Object.values(normalizeUpgrades(player?.upgrades))
+    .reduce((sum, value) => sum + value, 0);
+}
+
+function hasAnyUpgrades(player) {
+  return Object.values(normalizeUpgrades(player?.upgrades))
+    .some((value) => value > 0);
+}
+
+function getNeighborPlayer(gameState, playerId, offset) {
+  const players = Array.isArray(gameState.players) ? gameState.players : [];
+  if (players.length === 0) return null;
+  const playerIndex = players.findIndex((player) => player.id === playerId);
+  if (playerIndex < 0) return null;
+
+  const normalizedOffset = Number.isInteger(offset) ? offset : 1;
+  const targetIndex = (playerIndex + normalizedOffset + players.length * 10) % players.length;
+  return players[targetIndex] ?? null;
+}
+
+function createEncounterLog(messageKey, messageParams) {
+  return {
+    type: "encounter",
+    messageKey,
+    messageParams
+  };
+}
+
+function formatResourceSelectionForLog(resources) {
+  return supplyResourceTypes
+    .flatMap((resource) => Array.from({ length: resources?.[resource] ?? 0 }, () => resource))
+    .join(", ");
 }
 
 function formatResourceList(resources) {

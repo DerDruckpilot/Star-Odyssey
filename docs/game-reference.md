@@ -96,8 +96,9 @@ Diese Werte sollten spaeter als Teil des Spielerzustands modelliert werden, nich
 - Die Fluggeschwindigkeit wird ueber einen Mutterschiff-Wurf bestimmt; eine schwarze Kugel loest zuerst eine Begegnung aus.
 - Solange eine Begegnung offen ist, duerfen keine Schiffe bewegt werden.
 - Begegnungen ziehen Karten aus einem Deck und wandern nach Abschluss auf einen Ablagestapel.
+- Einige Karten loesen sofort eine Folgebegegnung aus oder wirken global auf mehrere Spieler, bevor die Flugphase weitergeht.
 - Sie stellen Entscheidungen, Risiken, Belohnungen und manchmal Kampfvergleiche dar.
-- Ergebnisse koennen Rohstoffe, Ausbauten, Bewegungsbeschraenkungen, halbe Medaillen oder Verluste betreffen.
+- Ergebnisse koennen Rohstoffe, Ausbauten, Bewegungsbeschraenkungen, halbe Medaillen, Raumzerrungen mit Zielwahl oder globale Verluste betreffen.
 - Halbe Medaillen zaehlen paarweise als 1 Siegpunkt.
 - Fuer Star Odyssey laufen Begegnungen datengetrieben ueber Karten-/Eventdefinitionen.
 

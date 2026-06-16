@@ -51,7 +51,7 @@ Star Odyssey ist rundenbasiert. Es gibt keinen Echtzeitdruck und keine freie Act
 - Eine schwarze Kugel im Mutterschiff-Wurf loest zuerst eine Begegnung aus.
 - Begegnungen laufen als eigener HUD-Unterzustand mit Deck, Ablagestapel und aktiver Karte.
 - Erst nach Abschluss der Begegnung wird die Bewegung in derselben Flugphase freigegeben.
-- Entscheidungen, Vergleiche und Belohnungen kommen datengetrieben aus Eventdefinitionen.
+- Entscheidungen, Vergleiche, globale Karten, Folgebegegnungen und Raumzerrungs-Zielwahlen kommen datengetrieben aus Eventdefinitionen.
 
 ## Controller-Tauglichkeit
 

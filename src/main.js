@@ -42,6 +42,7 @@ import {
   placeInitialSpaceport,
   respondToTradeOffer,
   resolveEncounterChoice,
+  submitEncounterPending,
   resolveSevenSteal,
   rollProduction,
   rollPlacementStart,
@@ -52,6 +53,7 @@ import {
   touchGameState,
   tradeWithSupply,
   updateSevenDiscardSelection,
+  updateEncounterResourceSelection,
   useBoughtFame,
 } from "./game/gameState.js";
 import { defaultLanguage, getText, languages } from "./i18n.js";
@@ -250,6 +252,8 @@ function enableBoardElementSelection(element, type, id) {
 function selectBoardElement(type, id) {
   if (!state.gameState) return;
 
+  if (type === "spacePoint" && confirmEncounterTargetAt(id)) return;
+  if (type === "spacePoint" && state.gameState.activeEncounter?.pendingStep?.type === "boardTargetSelection") return;
   if (type === "spacePoint" && confirmPendingTradeStationAt(id)) return;
   if (type === "spacePoint" && state.gameState.board?.pendingTradeStationPlacement) return;
   if (type === "spacePoint" && placePendingShipAt(id)) return;
@@ -309,6 +313,33 @@ function resolveActiveEncounterChoice(choiceId, payload = {}) {
   });
   saveCurrentGameState();
   render();
+}
+
+function updateEncounterPendingResourceChoice(resource, delta) {
+  if (!state.gameState?.activeEncounter) return;
+
+  state.gameState = updateEncounterResourceSelection(state.gameState, resource, delta);
+  saveCurrentGameState();
+  render();
+}
+
+function submitEncounterPendingAction(payload = {}) {
+  if (!state.gameState?.activeEncounter) return;
+
+  state.gameState = submitEncounterPending(state.gameState, payload);
+  saveCurrentGameState();
+  render();
+}
+
+function confirmEncounterTargetAt(nodeId) {
+  const pendingStep = state.gameState?.activeEncounter?.pendingStep;
+  if (pendingStep?.type !== "boardTargetSelection") return false;
+  if (!pendingStep.validNodeIds?.includes(nodeId)) return false;
+
+  state.gameState = submitEncounterPending(state.gameState, { targetNodeId: nodeId });
+  saveCurrentGameState();
+  render();
+  return true;
 }
 
 function finishActiveEncounter() {
@@ -1455,6 +1486,20 @@ function renderEncounterActions(player) {
   prompt.textContent = getLocalizedEncounterText(card.prompt);
   wrapper.append(title, prompt);
 
+  if (encounter.status === "resolved") {
+    const result = document.createElement("p");
+    result.textContent = getLocalizedEncounterText(encounter.resultText) || t("movementAfterEncounter");
+    wrapper.append(result);
+    if (player?.id === activePlayer?.id) {
+      wrapper.append(createButton(t("finishEncounter"), finishActiveEncounter, "small-button"));
+    } else {
+      const waiting = document.createElement("p");
+      waiting.textContent = t("notYourTurn");
+      wrapper.append(waiting);
+    }
+    return wrapper;
+  }
+
   if (player?.id !== activePlayer?.id) {
     const waiting = document.createElement("p");
     waiting.textContent = t("notYourTurn");
@@ -1462,29 +1507,27 @@ function renderEncounterActions(player) {
     return wrapper;
   }
 
-  if (encounter.status === "resolved") {
-    const result = document.createElement("p");
-    result.textContent = getLocalizedEncounterText(encounter.resultText) || t("movementAfterEncounter");
-    wrapper.append(result, createButton(t("finishEncounter"), finishActiveEncounter, "small-button"));
-    return wrapper;
-  }
-
   const chooseHint = document.createElement("p");
   chooseHint.textContent = t("encounterChoose");
   wrapper.append(chooseHint);
 
-  if (card.requiresCombat) {
-    wrapper.append(createButton(t("resolveCombat"), () => resolveActiveEncounterChoice(card.choices?.[0]?.id ?? "combat"), "small-button"));
+  if (encounter.pendingStep?.type === "resourceSelection") {
+    wrapper.append(renderEncounterResourceSelection(encounter.pendingStep));
     return wrapper;
   }
 
-  if (card.requiresInput === "resourceGain") {
-    wrapper.append(renderEncounterResourceChoices(card));
+  if (encounter.pendingStep?.type === "upgradeSelection") {
+    wrapper.append(renderEncounterUpgradeSelection(encounter.pendingStep));
     return wrapper;
   }
 
-  if (card.requiresInput === "upgradeGain" || card.requiresInput === "upgradeLoss") {
-    wrapper.append(renderEncounterUpgradeChoices(card));
+  if (encounter.pendingStep?.type === "boardTargetSelection") {
+    wrapper.append(renderEncounterTargetSelection(encounter.pendingStep));
+    return wrapper;
+  }
+
+  if (encounter.pendingStep?.type === "globalUpgradeLossSelection") {
+    wrapper.append(renderEncounterGlobalUpgradeSelection(encounter.pendingStep));
     return wrapper;
   }
 
@@ -1492,48 +1535,147 @@ function renderEncounterActions(player) {
   choiceList.className = "encounter-choice-list";
   for (const choice of card.choices ?? []) {
     const label = getLocalizedEncounterText(choice.label) || choice.id;
-    choiceList.append(createButton(label, () => resolveActiveEncounterChoice(choice.id), "small-button"));
+    const button = createButton(label, () => resolveActiveEncounterChoice(choice.id), "small-button");
+    button.disabled = !isEncounterChoiceAvailable(choice, activePlayer);
+    choiceList.append(button);
   }
   wrapper.append(choiceList);
   return wrapper;
 }
 
-function renderEncounterResourceChoices(card) {
+function renderEncounterResourceSelection(pendingStep) {
   const wrapper = document.createElement("div");
-  wrapper.className = "encounter-choice-list";
+  wrapper.className = "seven-step seven-step--discard";
+  const activePlayer = getActivePlayer();
+  const selectedResources = pendingStep.selectedResources ?? createEmptyResourceSelection();
+  const selectedTotal = getSelectedResourceCount(selectedResources);
+  const amount = pendingStep.amount ?? 0;
+
+  const hint = document.createElement("p");
+  hint.textContent = t("encounterResourceSelectionHint")
+    .replace("{mode}", pendingStep.mode === "loss" ? t("give") : t("receive"))
+    .replace("{count}", amount);
+  wrapper.append(hint);
+
+  const selectionInfo = document.createElement("p");
+  selectionInfo.textContent = t("encounterSelectionCount")
+    .replace("{selected}", selectedTotal)
+    .replace("{count}", amount);
+  wrapper.append(selectionInfo);
+
+  const grid = document.createElement("div");
+  grid.className = "seven-discard-grid";
   for (const resource of resourceTypes) {
-    wrapper.append(createButton(
-      `${t("chooseResource")} · ${getResourceLabel(resource)}`,
-      () => resolveActiveEncounterChoice(card.choices?.[0]?.id ?? "choose-resource", { resource }),
-      "small-button"
-    ));
+    const row = document.createElement("div");
+    row.className = "seven-discard-row";
+
+    const label = document.createElement("span");
+    const owned = activePlayer?.resources?.[resource] ?? 0;
+    const selected = selectedResources?.[resource] ?? 0;
+    label.textContent = pendingStep.mode === "loss"
+      ? `${getResourceLabel(resource)}: ${owned} (${selected})`
+      : `${getResourceLabel(resource)}: ${selected}`;
+
+    const decreaseButton = createButton("-", () => updateEncounterPendingResourceChoice(resource, -1), "small-button secondary-small-button");
+    decreaseButton.disabled = selected <= 0;
+
+    const increaseButton = createButton("+", () => updateEncounterPendingResourceChoice(resource, 1), "small-button");
+    const cannotAddMore = pendingStep.mode === "loss"
+      ? selected >= owned
+      : selectedTotal >= amount;
+    increaseButton.disabled = cannotAddMore || selectedTotal >= amount;
+
+    row.append(label, decreaseButton, increaseButton);
+    grid.append(row);
   }
+
+  const submitButton = createButton(t("confirmEncounterSelection"), () => submitEncounterPendingAction(), "small-button");
+  submitButton.disabled = selectedTotal !== amount;
+  wrapper.append(grid, submitButton);
   return wrapper;
 }
 
-function renderEncounterUpgradeChoices(card) {
+function renderEncounterUpgradeSelection(pendingStep) {
   const wrapper = document.createElement("div");
   wrapper.className = "encounter-choice-list";
   const activePlayer = getActivePlayer();
   const hasAvailableLoss = upgradeDefinitions.some((upgrade) => (activePlayer?.upgrades?.[upgrade.id] ?? 0) > 0);
 
-  if (card.requiresInput === "upgradeLoss" && !hasAvailableLoss) {
-    wrapper.append(createButton(t("continue"), () => resolveActiveEncounterChoice(card.choices?.[0]?.id ?? "choose-loss"), "small-button"));
+  if (pendingStep.mode === "loss" && !hasAvailableLoss) {
+    wrapper.append(createButton(t("continue"), () => submitEncounterPendingAction(), "small-button"));
     return wrapper;
   }
 
   for (const upgrade of upgradeDefinitions) {
     const button = createButton(
       `${t("chooseUpgrade")} · ${getUpgradeLabel(upgrade.id)}`,
-      () => resolveActiveEncounterChoice(card.choices?.[0]?.id ?? "choose-upgrade", { upgrade: upgrade.id }),
+      () => submitEncounterPendingAction({ upgrade: upgrade.id }),
       "small-button"
     );
-    if (card.requiresInput === "upgradeLoss" && (activePlayer?.upgrades?.[upgrade.id] ?? 0) <= 0) {
+    const currentAmount = activePlayer?.upgrades?.[upgrade.id] ?? 0;
+    if (pendingStep.mode === "loss" && currentAmount <= 0) {
+      button.disabled = true;
+    }
+    if (pendingStep.mode === "gain" && currentAmount >= upgrade.limit) {
       button.disabled = true;
     }
     wrapper.append(button);
   }
   return wrapper;
+}
+
+function renderEncounterTargetSelection(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+
+  const hint = document.createElement("p");
+  hint.textContent = getLocalizedEncounterText(pendingStep.hint) || t("encounterSelectTargetPoint");
+  wrapper.append(hint);
+
+  const selection = document.createElement("p");
+  selection.textContent = t("encounterChooseBoardTarget");
+  wrapper.append(selection);
+  return wrapper;
+}
+
+function renderEncounterGlobalUpgradeSelection(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  const targetPlayer = state.gameState?.players?.find((player) => player.id === pendingStep.currentTargetPlayerId);
+
+  const hint = document.createElement("p");
+  hint.textContent = t("encounterAffectedPlayer").replace("{player}", targetPlayer?.name ?? t("none"));
+  wrapper.append(hint);
+
+  if (!targetPlayer) {
+    wrapper.append(createButton(t("continue"), () => submitEncounterPendingAction(), "small-button"));
+    return wrapper;
+  }
+
+  for (const upgrade of upgradeDefinitions) {
+    const currentAmount = targetPlayer.upgrades?.[upgrade.id] ?? 0;
+    const button = createButton(
+      `${t("chooseUpgrade")} · ${targetPlayer.name} · ${getUpgradeLabel(upgrade.id)}`,
+      () => submitEncounterPendingAction({ upgrade: upgrade.id }),
+      "small-button"
+    );
+    button.disabled = currentAmount <= 0;
+    wrapper.append(button);
+  }
+
+  return wrapper;
+}
+
+function isEncounterChoiceAvailable(choice, player) {
+  if (!choice || !player) return false;
+  const totalResources = getTotalResourceCount(player.resources);
+
+  return (choice.effects ?? []).every((effect) => {
+    if (effect.type === "chooseResourceLoss") {
+      return totalResources >= (effect.amount ?? 1);
+    }
+    return true;
+  });
 }
 
 function renderFlightControls() {
@@ -1964,6 +2106,12 @@ function formatMessageParam(key, value) {
   if (key === "resources") return String(value).split(", ").map((resource) => getResourceLabel(resource)).join(", ");
   if (key === "upgrade") return getUpgradeLabel(value);
   if (key === "ship") return getShipTypeLabel(value);
+  if (key === "metric") {
+    return value === "speed" ? t("encounterMetricSpeed") : value === "drive" ? t("encounterMetricDrive") : String(value);
+  }
+  if (key === "outcome") {
+    return value === "success" ? t("encounterOutcomeSuccess") : value === "failure" ? t("encounterOutcomeFailure") : String(value);
+  }
   if (key === "card") {
     const card = getFriendshipCardById(value);
     return card ? getFriendshipCardTitle(card, state.language) : (t(`friendshipCardTitle_${value}`) || String(value));
@@ -2354,6 +2502,19 @@ function isValidPendingTradeStationNode(nodeId) {
 }
 
 function getReachableNodeMap() {
+  const pendingEncounterStep = state.gameState?.activeEncounter?.pendingStep;
+  if (pendingEncounterStep?.type === "boardTargetSelection") {
+    const ship = (state.gameState?.board?.ships ?? []).find((candidate) => candidate.id === pendingEncounterStep.shipId);
+    return new Map((pendingEncounterStep.validNodeIds ?? []).map((nodeId) => [
+      nodeId,
+      {
+        ...(ship ? getShipDestinationState(state.gameState, boardLayout, ship.id, nodeId) : {}),
+        id: nodeId,
+        validDestination: true
+      }
+    ]));
+  }
+
   const selectedShip = getSelectedShip();
   if (!selectedShip || state.gameState?.phase !== "flight" || !state.gameState.hasRolledFlightSpeed || state.gameState?.activeEncounter) return new Map();
 

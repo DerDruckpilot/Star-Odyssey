@@ -33,12 +33,15 @@ import {
   foundTradeStation,
   getShipDestinationState,
   getPlayerInventory,
+  submitEncounterPending,
   tradeWithSupply,
   useBoughtFame,
   normalizeGameState,
   submitSevenDiscard,
+  updateEncounterResourceSelection,
   updateSevenDiscardSelection
 } from "../src/game/gameState.js";
+import { getEncounterCardById, getEncounterDeckIds } from "../src/data/encounterCards.js";
 import { isActiveSpecialToken } from "../src/data/numberTokens.js";
 
 function getResourceTotal(player) {
@@ -104,6 +107,12 @@ assert(
   }).startingSetupGranted === true,
   "Save/load normalization should preserve that the starting setup was already granted."
 );
+
+const baseProductionGame = normalizeGameState(JSON.parse(JSON.stringify(game)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
 
 const specialPlanet = findPlanetWithSpecialToken(game);
 if (specialPlanet) {
@@ -539,7 +548,7 @@ friendshipEffectGame = determineFlightSpeed({
 }, { balls: ["yellow", "blue"] });
 assert(friendshipEffectGame.flightSpeedTotal === 5, "Wise people drive bonus should increase flight speed.");
 
-let encounterGame = normalizeGameState(JSON.parse(JSON.stringify(game)), {
+let encounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
   playerCount: 2,
   boardLayout
@@ -587,7 +596,7 @@ encounterGame = determineFlightSpeed(encounterGame, {
 });
 assert(encounterGame.activeEncounter?.cardId === "honor-medal", "A black mothership ball should start an encounter.");
 assert(encounterGame.flightSpeedBase === 3, "A black mothership ball should force base speed 3.");
-const encounterPointsBeforeMedal = encounterGame.players[0].victoryPoints;
+const encounterPointsBeforeMedal = calculateVictoryPoints(encounterGame, "player-1");
 const blockedMoveState = moveShip(
   encounterGame,
   boardLayout,
@@ -599,8 +608,9 @@ assert(
   "Ship movement should be blocked while an encounter is active."
 );
 encounterGame = resolveEncounterChoice(encounterGame, { choiceId: "accept" });
+assert(encounterGame.activeEncounter?.status === "resolved", "Simple encounter choices should resolve immediately.");
 assert(encounterGame.players[0].halfMedals === 2, "Encounter reward should add a half medal.");
-assert(encounterGame.players[0].victoryPoints === encounterPointsBeforeMedal + 1, "Two half medals should count as one victory point.");
+assert(calculateVictoryPoints(encounterGame, "player-1") === encounterPointsBeforeMedal + 1, "Two half medals should count as one victory point.");
 const normalizedEncounterState = normalizeGameState(JSON.parse(JSON.stringify(encounterGame)), {
   language: "de",
   playerCount: 2,
@@ -617,6 +627,192 @@ const postEncounterMoveState = moveShip(
   encounterGame.board.ships[0].locationId
 );
 assert(postEncounterMoveState !== null, "Game state should remain usable after finishing an encounter.");
+
+let pendingEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+pendingEncounterGame = {
+  ...pendingEncounterGame,
+  phase: "flight",
+  currentPlayerIndex: 0,
+  players: pendingEncounterGame.players.map((player, index) => ({
+    ...player,
+    resources: index === 0
+      ? { ore: 3, fuel: 0, carbon: 0, food: 0, goods: 0 }
+      : player.resources,
+    upgrades: index === 0
+      ? { drive: 1, cargo: 0, cannon: 0 }
+      : player.upgrades,
+    friendshipCards: index === 0 ? [] : player.friendshipCards,
+    halfMedals: index === 0 ? 1 : player.halfMedals
+  }))
+};
+pendingEncounterGame = determineFlightSpeed(pendingEncounterGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "merchant-gift-upgrade"
+});
+pendingEncounterGame = resolveEncounterChoice(pendingEncounterGame, { choiceId: "gift-3" });
+assert(pendingEncounterGame.activeEncounter?.pendingStep?.type === "resourceSelection", "Merchant encounters should pause for resource loss selection.");
+const normalizedPendingEncounter = normalizeGameState(JSON.parse(JSON.stringify(pendingEncounterGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(normalizedPendingEncounter.activeEncounter?.pendingStep?.type === "resourceSelection", "Save/load normalization should preserve pending encounter steps.");
+pendingEncounterGame = updateEncounterResourceSelection(pendingEncounterGame, "ore", 1);
+pendingEncounterGame = updateEncounterResourceSelection(pendingEncounterGame, "ore", 1);
+pendingEncounterGame = updateEncounterResourceSelection(pendingEncounterGame, "ore", 1);
+pendingEncounterGame = submitEncounterPending(pendingEncounterGame);
+assert(pendingEncounterGame.activeEncounter?.pendingStep?.type === "upgradeSelection", "Encounter follow-up should continue to upgrade selection.");
+pendingEncounterGame = submitEncounterPending(pendingEncounterGame, { upgrade: "cargo" });
+assert(pendingEncounterGame.activeEncounter?.status === "resolved", "Encounter should resolve after completing all pending choices.");
+assert(pendingEncounterGame.players[0].resources.ore === 0, "Encounter resource loss should remove the selected resources.");
+assert(pendingEncounterGame.players[0].upgrades.cargo === 1, "Encounter upgrade rewards should apply after selection.");
+assert(pendingEncounterGame.players[0].halfMedals === 2, "Encounter medal rewards should still apply after pending steps.");
+pendingEncounterGame = finishEncounter(pendingEncounterGame);
+assert(pendingEncounterGame.encounterDiscard.includes("merchant-gift-upgrade"), "Completed pending encounters should also move to the discard pile.");
+
+let combatEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+combatEncounterGame = {
+  ...combatEncounterGame,
+  phase: "flight",
+  currentPlayerIndex: 0,
+  players: combatEncounterGame.players.map((player, index) => ({
+    ...player,
+    resources: index === 0
+      ? { ore: 0, fuel: 0, carbon: 0, food: 0, goods: 0 }
+      : player.resources,
+    upgrades: index === 0
+      ? { drive: 1, cargo: 0, cannon: 1 }
+      : { drive: 0, cargo: 0, cannon: 0 },
+    friendshipCards: [],
+    halfMedals: index === 0 ? 1 : player.halfMedals
+  }))
+};
+combatEncounterGame = determineFlightSpeed(combatEncounterGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "help-green-prince"
+});
+combatEncounterGame = resolveEncounterChoice(combatEncounterGame, {
+  choiceId: "help",
+  forcedRoll: { balls: ["red", "red"] },
+  forcedOpponentRoll: { balls: ["blue", "blue"] }
+});
+assert(combatEncounterGame.activeEncounter?.pendingStep?.type === "resourceSelection", "Combat encounter rewards should be able to request a resource choice.");
+combatEncounterGame = updateEncounterResourceSelection(combatEncounterGame, "ore", 1);
+combatEncounterGame = updateEncounterResourceSelection(combatEncounterGame, "fuel", 1);
+combatEncounterGame = submitEncounterPending(combatEncounterGame);
+assert(combatEncounterGame.activeEncounter?.status === "resolved", "Combat encounter should resolve after the reward selection.");
+assert(combatEncounterGame.players[0].resources.ore === 1 && combatEncounterGame.players[0].resources.fuel === 1, "Combat reward selection should grant the chosen resources.");
+assert(combatEncounterGame.players[0].halfMedals === 2, "Combat encounter success should grant a half medal.");
+combatEncounterGame = finishEncounter(combatEncounterGame);
+assert(combatEncounterGame.encounterDiscard.includes("help-green-prince"), "Combat encounters should move to the discard pile after finishing.");
+
+const encounterDeckIds = getEncounterDeckIds();
+assert(encounterDeckIds.length === 32, "Encounter deck should expose the full active 32-card set.");
+assert(
+  encounterDeckIds.every((cardId) => getEncounterCardById(cardId)?.implemented === true),
+  "Encounter deck should only contain implemented cards."
+);
+
+let distortionEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+distortionEncounterGame = {
+  ...distortionEncounterGame,
+  phase: "flight",
+  currentPlayerIndex: 0,
+  players: distortionEncounterGame.players.map((player, index) => ({
+    ...player,
+    upgrades: index === 0
+      ? { drive: 2, cargo: 0, cannon: 0 }
+      : { drive: 3, cargo: 0, cannon: 0 },
+    friendshipCards: [],
+    resources: { ore: 0, fuel: 0, carbon: 0, food: 0, goods: 0 }
+  }))
+};
+distortionEncounterGame = determineFlightSpeed(distortionEncounterGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "space-distortion-right"
+});
+distortionEncounterGame = resolveEncounterChoice(distortionEncounterGame, {
+  choiceId: "attempt",
+  forcedRoll: { balls: ["yellow", "yellow"] },
+  forcedOpponentRoll: { balls: ["yellow", "yellow"] }
+});
+assert(distortionEncounterGame.activeEncounter?.pendingStep?.type === "boardTargetSelection", "Space distortion encounters should request a board target.");
+const distortionTarget = distortionEncounterGame.activeEncounter?.pendingStep?.validNodeIds?.[0];
+assert(Boolean(distortionTarget), "Space distortion encounters should expose at least one valid jump target.");
+if (distortionTarget) {
+  distortionEncounterGame = submitEncounterPending(distortionEncounterGame, { targetNodeId: distortionTarget });
+}
+assert(distortionEncounterGame.activeEncounter?.status === "resolved", "Space distortion encounter should resolve after choosing a jump target.");
+
+let chainedEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+chainedEncounterGame = {
+  ...chainedEncounterGame,
+  phase: "flight",
+  currentPlayerIndex: 0,
+  players: chainedEncounterGame.players.map((player, index) => ({
+    ...player,
+    upgrades: index === 0
+      ? { drive: 3, cargo: 0, cannon: 0 }
+      : { drive: 0, cargo: 0, cannon: 0 },
+    friendshipCards: []
+  }))
+};
+chainedEncounterGame = determineFlightSpeed(chainedEncounterGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "space-distortion-right"
+});
+chainedEncounterGame = resolveEncounterChoice(chainedEncounterGame, {
+  choiceId: "attempt",
+  forcedRoll: { balls: ["blue", "yellow"] },
+  forcedOpponentRoll: { balls: ["blue", "yellow"] }
+});
+assert(chainedEncounterGame.activeEncounter?.cardId !== "space-distortion-right", "Follow-up encounter effects should immediately draw the next card.");
+assert(chainedEncounterGame.encounterDiscard.includes("space-distortion-right"), "Encounter chains without full reshuffle should discard the resolved card.");
+
+let toothEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+toothEncounterGame = {
+  ...toothEncounterGame,
+  phase: "flight",
+  currentPlayerIndex: 0,
+  players: toothEncounterGame.players.map((player, index) => ({
+    ...player,
+    upgrades: index === 0
+      ? { drive: 4, cargo: 3, cannon: 2 }
+      : { drive: 3, cargo: 3, cannon: 1 },
+    friendshipCards: [],
+    halfMedals: 0
+  }))
+};
+toothEncounterGame = determineFlightSpeed(toothEncounterGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "tooth-of-time-cargo"
+});
+toothEncounterGame = resolveEncounterChoice(toothEncounterGame, { choiceId: "continue" });
+assert(toothEncounterGame.activeEncounter?.pendingStep?.type === "globalUpgradeLossSelection", "Global encounter cards should enter a multi-player upgrade loss step.");
+toothEncounterGame = submitEncounterPending(toothEncounterGame, { upgrade: "drive" });
+toothEncounterGame = submitEncounterPending(toothEncounterGame, { upgrade: "drive" });
+assert(Boolean(toothEncounterGame.activeEncounter?.cardId), "Global follow-up cards should draw a new encounter immediately.");
+assert(toothEncounterGame.activeEncounter?.cardId !== "tooth-of-time-cargo", "Global cards should transition into a new encounter after resolving.");
 
 assert(calculateVictoryPoints(game, "player-1") >= 4, "Central scoring should count starting colonies and spaceports.");
 
