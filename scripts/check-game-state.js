@@ -28,6 +28,7 @@ import {
   setSevenStealTarget,
   startPendingSpaceportUpgrade,
   foundTradeStation,
+  getShipDestinationState,
   normalizeGameState,
   submitSevenDiscard,
   updateSevenDiscardSelection
@@ -613,6 +614,168 @@ const invalidShipResourcesBefore = JSON.stringify(invalidShipPlacementState.play
 invalidShipPlacementState = placePendingShip(invalidShipPlacementState, boardLayout, "invalid-point");
 assert(JSON.stringify(invalidShipPlacementState.players[0].resources) === invalidShipResourcesBefore, "Invalid ship placement must not change resources.");
 
+const movementTriplet = findPlainMovementTriplet(game);
+assert(Boolean(movementTriplet), "A plain movement triplet should exist for movement tests.");
+
+if (movementTriplet) {
+  let occupiedPassState = createMovementTestState(game, {
+    ships: [
+      { id: "player-1-move", ownerPlayerId: "player-1", type: "colonyShip", locationId: movementTriplet.start, status: "active" },
+      { id: "player-2-blocker", ownerPlayerId: "player-2", type: "tradeShip", locationId: movementTriplet.middle, status: "active" }
+    ],
+    remainingMovementByShipId: {
+      "player-1-move": 2
+    }
+  });
+
+  const passedOccupiedNode = moveShip(occupiedPassState, boardLayout, "player-1-move", movementTriplet.end);
+  assert(
+    passedOccupiedNode.board.ships.find((ship) => ship.id === "player-1-move")?.locationId === movementTriplet.end,
+    "Ships should be able to pass through occupied nodes."
+  );
+  assert(
+    (passedOccupiedNode.remainingMovementByShipId?.["player-1-move"] ?? -1) === 0,
+    "Passing an occupied node should still consume movement."
+  );
+
+  const blockedOccupiedEndpoint = moveShip(occupiedPassState, boardLayout, "player-1-move", movementTriplet.middle);
+  assert(
+    blockedOccupiedEndpoint.board.ships.find((ship) => ship.id === "player-1-move")?.locationId === movementTriplet.start,
+    "Occupied nodes must not be valid movement endpoints."
+  );
+
+  let multiShipState = createMovementTestState(game, {
+    ships: [
+      { id: "player-1-a", ownerPlayerId: "player-1", type: "colonyShip", locationId: movementTriplet.start, status: "active" },
+      { id: "player-1-b", ownerPlayerId: "player-1", type: "tradeShip", locationId: movementTriplet.end, status: "active" }
+    ],
+    remainingMovementByShipId: {
+      "player-1-a": 2,
+      "player-1-b": 2
+    }
+  });
+  multiShipState = moveShip(multiShipState, boardLayout, "player-1-a", movementTriplet.middle);
+  assert(
+    (multiShipState.remainingMovementByShipId?.["player-1-a"] ?? -1) === 1,
+    "Moved ships should lose only their own remaining movement."
+  );
+  assert(
+    (multiShipState.remainingMovementByShipId?.["player-1-b"] ?? -1) === 2,
+    "Other ships must keep their own remaining movement."
+  );
+}
+
+const freeColonySite = findFreePlanetColonySite(game);
+assert(Boolean(freeColonySite), "A free colony site should exist for flight landing tests.");
+
+if (freeColonySite) {
+  const colonyShipLandingState = createMovementTestState(game, {
+    ships: [
+      {
+        id: "player-1-colony-landing",
+        ownerPlayerId: "player-1",
+        type: "colonyShip",
+        locationId: freeColonySite.launchNodeIds[0],
+        status: "active"
+      }
+    ],
+    remainingMovementByShipId: {
+      "player-1-colony-landing": 1
+    }
+  });
+  const colonyLandingResult = moveShip(colonyShipLandingState, boardLayout, "player-1-colony-landing", freeColonySite.nodeId);
+  assert(
+    colonyLandingResult.board.ships.find((ship) => ship.id === "player-1-colony-landing")?.locationId === freeColonySite.nodeId,
+    "Colony ships should be able to end on valid colony sites."
+  );
+
+  const tradeShipBlockedAtColonySite = createMovementTestState(game, {
+    ships: [
+      {
+        id: "player-1-trade-at-colony",
+        ownerPlayerId: "player-1",
+        type: "tradeShip",
+        locationId: freeColonySite.launchNodeIds[0],
+        status: "active"
+      }
+    ],
+    remainingMovementByShipId: {
+      "player-1-trade-at-colony": 1
+    }
+  });
+  const blockedTradeLanding = moveShip(tradeShipBlockedAtColonySite, boardLayout, "player-1-trade-at-colony", freeColonySite.nodeId);
+  assert(
+    blockedTradeLanding.board.ships.find((ship) => ship.id === "player-1-trade-at-colony")?.locationId === freeColonySite.launchNodeIds[0],
+    "Trade ships must not end on colony sites."
+  );
+}
+
+const dockScenario = findValidDockApproachScenario(game);
+assert(Boolean(dockScenario), "A reachable outpost dock should exist for flight tests.");
+
+if (dockScenario) {
+  const tradeShipDockState = createMovementTestState(game, {
+    ships: [
+      {
+        id: "player-1-trade-dock",
+        ownerPlayerId: "player-1",
+        type: "tradeShip",
+        locationId: dockScenario.approachNodeId,
+        status: "active"
+      }
+    ],
+      playerMutator: (player, index) => index === 0
+        ? {
+          ...player,
+          upgrades: {
+            ...player.upgrades,
+            cargo: 5
+          }
+        }
+        : player,
+    remainingMovementByShipId: {
+      "player-1-trade-dock": 1
+    }
+  });
+  const tradeDockResult = moveShip(tradeShipDockState, boardLayout, "player-1-trade-dock", dockScenario.outpost.dockNodeId);
+  assert(
+    tradeDockResult.board.ships.find((ship) => ship.id === "player-1-trade-dock")?.locationId === dockScenario.outpost.dockNodeId,
+    "Trade ships should be able to end on valid outpost dock points."
+  );
+
+  const colonyShipBlockedAtDock = createMovementTestState(game, {
+    ships: [
+      {
+        id: "player-1-colony-dock",
+        ownerPlayerId: "player-1",
+        type: "colonyShip",
+        locationId: dockScenario.approachNodeId,
+        status: "active"
+      }
+    ],
+    remainingMovementByShipId: {
+      "player-1-colony-dock": 1
+    }
+  });
+  const blockedColonyDock = moveShip(colonyShipBlockedAtDock, boardLayout, "player-1-colony-dock", dockScenario.outpost.dockNodeId);
+  assert(
+    blockedColonyDock.board.ships.find((ship) => ship.id === "player-1-colony-dock")?.locationId === dockScenario.approachNodeId,
+    "Colony ships must not end on outpost dock points."
+  );
+}
+
+let noShipsFlightState = createMovementTestState(game, {
+  ships: [],
+  remainingMovementByShipId: {},
+  hasRolledFlightSpeed: false
+});
+noShipsFlightState = determineFlightSpeed(noShipsFlightState, {
+  balls: ["yellow", "red"]
+});
+assert(noShipsFlightState.hasRolledFlightSpeed, "Players without ships should still be able to finish the flight phase cleanly.");
+assert(Object.keys(noShipsFlightState.remainingMovementByShipId ?? {}).length === 0, "Players without ships should not receive movement entries.");
+assert(noShipsFlightState.log.at(-1)?.messageKey === "logNoShipsInSpace", "Flight without ships should log the skipped ship movement.");
+
 if (process.exitCode !== 1) {
   console.log("Game state check passed.");
 }
@@ -663,4 +826,148 @@ function findFreeLaunchPoint(gameState, playerId) {
 
   return (boardLayout.spaceportLaunchPoints ?? [])
     .find((point) => spaceportLocations.has(point.spaceportLocationId) && !occupied.has(point.id));
+}
+
+function createMovementTestState(baseGame, {
+  ships,
+  remainingMovementByShipId,
+  playerMutator = (player) => player,
+  hasRolledFlightSpeed = true
+}) {
+  return {
+    ...normalizeGameState(JSON.parse(JSON.stringify(baseGame)), {
+      language: "de",
+      playerCount: 2,
+      boardLayout
+    }),
+    phase: "flight",
+    currentPlayerIndex: 0,
+    hasRolledFlightSpeed,
+    activeEncounter: null,
+    encounterTriggered: false,
+    flightRoll: hasRolledFlightSpeed ? { balls: ["yellow", "red"], baseSpeed: 5, encounterTriggered: false } : null,
+    flightSpeedBase: hasRolledFlightSpeed ? 5 : null,
+    flightSpeedTotal: hasRolledFlightSpeed ? 5 : null,
+    players: normalizeGameState(JSON.parse(JSON.stringify(baseGame)), {
+      language: "de",
+      playerCount: 2,
+      boardLayout
+    }).players.map(playerMutator),
+    board: {
+      ...normalizeGameState(JSON.parse(JSON.stringify(baseGame)), {
+        language: "de",
+        playerCount: 2,
+        boardLayout
+      }).board,
+      selectedElement: ships[0] ? { type: "ship", id: ships[0].id } : null,
+      ships
+    },
+    remainingMovementByShipId
+  };
+}
+
+function findPlainMovementTriplet(gameState) {
+  const graph = buildConnectionGraph();
+  const blocked = getBlockedNodeIdSet(gameState);
+  const colonySiteNodeIds = new Set(getAllColonySites(gameState).map((site) => site.nodeId));
+  const dockNodeIds = new Set((gameState.board?.placedOutposts ?? []).map((outpost) => outpost.dockNodeId));
+  const launchNodeIds = new Set((boardLayout.spaceportLaunchPoints ?? []).map((point) => point.id));
+
+  for (const [start, neighbors] of graph.entries()) {
+    if (blocked.has(start) || colonySiteNodeIds.has(start) || dockNodeIds.has(start) || launchNodeIds.has(start)) continue;
+    for (const middle of neighbors) {
+      if (blocked.has(middle) || colonySiteNodeIds.has(middle) || dockNodeIds.has(middle) || launchNodeIds.has(middle)) continue;
+      for (const end of graph.get(middle) ?? []) {
+        if (end === start) continue;
+        if (blocked.has(end) || colonySiteNodeIds.has(end) || dockNodeIds.has(end) || launchNodeIds.has(end)) continue;
+        if ((graph.get(start) ?? new Set()).has(end)) continue;
+        return { start, middle, end };
+      }
+    }
+  }
+
+  return null;
+}
+
+function getAllColonySites(gameState) {
+  return [
+    ...(boardLayout.startSites ?? []),
+    ...(gameState.board?.placedSystems ?? []).flatMap((system) => system.colonySites ?? [])
+  ];
+}
+
+function findFreePlanetColonySite(gameState) {
+  const occupied = new Set((gameState.board?.structures ?? []).map((structure) => structure.locationId));
+  return (gameState.board?.placedSystems ?? [])
+    .flatMap((system) => system.colonySites ?? [])
+    .find((site) => !occupied.has(site.nodeId) && Array.isArray(site.launchNodeIds) && site.launchNodeIds.length > 0);
+}
+
+function findFreeNeighborNode(gameState, nodeId) {
+  const graph = buildConnectionGraph();
+  const blocked = getBlockedNodeIdSet(gameState);
+  const occupied = new Set([
+    ...(gameState.board?.ships ?? []).map((ship) => ship.locationId),
+    ...(gameState.board?.structures ?? []).map((structure) => structure.locationId)
+  ]);
+
+  return [...(graph.get(nodeId) ?? [])].find((neighborId) => !blocked.has(neighborId) && !occupied.has(neighborId));
+}
+
+function findValidDockApproachScenario(baseGame) {
+  for (const outpost of baseGame.board?.placedOutposts ?? []) {
+    const approachNodeId = findFreeNeighborNode(baseGame, outpost.dockNodeId);
+    if (!approachNodeId) continue;
+    const testState = createMovementTestState(baseGame, {
+      ships: [
+        {
+          id: "dock-check",
+          ownerPlayerId: "player-1",
+          type: "tradeShip",
+          locationId: approachNodeId,
+          status: "active"
+        }
+      ],
+      playerMutator: (player, index) => index === 0
+        ? {
+          ...player,
+          upgrades: {
+            ...player.upgrades,
+            cargo: 5
+          }
+        }
+        : player,
+      remainingMovementByShipId: {
+        "dock-check": 1
+      }
+    });
+    const destinationState = getShipDestinationState(testState, boardLayout, "dock-check", outpost.dockNodeId);
+    if (destinationState?.validDestination) {
+      return {
+        outpost,
+        approachNodeId
+      };
+    }
+  }
+
+  return null;
+}
+
+function buildConnectionGraph() {
+  const graph = new Map();
+  for (const point of boardLayout.points ?? []) {
+    graph.set(point.id, new Set());
+  }
+  for (const connection of boardLayout.connections ?? []) {
+    graph.get(connection.from)?.add(connection.to);
+    graph.get(connection.to)?.add(connection.from);
+  }
+  return graph;
+}
+
+function getBlockedNodeIdSet(gameState) {
+  return new Set([
+    ...(boardLayout.startSystems ?? []),
+    ...(gameState.board?.placedSystems ?? [])
+  ].flatMap((system) => system.blockedNodeIds ?? []));
 }

@@ -836,6 +836,16 @@ h1 {
   filter: drop-shadow(0 0 8px rgba(250, 204, 21, 0.62));
 }
 
+.space-point.is-colony-target {
+  fill: #a7f3d0;
+  stroke: #ecfdf5;
+}
+
+.space-point.is-dock-target {
+  fill: #c4b5fd;
+  stroke: #f5f3ff;
+}
+
 .space-point.is-foundable {
   fill: #34d399;
   stroke: #ecfdf5;

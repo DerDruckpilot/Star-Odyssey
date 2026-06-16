@@ -659,15 +659,32 @@ export function determineFlightSpeed(gameState, forcedRoll = null) {
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   if (!activePlayer) return gameState;
+  const activeShips = normalizeShips(gameState.board?.ships)
+    .filter((ship) => ship.ownerPlayerId === activePlayer.id);
+
+  if (activeShips.length === 0) {
+    return updateGameState(gameState, {
+      remainingMovementByShipId: {},
+      hasRolledFlightSpeed: true,
+      activeEncounter: null,
+      encounterStep: null,
+      encounterTriggered: false,
+      logEntry: {
+        type: "flight",
+        messageKey: "logNoShipsInSpace",
+        messageParams: {
+          player: activePlayer.name
+        }
+      }
+    });
+  }
 
   const flightRoll = createFlightRoll(forcedRoll);
   const driveLevel = getPlayerFlightBonus(activePlayer);
   const baseSpeed = flightRoll.baseSpeed;
   const totalSpeed = baseSpeed + driveLevel;
   const remainingMovementByShipId = Object.fromEntries(
-    normalizeShips(gameState.board?.ships)
-      .filter((ship) => ship.ownerPlayerId === activePlayer.id)
-      .map((ship) => [ship.id, totalSpeed])
+    activeShips.map((ship) => [ship.id, totalSpeed])
   );
   const encounterTrigger = flightRoll.encounterTriggered;
   const encounterStart = encounterTrigger
@@ -776,8 +793,8 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
   const ships = normalizeShips(gameState.board?.ships);
   const ship = ships.find((candidate) => candidate.id === shipId);
   const remainingMovement = gameState.remainingMovementByShipId?.[shipId] ?? 0;
-  const blockedNodeIds = getBlockedSystemNodeIds(gameState, boardLayout);
-  const pathCost = getShortestPathCost(boardLayout, ship?.locationId, targetNodeId, blockedNodeIds);
+  const destinationState = getShipDestinationState(gameState, boardLayout, shipId, targetNodeId);
+  const pathCost = destinationState?.distance ?? null;
   if (
     !activePlayer ||
     !ship ||
@@ -785,8 +802,7 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
     targetNodeId === ship.locationId ||
     pathCost === null ||
     pathCost > remainingMovement ||
-    blockedNodeIds.has(targetNodeId) ||
-    isNodeOccupied(ships, gameState.board?.structures, targetNodeId, shipId)
+    !destinationState?.validDestination
   ) {
     return gameState;
   }
@@ -1103,16 +1119,10 @@ export function cancelPendingTradeStationPlacement(gameState) {
   });
 }
 
-export function getReachableNodes(boardLayout, ships, shipId, maxDistance, structures = [], blockedNodeIds = []) {
+export function getReachableNodes(boardLayout, ships, shipId, maxDistance, structures = [], blockedNodeIds = [], gameState = null) {
   const ship = normalizeShips(ships).find((candidate) => candidate.id === shipId);
   if (!ship || maxDistance <= 0) return [];
 
-  const occupiedNodeIds = new Set(normalizeShips(ships)
-    .filter((candidate) => candidate.id !== shipId)
-    .map((candidate) => candidate.locationId));
-  for (const structure of structures ?? []) {
-    if (structure?.locationId) occupiedNodeIds.add(structure.locationId);
-  }
   const blocked = new Set(blockedNodeIds);
   const graph = createConnectionGraph(boardLayout);
   const queue = [{ id: ship.locationId, distance: 0 }];
@@ -1122,7 +1132,7 @@ export function getReachableNodes(boardLayout, ships, shipId, maxDistance, struc
     const current = queue.shift();
     for (const nextId of graph.get(current.id) ?? []) {
       const nextDistance = current.distance + 1;
-      if (nextDistance > maxDistance || visited.has(nextId) || occupiedNodeIds.has(nextId) || blocked.has(nextId)) continue;
+      if (nextDistance > maxDistance || visited.has(nextId) || blocked.has(nextId)) continue;
       visited.set(nextId, nextDistance);
       queue.push({ id: nextId, distance: nextDistance });
     }
@@ -1130,7 +1140,140 @@ export function getReachableNodes(boardLayout, ships, shipId, maxDistance, struc
 
   return [...visited.entries()]
     .filter(([id]) => id !== ship.locationId)
-    .map(([id, distance]) => ({ id, distance }));
+    .map(([id, distance]) => ({
+      id,
+      distance,
+      occupied: isNodeOccupied(ships, structures, id, shipId)
+    }))
+    .map((node) => {
+      if (!gameState) {
+        return {
+          ...node,
+          validDestination: !node.occupied,
+          endpointType: "spacePoint",
+          reason: node.occupied ? "occupied" : null,
+          passable: true
+        };
+      }
+
+      return {
+        ...node,
+        ...getShipDestinationState(gameState, boardLayout, shipId, node.id)
+      };
+    })
+    .filter((node) => node.validDestination);
+}
+
+export function getShipDestinationState(gameState, boardLayout, shipId, targetNodeId) {
+  const ships = normalizeShips(gameState.board?.ships);
+  const ship = ships.find((candidate) => candidate.id === shipId);
+  if (!ship || !targetNodeId) {
+    return {
+      validDestination: false,
+      passable: false,
+      distance: null,
+      endpointType: null,
+      reason: "invalid"
+    };
+  }
+
+  const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout);
+  const blockedNodeIds = getBlockedSystemNodeIds(gameState, boardLayout);
+  const distance = getShortestPathCost(boardLayout, ship.locationId, targetNodeId, blockedNodeIds);
+  const colonySite = getGameColonySites(gameState, boardLayout).find((site) => site.nodeId === targetNodeId) ?? null;
+  const outpost = getDockingOutpost(gameState, boardLayout, targetNodeId);
+  const occupied = isNodeOccupied(ships, structures, targetNodeId, shipId);
+  const enemySpaceportLaunch = isEnemySpaceportLaunchPoint(gameState, boardLayout, ship.ownerPlayerId, targetNodeId);
+  let endpointType = "spacePoint";
+
+  if (colonySite) endpointType = "colonySite";
+  if (outpost) endpointType = "dock";
+  if (enemySpaceportLaunch) endpointType = "spaceportLaunch";
+
+  if (distance === null) {
+    return {
+      validDestination: false,
+      passable: false,
+      distance: null,
+      endpointType,
+      reason: "invalid"
+    };
+  }
+
+  if (blockedNodeIds.has(targetNodeId)) {
+    return {
+      validDestination: false,
+      passable: true,
+      distance,
+      endpointType,
+      reason: "shipType"
+    };
+  }
+
+  if (occupied) {
+    return {
+      validDestination: false,
+      passable: true,
+      distance,
+      endpointType,
+      reason: "occupied"
+    };
+  }
+
+  if (enemySpaceportLaunch) {
+    return {
+      validDestination: false,
+      passable: true,
+      distance,
+      endpointType,
+      reason: "shipType"
+    };
+  }
+
+  if (ship.type === "colonyShip" && outpost) {
+    return {
+      validDestination: false,
+      passable: true,
+      distance,
+      endpointType,
+      reason: "shipType"
+    };
+  }
+
+  if (ship.type === "tradeShip" && colonySite) {
+    return {
+      validDestination: false,
+      passable: true,
+      distance,
+      endpointType,
+      reason: "shipType"
+    };
+  }
+
+  if (ship.type === "tradeShip" && outpost) {
+    const hasOpenDock = getAvailableOutpostDocks(gameState, boardLayout, outpost.id, structures).length > 0;
+    const requiredCargo = structures
+      .filter((structure) => structure.type === "tradeStation" && structure.outpostId === outpost.id)
+      .length + 1;
+    const owningPlayer = gameState.players.find((player) => player.id === ship.ownerPlayerId);
+    if ((owningPlayer?.upgrades?.cargo ?? 0) < requiredCargo || !hasOpenDock) {
+      return {
+        validDestination: false,
+        passable: true,
+        distance,
+        endpointType,
+        reason: "shipType"
+      };
+    }
+  }
+
+  return {
+    validDestination: true,
+    passable: true,
+    distance,
+    endpointType,
+    reason: null
+  };
 }
 
 export function tradeWithSupply(gameState, { fromResource, toResource }) {
@@ -2736,6 +2879,17 @@ function getAvailableOutpostDocks(gameState, boardLayout, outpostId, structures)
   const occupiedDockIds = new Set((structures ?? []).map((structure) => structure.dockId).filter(Boolean));
   return getVisibleDocks(gameState, boardLayout)
     .filter((dock) => dock.outpostId === outpostId && !occupiedDockIds.has(dock.id));
+}
+
+function isEnemySpaceportLaunchPoint(gameState, boardLayout, playerId, nodeId) {
+  const spaceportStructures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout)
+    .filter((structure) => structure.type === "spaceport");
+
+  return (boardLayout.spaceportLaunchPoints ?? []).some((launchPoint) => {
+    if (launchPoint.id !== nodeId) return false;
+    const spaceport = spaceportStructures.find((structure) => structure.locationId === launchPoint.spaceportLocationId);
+    return Boolean(spaceport && spaceport.ownerPlayerId !== playerId);
+  });
 }
 
 function applyFriendshipMarkerState(players, outposts, structures, outpostId) {

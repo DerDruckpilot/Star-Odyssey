@@ -30,6 +30,7 @@ import {
   foundColony,
   foundTradeStation,
   getReachableNodes,
+  getShipDestinationState,
   normalizeGameState,
   moveShip,
   placePendingShip,
@@ -315,8 +316,20 @@ function finishActiveEncounter() {
 
 function moveSelectedShipTo(targetNodeId) {
   const selectedShip = getSelectedShip();
-  if (!selectedShip || !canMoveSelectedShipTo(targetNodeId)) return false;
+  if (!selectedShip) return false;
+  if (!canMoveSelectedShipTo(targetNodeId)) {
+    const destination = getSelectedShipDestinationState(targetNodeId);
+    if (destination?.reason === "occupied") {
+      state.notice = t("destinationOccupied");
+    } else if (destination?.passable) {
+      state.notice = t("shipCannotLandHere");
+    } else {
+      state.notice = t("invalidDestination");
+    }
+    return false;
+  }
 
+  state.notice = "";
   state.gameState = moveShip(state.gameState, boardLayout, selectedShip.id, targetNodeId);
   saveCurrentGameState();
   render();
@@ -1446,7 +1459,9 @@ function renderFlightControls() {
   const selectedShip = getSelectedShip();
   const pendingTradeStationPlacement = state.gameState?.board?.pendingTradeStationPlacement;
   const summary = document.createElement("p");
-  summary.textContent = selectedShip
+  summary.textContent = getShipsInSpaceForPlayer().length === 0
+    ? t("noShipsInSpace")
+    : selectedShip
     ? `${getShipTypeLabel(selectedShip.type)} · ${t("remainingMovement")}: ${getShipRemainingMovement(selectedShip.id)}`
     : t("selectOwnShip");
 
@@ -1822,6 +1837,7 @@ function formatLastRoll(roll) {
 
 function formatFlightSpeed(gameState) {
   if (!gameState?.hasRolledFlightSpeed) return t("none");
+  if (!Number.isInteger(gameState.flightSpeedTotal) || !Number.isInteger(gameState.flightSpeedBase)) return t("noShipsInSpace");
   return `${gameState.flightSpeedTotal} (${gameState.flightSpeedBase} + ${getDisplayedFlightBonus(getActivePlayer())})`;
 }
 
@@ -1921,10 +1937,18 @@ function resolveSelectedBoardElement() {
     const colonySite = getColonySiteAtNode(point.id);
     const dock = getDockAtNode(point.id);
     const dockingOutpost = getDockingOutpostForNode(point.id);
+    const destination = getSelectedShipDestinationState(point.id);
     const details = [
       `${t("type")}: ${colonySite ? t("colonySite") : point.type}`,
       `${t("occupied")}: ${occupyingShip || occupyingStructure ? t("yes") : t("no")}`
     ];
+    if (destination) {
+      details.push(`${t("validDestination")}: ${destination.validDestination ? t("yes") : t("no")}`);
+      details.push(`${t("passablePoint")}: ${destination.passable ? t("yes") : t("no")}`);
+      if (!destination.validDestination) {
+        details.push(destination.reason === "occupied" ? t("destinationOccupied") : t("shipCannotLandHere"));
+      }
+    }
     if (colonySite) {
       details.push(`${t("colonySite")}: ${occupyingStructure ? t("occupied") : t("free")}`);
       details.push(`${t("planetSystem")}: ${colonySite.systemId}`);
@@ -2107,6 +2131,10 @@ function getShipRemainingMovement(shipId) {
   return state.gameState?.remainingMovementByShipId?.[shipId] ?? 0;
 }
 
+function getShipsInSpaceForPlayer(playerId = getActivePlayer()?.id) {
+  return (state.gameState?.board?.ships ?? []).filter((ship) => ship.ownerPlayerId === playerId);
+}
+
 function getShipMovementDetails(ship) {
   if (
     state.gameState?.phase !== "flight" ||
@@ -2200,6 +2228,12 @@ function getDockingOutpostForNode(nodeId) {
   return getVisibleOutposts().find((outpost) => outpost.dockNodeId === nodeId) ?? null;
 }
 
+function getSelectedShipDestinationState(targetNodeId) {
+  const selectedShip = getSelectedShip();
+  if (!selectedShip || !state.gameState) return null;
+  return getShipDestinationState(state.gameState, boardLayout, selectedShip.id, targetNodeId);
+}
+
 function getPendingTradeStationPlacement() {
   return state.gameState?.board?.pendingTradeStationPlacement ?? null;
 }
@@ -2227,12 +2261,13 @@ function getReachableNodeMap() {
     selectedShip.id,
     getShipRemainingMovement(selectedShip.id),
     state.gameState.board?.structures ?? [],
-    getBlockedSystemNodeIds()
-  ).map((node) => [node.id, node.distance]));
+    getBlockedSystemNodeIds(),
+    state.gameState
+  ).map((node) => [node.id, node]));
 }
 
 function canMoveSelectedShipTo(targetNodeId) {
-  return getReachableNodeMap().has(targetNodeId);
+  return getReachableNodeMap().get(targetNodeId)?.validDestination === true;
 }
 
 function isFoundablePoint(nodeId) {
@@ -2661,7 +2696,13 @@ function renderPointsLayer() {
     if (blockedNodeIds.has(point.id)) continue;
     const colonySite = getColonySiteAtNode(point.id);
     const selectedClass = isSelectedElement("spacePoint", point.id) ? " is-selected" : "";
-    const reachableClass = reachableNodes.has(point.id) ? " is-reachable" : "";
+    const reachableState = reachableNodes.get(point.id);
+    const reachableClass = reachableState ? " is-reachable" : "";
+    const endpointClass = reachableState?.endpointType === "colonySite"
+      ? " is-colony-target"
+      : reachableState?.endpointType === "dock"
+        ? " is-dock-target"
+        : "";
     const occupiedClass = getShipAtLocation(point.id) ? " is-occupied" : "";
     const foundableClass = isFoundablePoint(point.id) ? " is-foundable" : "";
     const placementClass = getPlacementPointClass(point.id);
@@ -2671,7 +2712,7 @@ function renderPointsLayer() {
     const visualType = point.type === "boundary" ? "boundary" : "space";
     const radius = colonySite ? 10 : visualType === "boundary" ? 5 : 7;
     const pointElement = createSvgElement("circle", {
-      class: `space-point space-point--${visualType}${colonySiteClass}${selectedClass}${reachableClass}${occupiedClass}${foundableClass}${placementClass}${shipBuildClass}${tradeStationClass}`,
+      class: `space-point space-point--${visualType}${colonySiteClass}${selectedClass}${reachableClass}${endpointClass}${occupiedClass}${foundableClass}${placementClass}${shipBuildClass}${tradeStationClass}`,
       cx: point.x,
       cy: point.y,
       r: radius
