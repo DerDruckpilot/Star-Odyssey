@@ -537,6 +537,22 @@ h1 {
   gap: 0.45rem;
 }
 
+.seven-resolution,
+.seven-step,
+.seven-status-list,
+.seven-target-list,
+.seven-discard-grid {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.seven-discard-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
 .flight-controls {
   display: grid;
   gap: 0.3rem;

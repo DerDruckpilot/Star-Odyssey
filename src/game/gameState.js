@@ -46,6 +46,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
     supplyDiscard: [],
     hasDrawnSupplyThisTurn: false,
     supplyDrawTurnKey: null,
+    sevenResolution: null,
     placement: createPlacementState(safePlayerCount),
     board: {
       layoutVersion: boardLayout.layoutVersion,
@@ -82,26 +83,34 @@ export function rollProduction(gameState, boardLayout, forcedRoll = null) {
   const firstDie = forcedRoll?.dice?.[0] ?? rollDie();
   const secondDie = forcedRoll?.dice?.[1] ?? rollDie();
   const total = firstDie + secondDie;
-  const productionResult = total === 7
+  const isSevenRoll = total === 7;
+  const productionResult = isSevenRoll
     ? {
       players: gameState.players,
+      phase: "production",
+      sevenResolution: createSevenResolution(gameState),
       logEntries: [
         {
           type: "turn",
-          messageKey: "logSevenPlaceholder",
+          messageKey: "logSevenRolled",
           messageParams: {}
         }
       ]
     }
-    : distributeProduction(gameState, boardLayout, total);
+    : {
+      ...distributeProduction(gameState, boardLayout, total),
+      phase: "tradeBuild",
+      sevenResolution: null
+    };
 
   return updateGameState(gameState, {
     players: productionResult.players,
-    phase: "tradeBuild",
+    phase: productionResult.phase,
     lastRoll: {
       dice: [firstDie, secondDie],
       total
     },
+    sevenResolution: productionResult.sevenResolution,
     logEntries: [
       {
         type: "turn",
@@ -353,6 +362,210 @@ export function drawSupply(gameState) {
         count: drawnCards.length,
         resources: formatResourceList(drawnCards)
       }
+    }
+  });
+}
+
+export function updateSevenDiscardSelection(gameState, playerId, resource, delta) {
+  const sevenResolution = normalizeSevenResolution(gameState.sevenResolution, gameState.players);
+  if (!sevenResolution?.active || sevenResolution.step !== "discard" || !resource || !Number.isInteger(delta) || delta === 0) {
+    return gameState;
+  }
+
+  const player = gameState.players.find((candidate) => candidate.id === playerId);
+  if (!player || !needsSevenDiscard(sevenResolution, playerId)) return gameState;
+
+  const nextSelections = {
+    ...sevenResolution.discardSelections,
+    [playerId]: normalizeResources(sevenResolution.discardSelections?.[playerId])
+  };
+  const selection = nextSelections[playerId];
+  const currentValue = selection[resource] ?? 0;
+  const ownedValue = normalizeResources(player.resources)[resource] ?? 0;
+  const selectedTotal = countResources(selection);
+  const requiredCount = getRequiredDiscardCount(sevenResolution, playerId);
+
+  if (delta > 0) {
+    if (selectedTotal >= requiredCount || currentValue >= ownedValue) return gameState;
+    selection[resource] = currentValue + 1;
+  } else {
+    if (currentValue <= 0) return gameState;
+    selection[resource] = currentValue - 1;
+  }
+
+  return updateGameState(gameState, {
+    sevenResolution: {
+      ...sevenResolution,
+      discardSelections: nextSelections
+    }
+  });
+}
+
+export function submitSevenDiscard(gameState, playerId) {
+  const sevenResolution = normalizeSevenResolution(gameState.sevenResolution, gameState.players);
+  if (!sevenResolution?.active || sevenResolution.step !== "discard") return gameState;
+
+  const player = gameState.players.find((candidate) => candidate.id === playerId);
+  if (!player || !needsSevenDiscard(sevenResolution, playerId)) return gameState;
+
+  const selection = normalizeResources(sevenResolution.discardSelections?.[playerId]);
+  const requiredCount = getRequiredDiscardCount(sevenResolution, playerId);
+  if (countResources(selection) !== requiredCount || !canPay(normalizeResources(player.resources), selection)) return gameState;
+
+  const players = gameState.players.map((candidate) => candidate.id === playerId
+    ? {
+      ...candidate,
+      resources: payCost(candidate.resources, selection)
+    }
+    : candidate);
+  const discardedPlayerIds = [...new Set([...sevenResolution.discardedPlayerIds, playerId])];
+  const nextSevenResolution = {
+    ...sevenResolution,
+    discardedPlayerIds,
+    discardSelections: {
+      ...sevenResolution.discardSelections,
+      [playerId]: createEmptyResources()
+    }
+  };
+
+  return updateGameState(gameState, {
+    players,
+    sevenResolution: advanceSevenResolution({
+      ...gameState,
+      players,
+      sevenResolution: nextSevenResolution
+    }, nextSevenResolution),
+    logEntry: {
+      type: "production",
+      messageKey: "logSevenDiscarded",
+      messageParams: {
+        player: player.name,
+        count: requiredCount
+      }
+    }
+  });
+}
+
+export function setSevenStealTarget(gameState, targetPlayerId) {
+  const sevenResolution = normalizeSevenResolution(gameState.sevenResolution, gameState.players);
+  if (!sevenResolution?.active || sevenResolution.step !== "steal") return gameState;
+  if (!getSevenStealCandidates(gameState, sevenResolution).some((player) => player.id === targetPlayerId)) return gameState;
+
+  return updateGameState(gameState, {
+    sevenResolution: {
+      ...sevenResolution,
+      stealTargetPlayerId: targetPlayerId
+    }
+  });
+}
+
+export function resolveSevenSteal(gameState) {
+  const sevenResolution = normalizeSevenResolution(gameState.sevenResolution, gameState.players);
+  if (!sevenResolution?.active || sevenResolution.step !== "steal") return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const targetPlayer = gameState.players.find((candidate) => candidate.id === sevenResolution.stealTargetPlayerId);
+  const candidates = getSevenStealCandidates(gameState, sevenResolution);
+
+  if (candidates.length === 0) {
+    return updateGameState(gameState, {
+      sevenResolution: {
+        ...sevenResolution,
+        step: "supply",
+        stealTargetPlayerId: null,
+        stealResolved: true
+      },
+      logEntry: {
+        type: "production",
+        messageKey: "logSevenNoOpponentResources",
+        messageParams: {}
+      }
+    });
+  }
+
+  if (!activePlayer || !targetPlayer || !candidates.some((candidate) => candidate.id === targetPlayer.id)) return gameState;
+
+  const drawnResource = drawRandomResource(targetPlayer.resources);
+  if (!drawnResource) {
+    return updateGameState(gameState, {
+      sevenResolution: {
+        ...sevenResolution,
+        step: "supply",
+        stealTargetPlayerId: null,
+        stealResolved: true
+      },
+      logEntry: {
+        type: "production",
+        messageKey: "logSevenNoOpponentResources",
+        messageParams: {}
+      }
+    });
+  }
+
+  const players = gameState.players.map((player) => {
+    if (player.id === activePlayer.id) {
+      const resources = normalizeResources(player.resources);
+      resources[drawnResource] = (resources[drawnResource] ?? 0) + 1;
+      return { ...player, resources };
+    }
+    if (player.id === targetPlayer.id) {
+      const resources = normalizeResources(player.resources);
+      resources[drawnResource] = Math.max(0, (resources[drawnResource] ?? 0) - 1);
+      return { ...player, resources };
+    }
+    return player;
+  });
+
+  return updateGameState(gameState, {
+    players,
+    sevenResolution: {
+      ...sevenResolution,
+      step: "supply",
+      stealResolved: true
+    },
+    logEntry: {
+      type: "production",
+      messageKey: "logSevenCardDrawn",
+      messageParams: {
+        player: activePlayer.name,
+        target: targetPlayer.name
+      }
+    }
+  });
+}
+
+export function distributeSevenSupply(gameState) {
+  const sevenResolution = normalizeSevenResolution(gameState.sevenResolution, gameState.players);
+  if (!sevenResolution?.active || sevenResolution.step !== "supply" || sevenResolution.supplyDistributed) return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const drawnByPlayerId = {};
+  let supplyDeck = normalizeSupplyDeck(gameState.supplyDeck);
+  const players = gameState.players.map((player) => {
+    if (player.id === activePlayer?.id) return player;
+    if (supplyDeck.length === 0) supplyDeck = createSupplyDeck();
+    const drawnResource = supplyDeck[0];
+    supplyDeck = supplyDeck.slice(1);
+    drawnByPlayerId[player.id] = drawnResource;
+    const resources = normalizeResources(player.resources);
+    resources[drawnResource] = (resources[drawnResource] ?? 0) + 1;
+    return {
+      ...player,
+      resources
+    };
+  });
+
+  return updateGameState(gameState, {
+    players,
+    supplyDeck,
+    phase: "tradeBuild",
+    hasDrawnSupplyThisTurn: true,
+    supplyDrawTurnKey: getTurnKey(gameState),
+    sevenResolution: null,
+    logEntry: {
+      type: "production",
+      messageKey: "logSevenSupplyDistributed",
+      messageParams: {}
     }
   });
 }
@@ -854,6 +1067,7 @@ export function endCurrentTurn(gameState) {
     hasRolledFlightSpeed: false,
     hasDrawnSupplyThisTurn: false,
     supplyDrawTurnKey: null,
+    sevenResolution: null,
     board: {
       ...gameState.board,
       selectedElement: null,
@@ -930,6 +1144,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     supplyDiscard: Array.isArray(gameState.supplyDiscard) ? gameState.supplyDiscard.filter((resource) => supplyResourceTypes.includes(resource)) : [],
     hasDrawnSupplyThisTurn: Boolean(gameState.hasDrawnSupplyThisTurn),
     supplyDrawTurnKey: typeof gameState.supplyDrawTurnKey === "string" ? gameState.supplyDrawTurnKey : null,
+    sevenResolution: normalizeSevenResolution(gameState.sevenResolution, normalizedPlayers),
     placement: normalizePlacementState(gameState.placement, normalizedPlayerCount),
     board: {
       ...fallback.board,
@@ -1089,8 +1304,97 @@ function getTurnKey(gameState) {
   return `${gameState.turnNumber}:${gameState.players?.[gameState.currentPlayerIndex]?.id ?? "unknown"}`;
 }
 
+function createSevenResolution(gameState) {
+  const discardRequirements = Object.fromEntries(gameState.players
+    .map((player) => [player.id, countResources(player.resources) > 7 ? Math.floor(countResources(player.resources) / 2) : 0])
+    .filter(([, count]) => count > 0));
+
+  return {
+    active: true,
+    step: Object.keys(discardRequirements).length > 0 ? "discard" : "steal",
+    discardRequirements,
+    discardedPlayerIds: [],
+    discardSelections: Object.fromEntries(
+      gameState.players.map((player) => [player.id, createEmptyResources()])
+    ),
+    stealTargetPlayerId: null,
+    stealResolved: false,
+    supplyDistributed: false
+  };
+}
+
+function normalizeSevenResolution(sevenResolution, players = []) {
+  if (!sevenResolution || typeof sevenResolution !== "object" || !sevenResolution.active) return null;
+
+  const validPlayerIds = new Set(players.map((player) => player.id));
+  const discardRequirements = Object.fromEntries(
+    Object.entries(sevenResolution.discardRequirements ?? {})
+      .filter(([playerId, count]) => validPlayerIds.has(playerId) && Number.isInteger(count) && count > 0)
+  );
+
+  return {
+    active: true,
+    step: ["discard", "steal", "supply"].includes(sevenResolution.step) ? sevenResolution.step : "discard",
+    discardRequirements,
+    discardedPlayerIds: Array.isArray(sevenResolution.discardedPlayerIds)
+      ? sevenResolution.discardedPlayerIds.filter((playerId) => validPlayerIds.has(playerId))
+      : [],
+    discardSelections: Object.fromEntries(players.map((player) => [
+      player.id,
+      normalizeResources(sevenResolution.discardSelections?.[player.id])
+    ])),
+    stealTargetPlayerId: validPlayerIds.has(sevenResolution.stealTargetPlayerId) ? sevenResolution.stealTargetPlayerId : null,
+    stealResolved: Boolean(sevenResolution.stealResolved),
+    supplyDistributed: Boolean(sevenResolution.supplyDistributed)
+  };
+}
+
+function advanceSevenResolution(gameState, sevenResolution) {
+  if (!sevenResolution?.active) return null;
+  if (sevenResolution.step !== "discard") return sevenResolution;
+
+  const remainingDiscardIds = Object.keys(sevenResolution.discardRequirements)
+    .filter((playerId) => needsSevenDiscard(sevenResolution, playerId));
+  if (remainingDiscardIds.length > 0) return sevenResolution;
+
+  return {
+    ...sevenResolution,
+    step: "steal"
+  };
+}
+
+function getRequiredDiscardCount(sevenResolution, playerId) {
+  return sevenResolution?.discardRequirements?.[playerId] ?? 0;
+}
+
+function needsSevenDiscard(sevenResolution, playerId) {
+  return getRequiredDiscardCount(sevenResolution, playerId) > 0
+    && !sevenResolution.discardedPlayerIds?.includes(playerId);
+}
+
+function getSevenStealCandidates(gameState, sevenResolution) {
+  const activePlayerId = gameState.players?.[gameState.currentPlayerIndex]?.id;
+  return gameState.players.filter((player) => player.id !== activePlayerId && countResources(player.resources) > 0);
+}
+
+function drawRandomResource(resources) {
+  const pool = [];
+  const normalizedResources = normalizeResources(resources);
+  for (const resource of supplyResourceTypes) {
+    for (let index = 0; index < (normalizedResources[resource] ?? 0); index += 1) {
+      pool.push(resource);
+    }
+  }
+  if (pool.length === 0) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 function formatResourceList(resources) {
   return resources.join(", ");
+}
+
+function countResources(resources) {
+  return Object.values(normalizeResources(resources)).reduce((sum, value) => sum + value, 0);
 }
 
 function createDefaultUpgrades() {

@@ -15,6 +15,7 @@ import {
   currentGameStorageKey,
   determineFlightSpeed,
   drawSupply,
+  distributeSevenSupply,
   endCurrentTurn,
   foundColony,
   foundTradeStation,
@@ -25,10 +26,14 @@ import {
   placeInitialColony,
   placeInitialColonyShip,
   placeInitialSpaceport,
+  resolveSevenSteal,
   rollProduction,
   rollPlacementStart,
+  setSevenStealTarget,
+  submitSevenDiscard,
   touchGameState,
   tradeWithSupply,
+  updateSevenDiscardSelection,
   upgradeColonyToSpaceport
 } from "./game/gameState.js";
 import { defaultLanguage, getText, languages } from "./i18n.js";
@@ -290,6 +295,41 @@ function drawSupplyForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
 
   state.gameState = drawSupply(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function updateSevenDiscardForPlayer(playerId, resource, delta) {
+  if (!state.gameState?.sevenResolution?.active) return;
+  state.gameState = updateSevenDiscardSelection(state.gameState, playerId, resource, delta);
+  saveCurrentGameState();
+  render();
+}
+
+function submitSevenDiscardForPlayer(playerId) {
+  if (!state.gameState?.sevenResolution?.active) return;
+  state.gameState = submitSevenDiscard(state.gameState, playerId);
+  saveCurrentGameState();
+  render();
+}
+
+function chooseSevenStealTarget(targetPlayerId) {
+  if (!state.gameState?.sevenResolution?.active) return;
+  state.gameState = setSevenStealTarget(state.gameState, targetPlayerId);
+  saveCurrentGameState();
+  render();
+}
+
+function resolveSevenStealForActivePlayer() {
+  if (!state.gameState?.sevenResolution?.active) return;
+  state.gameState = resolveSevenSteal(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function distributeSevenSupplyForActivePlayer() {
+  if (!state.gameState?.sevenResolution?.active) return;
+  state.gameState = distributeSevenSupply(state.gameState);
   saveCurrentGameState();
   render();
 }
@@ -696,6 +736,7 @@ function renderTurnSummary(player = getActivePlayer()) {
     player?.id !== activePlayer?.id ? `${t("selected")}: ${player?.name ?? t("noSelection")}` : null,
     `${t("round")} ${gameState?.turnNumber ?? 1}`,
     `${t("phase")}: ${getPhaseLabel(gameState?.phase)}`,
+    gameState?.sevenResolution?.active ? `${t("sevenStep")}: ${getSevenStepLabel(gameState.sevenResolution.step)}` : null,
     `${t("lastRoll")}: ${formatLastRoll(gameState?.lastRoll)}`,
     `${t("flightSpeed")}: ${formatFlightSpeed(gameState)}`
   ].filter(Boolean);
@@ -796,6 +837,11 @@ function renderPhaseActions(player = getActivePlayer()) {
     return wrapper;
   }
 
+  if (state.gameState.sevenResolution?.active) {
+    wrapper.append(renderSevenResolutionActions(player));
+    return wrapper;
+  }
+
   if (player?.id !== getActivePlayer()?.id) {
     const hint = document.createElement("p");
     hint.textContent = t("notYourTurn");
@@ -866,6 +912,177 @@ function renderSupplyDrawControls() {
     const hint = document.createElement("p");
     hint.textContent = t("noSupplyDrawAvailable");
     wrapper.append(hint);
+  }
+
+  return wrapper;
+}
+
+function renderSevenResolutionActions(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "seven-resolution";
+  const sevenResolution = state.gameState?.sevenResolution;
+  if (!sevenResolution?.active) return wrapper;
+
+  const title = document.createElement("p");
+  title.textContent = t("sevenRolled");
+  wrapper.append(title);
+
+  const step = document.createElement("p");
+  step.textContent = `${t("sevenStep")}: ${getSevenStepLabel(sevenResolution.step)}`;
+  wrapper.append(step);
+
+  if (sevenResolution.step === "discard") {
+    wrapper.append(renderSevenDiscardStep(player, sevenResolution));
+  } else if (sevenResolution.step === "steal") {
+    wrapper.append(renderSevenStealStep(player, sevenResolution));
+  } else if (sevenResolution.step === "supply") {
+    wrapper.append(renderSevenSupplyStep(player, sevenResolution));
+  }
+
+  return wrapper;
+}
+
+function renderSevenDiscardStep(player, sevenResolution) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "seven-step seven-step--discard";
+  const playerId = player?.id;
+  const requiredCount = getSevenDiscardRequirement(playerId);
+  const selectedCounts = getSevenDiscardSelection(playerId);
+  const selectedTotal = getSelectedResourceCount(selectedCounts);
+
+  const requirementInfo = document.createElement("p");
+  requirementInfo.textContent = getPlayersNeedingSevenDiscard().length > 0
+    ? t("sevenDiscardPending")
+    : t("sevenDiscardComplete");
+  wrapper.append(requirementInfo);
+
+  if (requiredCount > 0 && !hasPlayerFinishedSevenDiscard(playerId)) {
+    const instruction = document.createElement("p");
+    instruction.textContent = t("sevenDiscardInstruction").replace("{count}", requiredCount);
+    wrapper.append(instruction, renderSevenDiscardSelectors(player, selectedCounts));
+
+    const selectionInfo = document.createElement("p");
+    selectionInfo.textContent = t("sevenDiscardSelected")
+      .replace("{selected}", selectedTotal)
+      .replace("{count}", requiredCount);
+    wrapper.append(selectionInfo);
+
+    const submitButton = createButton(t("discardCards"), () => submitSevenDiscardForPlayer(playerId), "small-button");
+    submitButton.disabled = selectedTotal !== requiredCount;
+    wrapper.append(submitButton);
+  } else if (requiredCount > 0) {
+    const done = document.createElement("p");
+    done.textContent = t("sevenDiscardDone");
+    wrapper.append(done);
+  } else {
+    const noDiscard = document.createElement("p");
+    noDiscard.textContent = t("sevenNoDiscardRequired");
+    wrapper.append(noDiscard);
+  }
+
+  wrapper.append(renderSevenDiscardStatusList());
+  return wrapper;
+}
+
+function renderSevenDiscardSelectors(player, selectedCounts) {
+  const grid = document.createElement("div");
+  grid.className = "seven-discard-grid";
+
+  for (const resource of resourceTypes) {
+    const row = document.createElement("div");
+    row.className = "seven-discard-row";
+
+    const label = document.createElement("span");
+    const owned = player?.resources?.[resource] ?? 0;
+    const selected = selectedCounts?.[resource] ?? 0;
+    label.textContent = `${getResourceLabel(resource)}: ${owned} (${selected})`;
+
+    const decreaseButton = createButton("-", () => updateSevenDiscardForPlayer(player?.id, resource, -1), "small-button secondary-small-button");
+    decreaseButton.disabled = selected <= 0;
+
+    const increaseButton = createButton("+", () => updateSevenDiscardForPlayer(player?.id, resource, 1), "small-button");
+    increaseButton.disabled = selected >= owned || getSelectedResourceCount(selectedCounts) >= getSevenDiscardRequirement(player?.id);
+
+    row.append(label, decreaseButton, increaseButton);
+    grid.append(row);
+  }
+
+  return grid;
+}
+
+function renderSevenDiscardStatusList() {
+  const list = document.createElement("div");
+  list.className = "seven-status-list";
+
+  for (const player of state.gameState?.players ?? []) {
+    const item = document.createElement("p");
+    const requiredCount = getSevenDiscardRequirement(player.id);
+    if (requiredCount <= 0) {
+      item.textContent = `${player.name}: ${t("sevenNoDiscardRequired")}`;
+    } else if (hasPlayerFinishedSevenDiscard(player.id)) {
+      item.textContent = `${player.name}: ${t("sevenDiscardDone")}`;
+    } else {
+      item.textContent = `${player.name}: ${t("sevenDiscardInstruction").replace("{count}", requiredCount)}`;
+    }
+    list.append(item);
+  }
+
+  return list;
+}
+
+function renderSevenStealStep(player, sevenResolution) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "seven-step seven-step--steal";
+  const activePlayer = getActivePlayer();
+  const candidates = getSevenStealCandidates();
+
+  if (player?.id !== activePlayer?.id) {
+    const waiting = document.createElement("p");
+    waiting.textContent = t("sevenWaitingForActivePlayer");
+    wrapper.append(waiting);
+    return wrapper;
+  }
+
+  if (candidates.length === 0) {
+    const hint = document.createElement("p");
+    hint.textContent = t("sevenNoOpponentResources");
+    wrapper.append(hint, createButton(t("continue"), resolveSevenStealForActivePlayer, "small-button"));
+    return wrapper;
+  }
+
+  const instruction = document.createElement("p");
+  instruction.textContent = t("sevenChooseOpponent");
+  wrapper.append(instruction);
+
+  const targetList = document.createElement("div");
+  targetList.className = "seven-target-list";
+
+  for (const candidate of candidates) {
+    const button = createButton(candidate.name, () => chooseSevenStealTarget(candidate.id), "small-button secondary-small-button");
+    button.setAttribute("aria-pressed", String(sevenResolution.stealTargetPlayerId === candidate.id));
+    targetList.append(button);
+  }
+
+  const drawButton = createButton(t("drawCard"), resolveSevenStealForActivePlayer, "small-button");
+  drawButton.disabled = !sevenResolution.stealTargetPlayerId;
+  wrapper.append(targetList, drawButton);
+  return wrapper;
+}
+
+function renderSevenSupplyStep(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "seven-step seven-step--supply";
+
+  const hint = document.createElement("p");
+  hint.textContent = t("sevenSupplyInstruction");
+  wrapper.append(hint);
+
+  if (player?.id === getActivePlayer()?.id) {
+    wrapper.append(createButton(t("sevenDistributeSupply"), distributeSevenSupplyForActivePlayer, "small-button"));
+  } else {
+    const waiting = document.createElement("p");
+    waiting.textContent = t("sevenWaitingForActivePlayer");
+    wrapper.append(waiting);
   }
 
   return wrapper;
@@ -1474,6 +1691,50 @@ function getSupplyDrawCount(player) {
   if (victoryPoints >= 4 && victoryPoints <= 7) return 2;
   if (victoryPoints >= 8 && victoryPoints <= 9) return 1;
   return 0;
+}
+
+function getSevenStepLabel(step) {
+  const labels = {
+    discard: t("sevenStepDiscard"),
+    steal: t("sevenStepSteal"),
+    supply: t("sevenStepSupply")
+  };
+  return labels[step] ?? step;
+}
+
+function getSevenDiscardRequirement(playerId) {
+  return state.gameState?.sevenResolution?.discardRequirements?.[playerId] ?? 0;
+}
+
+function getSevenDiscardSelection(playerId) {
+  return state.gameState?.sevenResolution?.discardSelections?.[playerId] ?? {};
+}
+
+function hasPlayerFinishedSevenDiscard(playerId) {
+  return Boolean(state.gameState?.sevenResolution?.discardedPlayerIds?.includes(playerId));
+}
+
+function getPlayersNeedingSevenDiscard() {
+  const sevenResolution = state.gameState?.sevenResolution;
+  if (!sevenResolution?.active) return [];
+  return (state.gameState?.players ?? []).filter((player) =>
+    getSevenDiscardRequirement(player.id) > 0 && !hasPlayerFinishedSevenDiscard(player.id)
+  );
+}
+
+function getSelectedResourceCount(resources) {
+  return resourceTypes.reduce((sum, resource) => sum + (resources?.[resource] ?? 0), 0);
+}
+
+function getTotalResourceCount(resources) {
+  return resourceTypes.reduce((sum, resource) => sum + (resources?.[resource] ?? 0), 0);
+}
+
+function getSevenStealCandidates() {
+  const activePlayerId = getActivePlayer()?.id;
+  return (state.gameState?.players ?? []).filter((player) =>
+    player.id !== activePlayerId && getTotalResourceCount(player.resources) > 0
+  );
 }
 
 function getPlacementPointClass(nodeId) {

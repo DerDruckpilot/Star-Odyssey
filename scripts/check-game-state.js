@@ -2,14 +2,19 @@ import { boardLayout } from "../src/data/boardLayout.js";
 import {
   buildShip,
   createGameState,
+  distributeSevenSupply,
   drawSupply,
   endCurrentTurn,
   placePendingShip,
   placeInitialColony,
   placeInitialColonyShip,
   placeInitialSpaceport,
+  resolveSevenSteal,
   rollPlacementStart,
-  rollProduction
+  rollProduction,
+  setSevenStealTarget,
+  submitSevenDiscard,
+  updateSevenDiscardSelection
 } from "../src/game/gameState.js";
 import { isActiveSpecialToken } from "../src/data/numberTokens.js";
 
@@ -85,7 +90,7 @@ if (specialPlanet) {
   }
 }
 
-game = rollProduction(game, boardLayout);
+game = rollProduction(game, boardLayout, { dice: [1, 5] });
 game = drawSupply(game);
 
 const playerOneTotal = getResourceTotal(game.players[0]);
@@ -99,7 +104,7 @@ assert(
 
 game = { ...game, phase: "flight" };
 game = endCurrentTurn(game);
-game = rollProduction(game, boardLayout);
+game = rollProduction(game, boardLayout, { dice: [2, 4] });
 
 const playerTwoBeforeSupply = getResourceTotal(game.players[1]);
 game = drawSupply(game);
@@ -107,6 +112,64 @@ const playerTwoAfterSupply = getResourceTotal(game.players[1]);
 
 assert(game.currentPlayerIndex === 1, "Player 2 should be active after Player 1 ends the turn.");
 assert(playerTwoAfterSupply - playerTwoBeforeSupply === 2, "Player 2 should draw supply on their own turn.");
+
+game = {
+  ...game,
+  currentPlayerIndex: 0,
+  phase: "production",
+  supplyDeck: ["ore", "fuel", "carbon", "food", "goods"],
+  players: game.players.map((player, index) => {
+    if (index === 0) {
+      return {
+        ...player,
+        resources: {
+          ore: 2,
+          fuel: 2,
+          carbon: 1,
+          food: 1,
+          goods: 1
+        }
+      };
+    }
+    return {
+      ...player,
+      resources: {
+        ore: 3,
+        fuel: 2,
+        carbon: 2,
+        food: 1,
+        goods: 1
+      }
+    };
+  })
+};
+
+game = rollProduction(game, boardLayout, { dice: [3, 4] });
+assert(game.phase === "production", "A roll of 7 should not jump directly to tradeBuild.");
+assert(game.sevenResolution?.active, "A roll of 7 should activate seven resolution.");
+assert(getResourceTotal(game.players[0]) === 7, "Player 1 should not gain production on a 7.");
+assert(getResourceTotal(game.players[1]) === 9, "Player 2 should not gain production on a 7.");
+assert((game.sevenResolution?.discardRequirements?.["player-1"] ?? 0) === 0, "Players with 7 resources should not discard.");
+assert((game.sevenResolution?.discardRequirements?.["player-2"] ?? 0) === 4, "Players with 9 resources should discard 4.");
+
+game = updateSevenDiscardSelection(game, "player-2", "ore", 1);
+game = updateSevenDiscardSelection(game, "player-2", "fuel", 1);
+game = updateSevenDiscardSelection(game, "player-2", "carbon", 1);
+game = updateSevenDiscardSelection(game, "player-2", "food", 1);
+game = submitSevenDiscard(game, "player-2");
+assert(getResourceTotal(game.players[1]) === 5, "Player 2 should have 5 resources after discarding 4 from 9.");
+assert(game.sevenResolution?.step === "steal", "Seven resolution should move to steal after all discards.");
+
+game = setSevenStealTarget(game, "player-2");
+game = resolveSevenSteal(game);
+assert(getResourceTotal(game.players[0]) === 8, "Active player should gain 1 random resource after the steal.");
+assert(getResourceTotal(game.players[1]) === 4, "Target player should lose 1 resource after the steal.");
+assert(game.sevenResolution?.step === "supply", "Seven resolution should move to supply after the steal.");
+
+game = distributeSevenSupply(game);
+assert(getResourceTotal(game.players[1]) === 5, "Other players should draw 1 supply card after the seven resolution.");
+assert(game.phase === "tradeBuild", "Seven resolution should end in tradeBuild.");
+assert(game.supplyDrawTurnKey === `${game.turnNumber}:${game.players[game.currentPlayerIndex].id}`, "Seven supply resolution should mark the active turn supply state.");
 
 game = {
   ...game,
