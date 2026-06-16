@@ -1,3 +1,5 @@
+import { getFriendshipCardIdsForOutpostType } from "./friendshipCards.js";
+
 const boardWidth = 1600;
 const boardHeight = 1000;
 const hexRadius = 58;
@@ -95,10 +97,10 @@ const planetSystemTemplates = [
 ];
 
 const outpostTemplates = [
-  { id: "outpost-01", templateId: "outpost-alpha", name: "A" },
-  { id: "outpost-02", templateId: "outpost-beta", name: "B" },
-  { id: "outpost-03", templateId: "outpost-gamma", name: "C" },
-  { id: "outpost-04", templateId: "outpost-delta", name: "D" }
+  { id: "outpost-01", templateId: "outpost-alpha", name: "A", outpostType: "greenPeople" },
+  { id: "outpost-02", templateId: "outpost-beta", name: "B", outpostType: "diplomats" },
+  { id: "outpost-03", templateId: "outpost-gamma", name: "C", outpostType: "traders" },
+  { id: "outpost-04", templateId: "outpost-delta", name: "D", outpostType: "wisePeople" }
 ];
 
 const semanticNodeRequests = [
@@ -310,17 +312,6 @@ const colonySiteNodesBySystem = {
   "system-08": ["p37"]
 };
 
-const dockNodesByOutpost = {
-  "outpost-01": ["p06", "p07"],
-  "outpost-02": ["p13", "p14"],
-  "outpost-03": ["p26", "p27"],
-  "outpost-04": ["p34", "p35"],
-  "outpost-05": ["p17"],
-  "outpost-06": ["p28"],
-  "outpost-07": ["p30"],
-  "outpost-08": ["p19", "p20"]
-};
-
 for (const system of [...boardLayout.startSystems, ...boardLayout.planetSystems]) {
   applySystemMetadata(system);
 }
@@ -360,21 +351,8 @@ boardLayout.spaceportLaunchPoints = createUniqueLaunchPoints(boardLayout.colonyS
   ])
 )));
 
-boardLayout.docks = Object.entries(dockNodesByOutpost).flatMap(([outpostId, nodeIds]) => (
-  nodeIds.map((nodeId, index) => ({
-    id: `${outpostId}-dock-${index + 1}`,
-    outpostId,
-    nodeId,
-    occupiedByStructureId: null
-  }))
-));
-
-for (const outpost of boardLayout.outposts) {
-  const docks = boardLayout.docks.filter((dock) => dock.outpostId === outpost.id);
-  outpost.dockNodeId = docks[0]?.nodeId ?? null;
-  outpost.dockIds = docks.map((dock) => dock.id);
-  outpost.tradeStationIds = [];
-}
+boardLayout.outposts = boardLayout.outposts.map((outpost) => applyOutpostMetadata(outpost));
+boardLayout.docks = boardLayout.outposts.flatMap((outpost) => outpost.docks ?? []);
 
 boardLayout.productionPlanets = [...boardLayout.startSystems, ...boardLayout.planetSystems]
   .flatMap((system) => system.planets.map((planet) => ({
@@ -686,12 +664,15 @@ function instantiateOutpost(template, slot) {
   return {
     id: template.id,
     templateId: template.templateId,
+    outpostType: template.outpostType,
     slotId: slot.id,
     slotHexIds: [...slot.hexIds],
     coordinate: slot.hexIds[0],
     x: slot.x,
     y: slot.y,
-    name: template.name
+    name: template.name,
+    friendshipHolderPlayerId: null,
+    friendshipCards: getFriendshipCardIdsForOutpostType(template.outpostType)
   };
 }
 
@@ -796,7 +777,61 @@ function applySystemMetadata(system) {
 function enrichPlacement(placement) {
   return {
     ...placement,
-    placedSystems: (placement.placedSystems ?? []).map((system) => applySystemMetadata(system))
+    placedSystems: (placement.placedSystems ?? []).map((system) => applySystemMetadata(system)),
+    placedOutposts: (placement.placedOutposts ?? []).map((outpost) => applyOutpostMetadata(outpost))
+  };
+}
+
+function applyOutpostMetadata(outpost) {
+  const template = outpostTemplates.find((candidate) => candidate.id === outpost.id || candidate.templateId === outpost.templateId);
+  const outpostType = outpost.outpostType ?? template?.outpostType ?? "greenPeople";
+  const nodeProfile = createOutpostNodeProfile(outpost);
+  const defaultFriendshipCards = getFriendshipCardIdsForOutpostType(outpostType);
+
+  return {
+    ...outpost,
+    outpostType,
+    dockNodeId: outpost.dockNodeId ?? nodeProfile.dockNodeId,
+    docks: Array.isArray(outpost.docks) && outpost.docks.length > 0
+      ? outpost.docks
+      : nodeProfile.docks,
+    dockIds: Array.isArray(outpost.dockIds) && outpost.dockIds.length > 0
+      ? outpost.dockIds
+      : nodeProfile.docks.map((dock) => dock.id),
+    tradeStationIds: Array.isArray(outpost.tradeStationIds) ? outpost.tradeStationIds : [],
+    friendshipHolderPlayerId: typeof outpost.friendshipHolderPlayerId === "string" ? outpost.friendshipHolderPlayerId : null,
+    friendshipCards: Array.isArray(outpost.friendshipCards)
+      ? outpost.friendshipCards
+      : defaultFriendshipCards
+  };
+}
+
+function createOutpostNodeProfile(outpost) {
+  const outpostHexIds = new Set(outpost.slotHexIds ?? []);
+  const adjacentPoints = boardGraph.points
+    .map((point) => ({
+      ...point,
+      outpostHexCount: point.hexIds.filter((hexId) => outpostHexIds.has(hexId)).length
+    }))
+    .filter((point) => point.outpostHexCount > 0);
+  const dockNode = adjacentPoints.find((point) => point.outpostHexCount === 3) ?? null;
+  const dockCandidates = adjacentPoints
+    .filter((point) => point.id !== dockNode?.id)
+    .sort((left, right) => {
+      const leftAngle = Math.atan2(left.y - outpost.y, left.x - outpost.x);
+      const rightAngle = Math.atan2(right.y - outpost.y, right.x - outpost.x);
+      return leftAngle - rightAngle;
+    })
+    .slice(0, 5);
+
+  return {
+    dockNodeId: dockNode?.id ?? dockCandidates[0]?.id ?? null,
+    docks: dockCandidates.map((point, index) => ({
+      id: `${outpost.id}-dock-${index + 1}`,
+      outpostId: outpost.id,
+      nodeId: point.id,
+      occupiedByStructureId: null
+    }))
   };
 }
 

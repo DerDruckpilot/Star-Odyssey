@@ -79,6 +79,8 @@ Fuer neue Partien wird vorerst nur die Variante Wilder Weltraum genutzt. Die vie
 
 Alle uebrigen Planetensysteme und Aussenposten werden beim Start eines neuen Spiels zufaellig auf einen gemeinsamen Pool aus 15 Dreier-Hex-Slots verteilt. Es gibt acht Planetensystem-Templates und vier Aussenposten-Templates; drei Slots bleiben dadurch leer und werden wie normale leere Hexfelder gerendert. Die fruehere `*`/`**`-Unterscheidung bleibt nur als interne Herkunftsnotiz am Slot.
 
+Aussenposten werden datengetrieben aus ihrem belegten Dreier-Slot abgeleitet: ein zentraler Andockpunkt liegt in der Mitte des Slots, dazu kommen fuenf Docks auf den aeusseren Knoten. Handelsstationen werden an diesen Docks gegruendet; der Freundschaftsmarker eines Volkes wechselt nur bei klarer Mehrheit der dort gebauten Handelsstationen.
+
 Die Sternennebel-Hexe sind fest: `I4`, `H5`, `H6`, `K2`, `J3`, `J4`, `I5`, `I6`, `H7`, `I8`, `I9`, `J8`, `K8`, `K9`, `L10`. Nebel ist kein System-Slot und wird nicht durch zufaellige Inhalte ueberschrieben.
 
 Die zufaellige Verteilung wird im Game-State gespeichert. Save/Load stellt deshalb dieselbe Platzierung wieder her; nur ein neues Spiel erzeugt eine neue Verteilung.

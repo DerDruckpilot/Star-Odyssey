@@ -1,4 +1,5 @@
 import { bankTradeRates, buildActionDefinitions, upgradeDefinitions } from "../data/buildCosts.js";
+import { getFriendshipCardById } from "../data/friendshipCards.js";
 import {
   createNumberTokenState,
   doesTokenProduce,
@@ -62,6 +63,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
         boardPlacement,
         (boardLayout.startSystems ?? []).map((system) => system.id)
       ),
+      pendingTradeStationPlacement: null,
       pendingShipPlacement: null,
       pendingSpaceportUpgrade: null,
       structures: startingStructures,
@@ -583,6 +585,7 @@ export function advanceToFlightPhase(gameState) {
     board: {
       ...gameState.board,
       selectedElement: null,
+      pendingTradeStationPlacement: null,
       pendingShipPlacement: null,
       pendingSpaceportUpgrade: null
     },
@@ -774,18 +777,71 @@ export function foundTradeStation(gameState, boardLayout, shipId) {
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const ships = normalizeShips(gameState.board?.ships);
   const ship = ships.find((candidate) => candidate.id === shipId);
-  const dock = (boardLayout.docks ?? []).find((candidate) => candidate.nodeId === ship?.locationId);
+  const outpost = getDockingOutpost(gameState, boardLayout, ship?.locationId);
   const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout);
+  const availableDocks = getAvailableOutpostDocks(gameState, boardLayout, outpost?.id, structures);
   const existingOutpostStations = structures
-    .filter((structure) => structure.type === "tradeStation" && structure.outpostId === dock?.outpostId);
+    .filter((structure) => structure.type === "tradeStation" && structure.outpostId === outpost?.id);
   const requiredCargo = existingOutpostStations.length + 1;
   if (
     !activePlayer ||
     !ship ||
     ship.ownerPlayerId !== activePlayer.id ||
     ship.type !== "tradeShip" ||
-    !dock ||
-    isStructureAtLocation(structures, dock.nodeId) ||
+    !outpost ||
+    availableDocks.length === 0 ||
+    (activePlayer.upgrades?.cargo ?? 0) < requiredCargo
+  ) {
+    return gameState;
+  }
+
+  return updateGameState(gameState, {
+    board: {
+      ...gameState.board,
+      selectedElement: { type: "outpost", id: outpost.id },
+      pendingTradeStationPlacement: {
+        shipId: ship.id,
+        ownerPlayerId: activePlayer.id,
+        outpostId: outpost.id,
+        requiredCargo,
+        availableDockIds: availableDocks.map((dock) => dock.id)
+      }
+    },
+    logEntry: {
+      type: "founding",
+      messageKey: "logTradeStationSelectionStarted",
+      messageParams: {
+        player: activePlayer.name
+      }
+    }
+  });
+}
+
+export function confirmPendingTradeStationPlacement(gameState, boardLayout, targetNodeId) {
+  if (gameState.phase !== "flight") return gameState;
+
+  const pending = normalizePendingTradeStationPlacement(gameState.board?.pendingTradeStationPlacement, gameState.players);
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const ships = normalizeShips(gameState.board?.ships);
+  const ship = ships.find((candidate) => candidate.id === pending?.shipId);
+  const outpost = getPlacedOutposts(gameState, boardLayout).find((candidate) => candidate.id === pending?.outpostId);
+  const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout);
+  const availableDocks = getAvailableOutpostDocks(gameState, boardLayout, outpost?.id, structures)
+    .filter((dock) => pending?.availableDockIds?.includes(dock.id));
+  const selectedDock = availableDocks.find((dock) => dock.nodeId === targetNodeId);
+  const existingOutpostStations = structures
+    .filter((structure) => structure.type === "tradeStation" && structure.outpostId === outpost?.id);
+  const requiredCargo = existingOutpostStations.length + 1;
+
+  if (
+    !pending ||
+    !activePlayer ||
+    pending.ownerPlayerId !== activePlayer.id ||
+    !ship ||
+    ship.ownerPlayerId !== activePlayer.id ||
+    ship.type !== "tradeShip" ||
+    !outpost ||
+    !selectedDock ||
     (activePlayer.upgrades?.cargo ?? 0) < requiredCargo
   ) {
     return gameState;
@@ -795,37 +851,115 @@ export function foundTradeStation(gameState, boardLayout, shipId) {
     id: createId("trade-station"),
     ownerPlayerId: activePlayer.id,
     type: "tradeStation",
-    locationId: dock.nodeId,
-    dockId: dock.id,
-    outpostId: dock.outpostId,
+    locationId: selectedDock.nodeId,
+    dockId: selectedDock.id,
+    outpostId: outpost.id,
     adjacentPlanetIds: []
   };
   const updatedShips = ships.filter((candidate) => candidate.id !== ship.id);
   const updatedStructures = [...structures, structure];
   const remainingMovementByShipId = { ...(gameState.remainingMovementByShipId ?? {}) };
   delete remainingMovementByShipId[ship.id];
-  const grantsVictoryPoint = existingOutpostStations.length === 0;
-  const players = syncPlayersWithBoardAssets(gameState.players, updatedStructures, updatedShips)
-    .map((player) => player.id === activePlayer.id
-      ? { ...player, victoryPoints: player.victoryPoints + (grantsVictoryPoint ? 1 : 0) }
-      : player);
+  const updatedOutposts = getPlacedOutposts(gameState, boardLayout).map((candidate) => (
+    candidate.id === outpost.id
+      ? {
+        ...candidate,
+        tradeStationIds: [...(candidate.tradeStationIds ?? []), structure.id]
+      }
+      : candidate
+  ));
+  const friendshipCardId = Array.isArray(outpost.friendshipCards) && outpost.friendshipCards.length > 0
+    ? outpost.friendshipCards[0]
+    : null;
+  const outpostsAfterCard = updatedOutposts.map((candidate) => (
+    candidate.id === outpost.id
+      ? {
+        ...candidate,
+        friendshipCards: friendshipCardId
+          ? candidate.friendshipCards.filter((cardId) => cardId !== friendshipCardId)
+          : candidate.friendshipCards
+      }
+      : candidate
+  ));
+  const playersWithAssets = syncPlayersWithBoardAssets(gameState.players, updatedStructures, updatedShips)
+    .map((player) => player.id === activePlayer.id && friendshipCardId
+      ? { ...player, friendshipCards: [...normalizeFriendshipCards(player.friendshipCards), friendshipCardId] }
+      : player
+    );
+  const friendshipResult = applyFriendshipMarkerState(playersWithAssets, outpostsAfterCard, updatedStructures, outpost.id);
+  const logEntries = [
+    {
+      type: "founding",
+      messageKey: "logTradeStationFounded",
+      messageParams: {
+        player: activePlayer.name
+      }
+    }
+  ];
+
+  if (friendshipCardId) {
+    const card = getFriendshipCardById(friendshipCardId);
+    logEntries.push({
+      type: "friendship",
+      messageKey: "logFriendshipCardGained",
+      messageParams: {
+        player: activePlayer.name,
+        card: card?.titleKey ?? friendshipCardId
+      }
+    });
+  }
+
+  if (friendshipResult.markerChange?.type === "granted") {
+    logEntries.push({
+      type: "friendship",
+      messageKey: "logFriendshipMarkerGranted",
+      messageParams: {
+        player: getPlayerNameById(friendshipResult.players, friendshipResult.markerChange.nextHolderPlayerId),
+        outpost: getOutpostName(outpost)
+      }
+    });
+  } else if (friendshipResult.markerChange?.type === "transferred") {
+    logEntries.push({
+      type: "friendship",
+      messageKey: "logFriendshipMarkerTransferred",
+      messageParams: {
+        player: getPlayerNameById(friendshipResult.players, friendshipResult.markerChange.nextHolderPlayerId),
+        outpost: getOutpostName(outpost)
+      }
+    });
+  }
 
   return updateGameState(gameState, {
-    players,
+    players: friendshipResult.players,
     remainingMovementByShipId,
     board: {
       ...gameState.board,
       selectedElement: { type: "structure", id: structure.id },
+      placedOutposts: friendshipResult.outposts,
+      pendingTradeStationPlacement: null,
       structures: updatedStructures,
       colonies: updatedStructures.filter((candidate) => candidate.type === "colony"),
       stations: updatedStructures.filter((candidate) => candidate.type === "tradeStation"),
       ships: updatedShips
     },
+    logEntries
+  });
+}
+
+export function cancelPendingTradeStationPlacement(gameState) {
+  if (!gameState.board?.pendingTradeStationPlacement) return gameState;
+
+  return updateGameState(gameState, {
+    board: {
+      ...gameState.board,
+      selectedElement: null,
+      pendingTradeStationPlacement: null
+    },
     logEntry: {
       type: "founding",
-      messageKey: "logTradeStationFounded",
+      messageKey: "logTradeStationSelectionCancelled",
       messageParams: {
-        player: activePlayer.name
+        player: getActivePlayerName(gameState)
       }
     }
   });
@@ -1273,6 +1407,7 @@ export function endCurrentTurn(gameState) {
     board: {
       ...gameState.board,
       selectedElement: null,
+      pendingTradeStationPlacement: null,
       pendingShipPlacement: null,
       pendingSpaceportUpgrade: null
     },
@@ -1359,6 +1494,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
       emptySlots: normalizedPlacement.emptySlots,
       exploredSystems: normalizedExploredSystems,
       numberTokens: normalizedNumberTokens,
+      pendingTradeStationPlacement: normalizePendingTradeStationPlacement(gameState.board?.pendingTradeStationPlacement, normalizedPlayers),
       pendingShipPlacement: normalizePendingShipPlacement(gameState.board?.pendingShipPlacement, normalizedPlayers),
       pendingSpaceportUpgrade: normalizePendingSpaceportUpgrade(gameState.board?.pendingSpaceportUpgrade, normalizedPlayers),
       structures: normalizedStructures,
@@ -1386,6 +1522,8 @@ function createPlayers(playerCount, language) {
     resources: createEmptyResources(),
     upgrades: createDefaultUpgrades(),
     halfMedals: 0,
+    friendshipCards: [],
+    friendshipMarkers: [],
     ships: [],
     structures: [],
     stations: []
@@ -1464,6 +1602,8 @@ function normalizePlayer(player, index, language) {
     resources: normalizeResources(player.resources),
     upgrades: normalizeUpgrades(player.upgrades),
     halfMedals: Number.isInteger(player.halfMedals) ? player.halfMedals : 0,
+    friendshipCards: normalizeFriendshipCards(player.friendshipCards),
+    friendshipMarkers: normalizeFriendshipMarkers(player.friendshipMarkers),
     ships: Array.isArray(player.ships) ? player.ships : [],
     structures: Array.isArray(player.structures) ? player.structures : [],
     stations: Array.isArray(player.stations) ? player.stations : []
@@ -1866,6 +2006,22 @@ function normalizePendingShipPlacement(pendingShipPlacement, players = []) {
   };
 }
 
+function normalizePendingTradeStationPlacement(pendingTradeStationPlacement, players = []) {
+  if (!pendingTradeStationPlacement || typeof pendingTradeStationPlacement !== "object") return null;
+  const playerIds = new Set((players ?? []).map((player) => player.id));
+  if (!playerIds.has(pendingTradeStationPlacement.ownerPlayerId)) return null;
+
+  return {
+    shipId: typeof pendingTradeStationPlacement.shipId === "string" ? pendingTradeStationPlacement.shipId : null,
+    ownerPlayerId: pendingTradeStationPlacement.ownerPlayerId,
+    outpostId: typeof pendingTradeStationPlacement.outpostId === "string" ? pendingTradeStationPlacement.outpostId : null,
+    requiredCargo: Number.isInteger(pendingTradeStationPlacement.requiredCargo) ? pendingTradeStationPlacement.requiredCargo : 1,
+    availableDockIds: Array.isArray(pendingTradeStationPlacement.availableDockIds)
+      ? pendingTradeStationPlacement.availableDockIds.filter((dockId) => typeof dockId === "string")
+      : []
+  };
+}
+
 function normalizePendingSpaceportUpgrade(pendingSpaceportUpgrade, players = []) {
   if (!pendingSpaceportUpgrade || typeof pendingSpaceportUpgrade !== "object") return null;
   const playerIds = new Set((players ?? []).map((player) => player.id));
@@ -1877,6 +2033,14 @@ function normalizePendingSpaceportUpgrade(pendingSpaceportUpgrade, players = [])
       ? pendingSpaceportUpgrade.cost
       : {}
   };
+}
+
+function normalizeFriendshipCards(friendshipCards) {
+  return Array.isArray(friendshipCards) ? friendshipCards.filter((cardId) => typeof cardId === "string") : [];
+}
+
+function normalizeFriendshipMarkers(friendshipMarkers) {
+  return Array.isArray(friendshipMarkers) ? friendshipMarkers.filter((markerId) => typeof markerId === "string") : [];
 }
 
 function normalizeActiveTradeOffer(activeTradeOffer, players = []) {
@@ -1943,8 +2107,98 @@ function syncPlayersWithBoardAssets(players, structures, ships) {
   return players.map((player) => ({
     ...player,
     structures: structures.filter((structure) => structure.ownerPlayerId === player.id),
-    ships: ships.filter((ship) => ship.ownerPlayerId === player.id)
+    ships: ships.filter((ship) => ship.ownerPlayerId === player.id),
+    stations: structures.filter((structure) => structure.ownerPlayerId === player.id && structure.type === "tradeStation")
   }));
+}
+
+function getPlacedOutposts(gameState, boardLayout) {
+  return Array.isArray(gameState.board?.placedOutposts)
+    ? gameState.board.placedOutposts
+    : (boardLayout.outposts ?? []);
+}
+
+function getVisibleDocks(gameState, boardLayout) {
+  return getPlacedOutposts(gameState, boardLayout).flatMap((outpost) => outpost.docks ?? []);
+}
+
+function getDockingOutpost(gameState, boardLayout, nodeId) {
+  return getPlacedOutposts(gameState, boardLayout)
+    .find((outpost) => outpost.dockNodeId === nodeId) ?? null;
+}
+
+function getAvailableOutpostDocks(gameState, boardLayout, outpostId, structures) {
+  if (!outpostId) return [];
+  const occupiedDockIds = new Set((structures ?? []).map((structure) => structure.dockId).filter(Boolean));
+  return getVisibleDocks(gameState, boardLayout)
+    .filter((dock) => dock.outpostId === outpostId && !occupiedDockIds.has(dock.id));
+}
+
+function applyFriendshipMarkerState(players, outposts, structures, outpostId) {
+  const outpost = outposts.find((candidate) => candidate.id === outpostId);
+  if (!outpost) return { players, outposts, markerChange: null };
+
+  const stationCounts = Object.fromEntries(players.map((player) => [player.id, 0]));
+  for (const structure of structures.filter((candidate) => candidate.type === "tradeStation" && candidate.outpostId === outpostId)) {
+    stationCounts[structure.ownerPlayerId] = (stationCounts[structure.ownerPlayerId] ?? 0) + 1;
+  }
+
+  const occupiedEntries = Object.entries(stationCounts).filter(([, count]) => count > 0);
+  if (occupiedEntries.length === 0) return { players, outposts, markerChange: null };
+
+  const highestCount = Math.max(...occupiedEntries.map(([, count]) => count));
+  const leaders = occupiedEntries.filter(([, count]) => count === highestCount);
+  if (leaders.length !== 1) return { players, outposts, markerChange: null };
+
+  const nextHolderPlayerId = leaders[0][0];
+  const currentHolderPlayerId = outpost.friendshipHolderPlayerId ?? null;
+  if (currentHolderPlayerId === nextHolderPlayerId) {
+    return { players, outposts, markerChange: null };
+  }
+  if (currentHolderPlayerId && highestCount <= (stationCounts[currentHolderPlayerId] ?? 0)) {
+    return { players, outposts, markerChange: null };
+  }
+
+  const updatedPlayers = players.map((player) => {
+    const markers = normalizeFriendshipMarkers(player.friendshipMarkers);
+    if (player.id === currentHolderPlayerId) {
+      return {
+        ...player,
+        victoryPoints: Math.max(0, player.victoryPoints - 2),
+        friendshipMarkers: markers.filter((markerId) => markerId !== outpostId)
+      };
+    }
+    if (player.id === nextHolderPlayerId) {
+      return {
+        ...player,
+        victoryPoints: player.victoryPoints + 2,
+        friendshipMarkers: [...markers.filter((markerId) => markerId !== outpostId), outpostId]
+      };
+    }
+    return player;
+  });
+
+  return {
+    players: updatedPlayers,
+    outposts: outposts.map((candidate) => (
+      candidate.id === outpostId
+        ? { ...candidate, friendshipHolderPlayerId: nextHolderPlayerId }
+        : candidate
+    )),
+    markerChange: {
+      type: currentHolderPlayerId ? "transferred" : "granted",
+      previousHolderPlayerId: currentHolderPlayerId,
+      nextHolderPlayerId
+    }
+  };
+}
+
+function getPlayerNameById(players, playerId) {
+  return players.find((player) => player.id === playerId)?.name ?? playerId;
+}
+
+function getOutpostName(outpost) {
+  return outpost?.name ?? outpost?.id ?? "outpost";
 }
 
 function mergeResources(resources, additions) {

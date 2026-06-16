@@ -2,7 +2,9 @@ import { boardLayout } from "../src/data/boardLayout.js";
 import {
   buildShip,
   cancelPendingSpaceportUpgrade,
+  cancelPendingTradeStationPlacement,
   cancelTradeOffer,
+  confirmPendingTradeStationPlacement,
   confirmPendingSpaceportUpgrade,
   createTradeOffer,
   createGameState,
@@ -19,6 +21,8 @@ import {
   rollProduction,
   setSevenStealTarget,
   startPendingSpaceportUpgrade,
+  foundTradeStation,
+  normalizeGameState,
   submitSevenDiscard,
   updateSevenDiscardSelection
 } from "../src/game/gameState.js";
@@ -262,6 +266,152 @@ const foodBeforeCancel = game.players[0].resources.food;
 game = cancelPendingSpaceportUpgrade(game);
 assert(!game.board.pendingSpaceportUpgrade, "Cancelling spaceport selection should clear the pending state.");
 assert(game.players[0].resources.food === foodBeforeCancel, "Cancelling spaceport selection should not change resources.");
+
+const outpostUnderTest = game.board.placedOutposts.find((outpost) => (outpost.docks ?? []).length >= 3);
+assert(Boolean(outpostUnderTest), "Randomized outposts should expose enough docks for the friendship marker test.");
+
+if (outpostUnderTest) {
+  game = {
+    ...game,
+    phase: "flight",
+    currentPlayerIndex: 0,
+    board: {
+      ...game.board,
+      pendingTradeStationPlacement: null,
+      selectedElement: null,
+      structures: game.board.structures.filter((structure) => structure.type !== "tradeStation"),
+      stations: [],
+      ships: [
+        {
+          id: "player-1-trade-ship-a",
+          ownerPlayerId: "player-1",
+          type: "tradeShip",
+          locationId: outpostUnderTest.dockNodeId,
+          status: "docked"
+        }
+      ],
+      placedOutposts: game.board.placedOutposts.map((outpost) => ({
+        ...outpost,
+        friendshipHolderPlayerId: null,
+        tradeStationIds: []
+      }))
+    },
+    players: game.players.map((player, index) => ({
+      ...player,
+      victoryPoints: 4,
+      friendshipCards: [],
+      friendshipMarkers: [],
+      upgrades: {
+        ...player.upgrades,
+        cargo: index === 0 ? 3 : 3
+      }
+    }))
+  };
+
+  const firstDockNodeId = outpostUnderTest.docks[0].nodeId;
+  const secondDockNodeId = outpostUnderTest.docks[1].nodeId;
+  const thirdDockNodeId = outpostUnderTest.docks[2].nodeId;
+
+  game = foundTradeStation(game, boardLayout, "player-1-trade-ship-a");
+  assert(game.board.pendingTradeStationPlacement?.availableDockIds?.length >= 3, "Trade station founding should start with a pending dock selection.");
+  game = confirmPendingTradeStationPlacement(game, boardLayout, firstDockNodeId);
+  assert(game.board.structures.some((structure) => structure.type === "tradeStation" && structure.locationId === firstDockNodeId), "Trade station should occupy the selected dock.");
+  assert(!game.board.ships.some((ship) => ship.id === "player-1-trade-ship-a"), "Trade ship should be consumed when founding a trade station.");
+  assert(game.players[0].friendshipMarkers.includes(outpostUnderTest.id), "The first outpost founder should receive the friendship marker.");
+  assert(game.players[0].victoryPoints === 6, "Friendship marker should grant 2 victory points.");
+  assert(game.players[0].friendshipCards.length === 1, "Founding a trade station should grant one friendship card.");
+
+  game = {
+    ...game,
+    phase: "flight",
+    currentPlayerIndex: 1,
+    board: {
+      ...game.board,
+      pendingTradeStationPlacement: null,
+      ships: [
+        ...game.board.ships,
+        {
+          id: "player-2-trade-ship-a",
+          ownerPlayerId: "player-2",
+          type: "tradeShip",
+          locationId: outpostUnderTest.dockNodeId,
+          status: "docked"
+        }
+      ]
+    }
+  };
+
+  game = foundTradeStation(game, boardLayout, "player-2-trade-ship-a");
+  game = confirmPendingTradeStationPlacement(game, boardLayout, secondDockNodeId);
+  assert(game.board.placedOutposts.find((outpost) => outpost.id === outpostUnderTest.id)?.friendshipHolderPlayerId === "player-1", "A tie on trade stations must not transfer the friendship marker.");
+
+  game = {
+    ...game,
+    phase: "flight",
+    currentPlayerIndex: 1,
+    board: {
+      ...game.board,
+      pendingTradeStationPlacement: null,
+      ships: [
+        ...game.board.ships,
+        {
+          id: "player-2-trade-ship-b",
+          ownerPlayerId: "player-2",
+          type: "tradeShip",
+          locationId: outpostUnderTest.dockNodeId,
+          status: "docked"
+        }
+      ]
+    }
+  };
+
+  game = foundTradeStation(game, boardLayout, "player-2-trade-ship-b");
+  game = confirmPendingTradeStationPlacement(game, boardLayout, thirdDockNodeId);
+  const updatedOutpost = game.board.placedOutposts.find((outpost) => outpost.id === outpostUnderTest.id);
+  assert(updatedOutpost?.friendshipHolderPlayerId === "player-2", "Friendship marker should move only when another player gains a clear majority.");
+  assert(game.players[0].victoryPoints === 4, "Previous friendship holder should lose 2 victory points on marker transfer.");
+  assert(game.players[1].victoryPoints === 6, "New friendship holder should gain 2 victory points on marker transfer.");
+  const normalizedOutpostGame = normalizeGameState(JSON.parse(JSON.stringify(game)), {
+    language: "de",
+    playerCount: 2,
+    boardLayout
+  });
+  assert(
+    normalizedOutpostGame.board.placedOutposts.find((outpost) => outpost.id === outpostUnderTest.id)?.friendshipHolderPlayerId === "player-2",
+    "Save/load normalization should preserve friendship marker holders."
+  );
+
+  const pendingCancelState = foundTradeStation({
+    ...game,
+    phase: "flight",
+    currentPlayerIndex: 1,
+    players: game.players.map((player, index) => index === 1
+      ? {
+        ...player,
+        upgrades: {
+          ...player.upgrades,
+          cargo: 5
+        }
+      }
+      : player),
+    board: {
+      ...game.board,
+      ships: [
+        ...game.board.ships,
+        {
+          id: "player-2-trade-ship-c",
+          ownerPlayerId: "player-2",
+          type: "tradeShip",
+          locationId: outpostUnderTest.dockNodeId,
+          status: "docked"
+        }
+      ]
+    }
+  }, boardLayout, "player-2-trade-ship-c");
+  assert(Boolean(pendingCancelState.board.pendingTradeStationPlacement), "Trade station founding should remain cancellable while a dock selection is pending.");
+  const cancelledPendingState = cancelPendingTradeStationPlacement(pendingCancelState);
+  assert(!cancelledPendingState.board.pendingTradeStationPlacement, "Cancelling a pending trade station placement should clear the pending state.");
+}
 
 if (process.exitCode !== 1) {
   console.log("Game state check passed.");
