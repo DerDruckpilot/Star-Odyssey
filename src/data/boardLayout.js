@@ -1,109 +1,108 @@
-const boardWidth = 1680;
-const boardHeight = 900;
-const hexRadius = 52;
+const boardWidth = 1600;
+const boardHeight = 1000;
+const hexRadius = 58;
 const hexHorizontalStep = Math.sqrt(3) * hexRadius;
 const hexVerticalStep = 1.5 * hexRadius;
-const hexOrigin = { x: 155, y: 82 };
+const hexOrigin = { x: 78, y: 65 };
 const cornerAngleOffset = -30;
 const coordinatePrecision = 100;
+const coordinateColumns = "ABCDEFGHIJKLMNO".split("");
 
-const hexRows = [
-  [[0, 1]],
-  [[0, 15]],
-  [[0, 15]],
-  [[0, 15]],
-  [[0, 15]],
-  [[0, 15]],
-  [[0, 15]],
-  [[0, 14]],
-  [[0, 2], [4, 5], [8, 15]]
+const validHexRows = [
+  ["A1", "B1"],
+  createCoordinateRange("A", "O", 2),
+  createCoordinateRange("A", "N", 3),
+  createCoordinateRange("A", "O", 4),
+  createCoordinateRange("A", "N", 5),
+  createCoordinateRange("A", "O", 6),
+  createCoordinateRange("A", "N", 7),
+  createCoordinateRange("A", "O", 8),
+  createCoordinateRange("A", "N", 9),
+  createCoordinateRange("A", "O", 10),
+  ["A11", "B11"]
 ];
 
 const nebulaHexes = new Set([
-  "h-01-09",
-  "h-01-10",
-  "h-02-08",
-  "h-02-09",
-  "h-03-07",
-  "h-03-08",
-  "h-04-07",
-  "h-04-08",
-  "h-05-08",
-  "h-05-09",
-  "h-06-09",
-  "h-07-10",
-  "h-08-11"
+  "K2",
+  "J3", "K3",
+  "I4", "J4", "K4",
+  "H5", "I5",
+  "H6", "I6",
+  "H7", "I7", "J7",
+  "H8", "I8", "J8", "K8",
+  "I9", "K9",
+  "L10"
 ]);
 
-const sectorSplitColumn = 10;
+const sectorSplitColumnIndex = getColumnIndex("K");
 
 const semanticNodeRequests = [
-  nodeRequest("start-01-launch-a", 0, 1, 0, "launch"),
-  nodeRequest("start-01-launch-b", 0, 1, 1, "launch"),
-  nodeRequest("start-01-launch-c", 1, 1, 1, "launch"),
-  nodeRequest("start-01-colony-a-launch-a", 0, 1, 5, "launch"),
-  nodeRequest("start-01-colony-b-launch-a", 1, 1, 0, "launch"),
-  nodeRequest("start-02-launch-a", 0, 3, 0, "launch"),
-  nodeRequest("start-02-launch-b", 0, 3, 1, "launch"),
-  nodeRequest("start-02-launch-c", 1, 3, 1, "launch"),
-  nodeRequest("start-02-colony-a-launch-a", 0, 3, 5, "launch"),
-  nodeRequest("start-02-colony-b-launch-a", 1, 3, 0, "launch"),
-  nodeRequest("start-03-launch-a", 0, 5, 0, "launch"),
-  nodeRequest("start-03-launch-b", 0, 5, 1, "launch"),
-  nodeRequest("start-03-launch-c", 1, 5, 1, "launch"),
-  nodeRequest("start-03-colony-a-launch-a", 0, 5, 5, "launch"),
-  nodeRequest("start-03-colony-b-launch-a", 1, 5, 0, "launch"),
-  nodeRequest("start-04-launch-a", 0, 7, 0, "launch"),
-  nodeRequest("start-04-launch-b", 0, 7, 1, "launch"),
-  nodeRequest("start-04-launch-c", 1, 7, 1, "launch"),
-  nodeRequest("start-04-colony-a-launch-a", 0, 7, 5, "launch"),
-  nodeRequest("start-04-colony-b-launch-a", 1, 7, 0, "launch"),
-  nodeRequest("p01", 0, 1, 2, "spaceport"),
-  nodeRequest("p02", 1, 1, 2),
-  nodeRequest("p03", 5, 1, 2, "colony"),
-  nodeRequest("p04", 4, 1, 2),
-  nodeRequest("p05", 5, 1, 2),
-  nodeRequest("p06", 6, 1, 2, "dock"),
-  nodeRequest("p07", 7, 1, 2, "dock"),
-  nodeRequest("p08", 9, 1, 2),
-  nodeRequest("p09", 9, 1, 0, "colony"),
-  nodeRequest("p10", 14, 1, 2),
-  nodeRequest("p11", 0, 3, 2, "spaceport"),
-  nodeRequest("p12", 1, 3, 2),
-  nodeRequest("p13", 3, 3, 2, "dock"),
-  nodeRequest("p14", 4, 3, 2, "dock"),
-  nodeRequest("p15", 5, 3, 2),
-  nodeRequest("p16", 12, 1, 2, "colony"),
-  nodeRequest("p17", 8, 3, 2),
-  nodeRequest("p18", 15, 1, 2, "colony"),
-  nodeRequest("p19", 13, 3, 2),
-  nodeRequest("p20", 15, 3, 2),
-  nodeRequest("p21", 0, 5, 2, "spaceport"),
-  nodeRequest("p22", 1, 5, 2),
-  nodeRequest("p23", 3, 3, 0, "colony"),
-  nodeRequest("p24", 4, 5, 2),
-  nodeRequest("p25", 5, 5, 2),
-  nodeRequest("p26", 7, 5, 2, "dock"),
-  nodeRequest("p27", 8, 5, 2, "dock"),
-  nodeRequest("p28", 10, 5, 2),
-  nodeRequest("p29", 6, 5, 2, "colony"),
-  nodeRequest("p30", 14, 5, 2),
-  nodeRequest("p31", 0, 7, 2, "spaceport"),
-  nodeRequest("p32", 1, 7, 2),
-  nodeRequest("p33", 10, 5, 0, "colony"),
-  nodeRequest("p34", 6, 7, 2, "dock"),
-  nodeRequest("p35", 7, 7, 2, "dock"),
-  nodeRequest("p36", 9, 7, 2),
-  nodeRequest("p37", 14, 7, 2, "colony"),
-  nodeRequest("p38", 14, 7, 2),
-  nodeRequest("p03-launch-a", 5, 1, 1, "launch"),
-  nodeRequest("p09-launch-a", 9, 1, 1, "launch"),
-  nodeRequest("p16-launch-a", 12, 1, 1, "launch"),
-  nodeRequest("p18-launch-a", 15, 1, 1, "launch"),
-  nodeRequest("p23-launch-a", 3, 3, 1, "launch"),
-  nodeRequest("p29-launch-a", 6, 5, 1, "launch"),
-  nodeRequest("p33-launch-a", 10, 5, 1, "launch"),
-  nodeRequest("p37-launch-a", 14, 7, 1, "launch")
+  nodeRequest("start-01-launch-a", "A2", 0, "launch"),
+  nodeRequest("start-01-launch-b", "A2", 1, "launch"),
+  nodeRequest("start-01-launch-c", "B2", 1, "launch"),
+  nodeRequest("start-01-colony-a-launch-a", "A2", 5, "launch"),
+  nodeRequest("start-01-colony-b-launch-a", "B2", 0, "launch"),
+  nodeRequest("start-02-launch-a", "A4", 0, "launch"),
+  nodeRequest("start-02-launch-b", "A4", 1, "launch"),
+  nodeRequest("start-02-launch-c", "B4", 1, "launch"),
+  nodeRequest("start-02-colony-a-launch-a", "A4", 5, "launch"),
+  nodeRequest("start-02-colony-b-launch-a", "B4", 0, "launch"),
+  nodeRequest("start-03-launch-a", "A6", 0, "launch"),
+  nodeRequest("start-03-launch-b", "A6", 1, "launch"),
+  nodeRequest("start-03-launch-c", "B6", 1, "launch"),
+  nodeRequest("start-03-colony-a-launch-a", "A6", 5, "launch"),
+  nodeRequest("start-03-colony-b-launch-a", "B6", 0, "launch"),
+  nodeRequest("start-04-launch-a", "A8", 0, "launch"),
+  nodeRequest("start-04-launch-b", "A8", 1, "launch"),
+  nodeRequest("start-04-launch-c", "B8", 1, "launch"),
+  nodeRequest("start-04-colony-a-launch-a", "A8", 5, "launch"),
+  nodeRequest("start-04-colony-b-launch-a", "B8", 0, "launch"),
+  nodeRequest("p01", "A2", 2, "spaceport"),
+  nodeRequest("p02", "B2", 2),
+  nodeRequest("p03", "F2", 2, "colony"),
+  nodeRequest("p04", "E2", 2),
+  nodeRequest("p05", "G2", 2),
+  nodeRequest("p06", "G3", 2, "dock"),
+  nodeRequest("p07", "H3", 2, "dock"),
+  nodeRequest("p08", "J2", 2),
+  nodeRequest("p09", "J2", 0, "colony"),
+  nodeRequest("p10", "N2", 2),
+  nodeRequest("p11", "A4", 2, "spaceport"),
+  nodeRequest("p12", "B4", 2),
+  nodeRequest("p13", "D4", 2, "dock"),
+  nodeRequest("p14", "E4", 2, "dock"),
+  nodeRequest("p15", "F4", 2),
+  nodeRequest("p16", "M2", 2, "colony"),
+  nodeRequest("p17", "I4", 2),
+  nodeRequest("p18", "O2", 2, "colony"),
+  nodeRequest("p19", "M4", 2),
+  nodeRequest("p20", "O4", 2),
+  nodeRequest("p21", "A6", 2, "spaceport"),
+  nodeRequest("p22", "B6", 2),
+  nodeRequest("p23", "D4", 0, "colony"),
+  nodeRequest("p24", "E6", 2),
+  nodeRequest("p25", "F6", 2),
+  nodeRequest("p26", "H6", 2, "dock"),
+  nodeRequest("p27", "I6", 2, "dock"),
+  nodeRequest("p28", "K6", 2),
+  nodeRequest("p29", "G6", 2, "colony"),
+  nodeRequest("p30", "N6", 2),
+  nodeRequest("p31", "A8", 2, "spaceport"),
+  nodeRequest("p32", "B8", 2),
+  nodeRequest("p33", "K6", 0, "colony"),
+  nodeRequest("p34", "G8", 2, "dock"),
+  nodeRequest("p35", "H8", 2, "dock"),
+  nodeRequest("p36", "J8", 2),
+  nodeRequest("p37", "O8", 2, "colony"),
+  nodeRequest("p38", "N8", 2),
+  nodeRequest("p03-launch-a", "F2", 1, "launch"),
+  nodeRequest("p09-launch-a", "J2", 1, "launch"),
+  nodeRequest("p16-launch-a", "M2", 1, "launch"),
+  nodeRequest("p18-launch-a", "O2", 1, "launch"),
+  nodeRequest("p23-launch-a", "D4", 1, "launch"),
+  nodeRequest("p29-launch-a", "G6", 1, "launch"),
+  nodeRequest("p33-launch-a", "K6", 1, "launch"),
+  nodeRequest("p37-launch-a", "O8", 1, "launch")
 ];
 
 const spaceQuadrants = createHexCells();
@@ -112,11 +111,12 @@ const boardConnections = boardGraph.connections;
 const pointsById = new Map(boardGraph.points.map((point) => [point.id, point]));
 
 export const boardLayout = {
-  layoutVersion: "generated-hex-corner-graph-v1",
+  layoutVersion: "coordinate-reference-v1",
   width: boardWidth,
   height: boardHeight,
   hexRadius,
-  coordinateSystem: "odd-r offset rows",
+  coordinateSystem: "odd-r offset rows with coordinate IDs",
+  validHexIds: validHexRows.flat(),
   spaceQuadrants: boardGraph.hexes,
   hexes: boardGraph.hexes,
   vertices: boardGraph.points,
@@ -125,30 +125,30 @@ export const boardLayout = {
   connections: boardConnections,
   links: boardConnections.map((connection) => [connection.from, connection.to]),
   startSystems: [
-    createStartSystem("start-01", 82, 116, ["food", "fuel", "carbon"]),
-    createStartSystem("start-02", 82, 288, ["ore", "goods", "food"]),
-    createStartSystem("start-03", 82, 510, ["carbon", "ore", "fuel"]),
-    createStartSystem("start-04", 82, 735, ["goods", "food", "ore"])
+    createStartSystem("start-01", 76, 126, ["food", "fuel", "carbon"]),
+    createStartSystem("start-02", 76, 330, ["ore", "goods", "food"]),
+    createStartSystem("start-03", 76, 535, ["carbon", "ore", "fuel"]),
+    createStartSystem("start-04", 76, 740, ["goods", "food", "ore"])
   ],
   planetSystems: [
-    createPlanetSystem("system-01", 5, 1, ["carbon", "food", "fuel"]),
-    createPlanetSystem("system-02", 9, 1, ["ore", "goods", "carbon"]),
-    createPlanetSystem("system-03", 12, 1, ["fuel", "ore", "food"]),
-    createPlanetSystem("system-04", 15, 1, ["goods", "carbon", "ore"]),
-    createPlanetSystem("system-05", 3, 3, ["food", "carbon", "goods"]),
-    createPlanetSystem("system-06", 6, 5, ["fuel", "food", "ore"]),
-    createPlanetSystem("system-07", 10, 5, ["carbon", "ore", "goods"]),
-    createPlanetSystem("system-08", 14, 7, ["food", "fuel", "carbon"])
+    createPlanetSystem("system-01", "F2", ["carbon", "food", "fuel"]),
+    createPlanetSystem("system-02", "J2", ["ore", "goods", "carbon"]),
+    createPlanetSystem("system-03", "M2", ["fuel", "ore", "food"]),
+    createPlanetSystem("system-04", "O2", ["goods", "carbon", "ore"]),
+    createPlanetSystem("system-05", "D4", ["food", "carbon", "goods"]),
+    createPlanetSystem("system-06", "G6", ["fuel", "food", "ore"]),
+    createPlanetSystem("system-07", "K6", ["carbon", "ore", "goods"]),
+    createPlanetSystem("system-08", "O8", ["food", "fuel", "carbon"])
   ],
   outposts: [
-    createOutpost("outpost-01", 6, 1, "A"),
-    createOutpost("outpost-02", 3, 3, "B"),
-    createOutpost("outpost-03", 7, 2, "C"),
-    createOutpost("outpost-04", 10, 1, "D"),
-    createOutpost("outpost-05", 6, 5, "E"),
-    createOutpost("outpost-06", 10, 4, "F"),
-    createOutpost("outpost-07", 13, 5, "G"),
-    createOutpost("outpost-08", 14, 2, "H")
+    createOutpost("outpost-01", "F2", "A"),
+    createOutpost("outpost-02", "D4", "B"),
+    createOutpost("outpost-03", "G3", "C"),
+    createOutpost("outpost-04", "J2", "D"),
+    createOutpost("outpost-05", "G6", "E"),
+    createOutpost("outpost-06", "K5", "F"),
+    createOutpost("outpost-07", "N6", "G"),
+    createOutpost("outpost-08", "O3", "H")
   ],
   specialPoints: {
     colonySites: ["p03", "p09", "p16", "p18", "p23", "p29", "p33", "p37"],
@@ -169,18 +169,18 @@ export const resourceColors = {
 };
 
 boardLayout.startSites = [
-  createStartSite("start-01-colony-a", 53, 142, "colonySite", ["start-01-planet-01", "start-01-planet-02"]),
-  createStartSite("start-01-colony-b", 122, 142, "colonySite", ["start-01-planet-02", "start-01-planet-03"]),
-  createStartSite("start-01-spaceport", 86, 202, "spaceportSite", ["start-01-planet-01", "start-01-planet-02", "start-01-planet-03"]),
-  createStartSite("start-02-colony-a", 53, 314, "colonySite", ["start-02-planet-01", "start-02-planet-02"]),
-  createStartSite("start-02-colony-b", 122, 314, "colonySite", ["start-02-planet-02", "start-02-planet-03"]),
-  createStartSite("start-02-spaceport", 86, 374, "spaceportSite", ["start-02-planet-01", "start-02-planet-02", "start-02-planet-03"]),
-  createStartSite("start-03-colony-a", 53, 536, "colonySite", ["start-03-planet-01", "start-03-planet-02"]),
-  createStartSite("start-03-colony-b", 122, 536, "colonySite", ["start-03-planet-02", "start-03-planet-03"]),
-  createStartSite("start-03-spaceport", 86, 596, "spaceportSite", ["start-03-planet-01", "start-03-planet-02", "start-03-planet-03"]),
-  createStartSite("start-04-colony-a", 53, 762, "colonySite", ["start-04-planet-01", "start-04-planet-02"]),
-  createStartSite("start-04-colony-b", 122, 762, "colonySite", ["start-04-planet-02", "start-04-planet-03"]),
-  createStartSite("start-04-spaceport", 86, 822, "spaceportSite", ["start-04-planet-01", "start-04-planet-02", "start-04-planet-03"])
+  createStartSite("start-01-colony-a", 52, 112, "colonySite", ["start-01-planet-01", "start-01-planet-02"]),
+  createStartSite("start-01-colony-b", 122, 112, "colonySite", ["start-01-planet-02", "start-01-planet-03"]),
+  createStartSite("start-01-spaceport", 86, 182, "spaceportSite", ["start-01-planet-01", "start-01-planet-02", "start-01-planet-03"]),
+  createStartSite("start-02-colony-a", 52, 316, "colonySite", ["start-02-planet-01", "start-02-planet-02"]),
+  createStartSite("start-02-colony-b", 122, 316, "colonySite", ["start-02-planet-02", "start-02-planet-03"]),
+  createStartSite("start-02-spaceport", 86, 386, "spaceportSite", ["start-02-planet-01", "start-02-planet-02", "start-02-planet-03"]),
+  createStartSite("start-03-colony-a", 52, 521, "colonySite", ["start-03-planet-01", "start-03-planet-02"]),
+  createStartSite("start-03-colony-b", 122, 521, "colonySite", ["start-03-planet-02", "start-03-planet-03"]),
+  createStartSite("start-03-spaceport", 86, 591, "spaceportSite", ["start-03-planet-01", "start-03-planet-02", "start-03-planet-03"]),
+  createStartSite("start-04-colony-a", 52, 726, "colonySite", ["start-04-planet-01", "start-04-planet-02"]),
+  createStartSite("start-04-colony-b", 122, 726, "colonySite", ["start-04-planet-02", "start-04-planet-03"]),
+  createStartSite("start-04-spaceport", 86, 796, "spaceportSite", ["start-04-planet-01", "start-04-planet-02", "start-04-planet-03"])
 ];
 
 boardLayout.startAssignments = boardLayout.startSystems.map((system, index) => ({
@@ -319,34 +319,58 @@ boardLayout.productionPlanets = [...boardLayout.startSystems, ...boardLayout.pla
     systemId: system.id
   })));
 
-function nodeRequest(id, q, r, corner, type = "space") {
-  return { id, q, r, corner, type };
+function createCoordinateRange(startColumn, endColumn, rowNumber) {
+  const startIndex = getColumnIndex(startColumn);
+  const endIndex = getColumnIndex(endColumn);
+
+  return coordinateColumns
+    .slice(startIndex, endIndex + 1)
+    .map((column) => `${column}${rowNumber}`);
 }
 
-function hexCenter(q, r, offsetX = 0, offsetY = 0) {
+function nodeRequest(id, hexId, corner, type = "space") {
+  return { id, hexId, corner, type };
+}
+
+function getColumnIndex(column) {
+  return coordinateColumns.indexOf(column);
+}
+
+function parseCoordinate(hexId) {
+  const match = /^([A-O])(\d+)$/.exec(hexId);
+  if (!match) throw new Error(`Invalid board coordinate: ${hexId}`);
+
   return {
-    x: hexOrigin.x + q * hexHorizontalStep + (r % 2) * (hexHorizontalStep / 2) + offsetX,
-    y: hexOrigin.y + r * hexVerticalStep + offsetY
+    column: match[1],
+    columnIndex: getColumnIndex(match[1]),
+    row: Number(match[2])
+  };
+}
+
+function hexCenter(hexId, offsetX = 0, offsetY = 0) {
+  const coordinate = parseCoordinate(hexId);
+  return {
+    x: hexOrigin.x + coordinate.columnIndex * hexHorizontalStep + (coordinate.row % 2 === 1 ? hexHorizontalStep / 2 : 0) + offsetX,
+    y: hexOrigin.y + (coordinate.row - 1) * hexVerticalStep + offsetY
   };
 }
 
 function createHexCells() {
-  return hexRows.flatMap((ranges, r) => ranges.flatMap(([startQ, endQ]) => (
-    Array.from({ length: endQ - startQ + 1 }, (_, index) => {
-      const q = startQ + index;
-      const center = hexCenter(q, r);
-      const id = `h-${String(r).padStart(2, "0")}-${String(q).padStart(2, "0")}`;
+  return validHexRows.flatMap((row) => row.map((id) => {
+    const coordinate = parseCoordinate(id);
+    const center = hexCenter(id);
 
-      return {
-        id,
-        q,
-        r,
-        x: roundCoordinate(center.x),
-        y: roundCoordinate(center.y),
-        kind: nebulaHexes.has(id) ? "nebula" : q >= sectorSplitColumn ? "back" : "front"
-      };
-    })
-  )));
+    return {
+      id,
+      q: coordinate.columnIndex,
+      r: coordinate.row,
+      column: coordinate.column,
+      row: coordinate.row,
+      x: roundCoordinate(center.x),
+      y: roundCoordinate(center.y),
+      kind: nebulaHexes.has(id) ? "nebula" : coordinate.columnIndex >= sectorSplitColumnIndex ? "back" : "front"
+    };
+  }));
 }
 
 function createBoardGraph(hexes) {
@@ -436,11 +460,11 @@ function createBoardGraph(hexes) {
 }
 
 function createSemanticBindings(hexes) {
-  const hexByCoordinate = new Map(hexes.map((hex) => [`${hex.q},${hex.r}`, hex]));
+  const hexById = new Map(hexes.map((hex) => [hex.id, hex]));
   const bindings = new Map();
 
   for (const request of semanticNodeRequests) {
-    const hex = hexByCoordinate.get(`${request.q},${request.r}`);
+    const hex = hexById.get(request.hexId);
     const key = hex?.cornerKeys?.[request.corner];
     if (!key || bindings.has(key)) continue;
     bindings.set(key, request);
@@ -484,10 +508,11 @@ function createStartSystem(id, x, y, resources) {
   };
 }
 
-function createPlanetSystem(id, q, r, resources) {
-  const center = hexCenter(q, r, 0, -18);
+function createPlanetSystem(id, hexId, resources) {
+  const center = hexCenter(hexId, 0, -18);
   return {
     id,
+    coordinate: hexId,
     x: roundCoordinate(center.x),
     y: roundCoordinate(center.y),
     resources,
@@ -499,10 +524,11 @@ function createPlanetSystem(id, q, r, resources) {
   };
 }
 
-function createOutpost(id, q, r, name) {
-  const center = hexCenter(q, r, 0, 8);
+function createOutpost(id, hexId, name) {
+  const center = hexCenter(hexId, 0, 8);
   return {
     id,
+    coordinate: hexId,
     x: roundCoordinate(center.x),
     y: roundCoordinate(center.y),
     name

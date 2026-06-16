@@ -1276,7 +1276,7 @@ function renderGridLayer() {
         y: quadrant.y + 5,
         "text-anchor": "middle"
       });
-      debugLabel.textContent = `${quadrant.q},${quadrant.r}`;
+      debugLabel.textContent = quadrant.id;
       group.append(debugLabel);
     }
   }

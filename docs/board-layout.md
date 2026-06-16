@@ -48,13 +48,15 @@ Konkrete Koordinaten sollen spaeter nicht hart im Rendering verteilt werden. Sta
 
 ## Referenznahe digitale Umsetzung
 
-Die aktuelle Board-Shell nutzt `src/data/boardLayout.js` als Datenquelle. Als Referenz wurden das Brettfoto und die Anleitung genutzt. Beschriftungen wurden ignoriert; rekonstruiert wurden Brettform, Startbereich, Vorder-/Hintersektor, Sternennebelzone, Planetensysteme und Aussenposten.
+Die aktuelle Board-Shell nutzt `src/data/boardLayout.js` als Datenquelle. Das Koordinatenbild mit roten Hex-IDs ist jetzt die Source of Truth fuer die Brettform. Beschriftungen wurden ignoriert; massgeblich sind die gueltigen Hex-Koordinaten und die markierte Sternennebelzone.
 
-Das Board nutzt ein `odd-r offset rows` Koordinatensystem. Die sichtbare Brettform ist kein Rechteck, sondern eine ausgeschnittene Hexform mit 9 Reihen und 126 sichtbaren Hexfeldern. Einzelne Rand- und Aussparungsfelder wurden aus dem Foto visuell angenaehert.
+Das Board nutzt ein `odd-r offset rows` Koordinatensystem mit Koordinaten-IDs wie `A2`, `J7` und `O10`. Die sichtbare Brettform ist kein Rechteck, sondern eine feste Hexliste mit 11 Reihen und 135 sichtbaren Hexfeldern.
+
+Gueltig sind exakt die Koordinaten aus dem Koordinatenbild: Reihe 1 `A1 B1`, dann alternierend `A` bis `O` bzw. `A` bis `N` von Reihe 2 bis 10, und Reihe 11 `A11 B11`. Der Sternennebel ist anhand der markierten Koordinaten gesetzt: `K2`, `J3`, `K3`, `I4`, `J4`, `K4`, `H5`, `I5`, `H6`, `I6`, `H7`, `I7`, `J7`, `H8`, `I8`, `J8`, `K8`, `I9`, `K9`, `L10`.
 
 Die Hexfelder sind die primaere Geometriequelle. Jedes Hexfeld wird ueber eine einheitliche Grid-Formel berechnet. Aus den sechs Hex-Ecken werden anschliessend die Raumpunkte abgeleitet: identische Ecken benachbarter Hexfelder werden dedupliziert, normale Raumpunkte entstehen an gemeinsamen Kreuzungen von drei Hexfeldern, Randpunkte bleiben als Boundary-Nodes erhalten. Verbindungen werden aus den Hexkanten zwischen benachbarten Raumpunkten generiert.
 
-In der letzten Layout-Anpassung war im Arbeitskontext ein Referenzfoto sichtbar. Die Planetensysteme wurden daraus bestmoeglich auf die auffaelligen 3er-Hex-/Sternpositionen gelegt. Die sichtbaren Sektor-Beschriftungen werden im digitalen Board nicht mehr gerendert.
+Die Planetensysteme und Aussenposten sind weiterhin als Hilfsdaten an Koordinaten gebunden. Die sichtbaren Sektor-Beschriftungen werden im digitalen Board nicht mehr gerendert.
 
 Umgesetzt sind:
 
@@ -68,6 +70,5 @@ Umgesetzt sind:
 
 Offen fuer spaeter:
 
-- Exakte Hexzaehlung an einzelnen Randstellen mit einer frontal entzerrten Brettreferenz pruefen.
-- Finale Platzierung von Planetensystemen, Aussenposten, Koloniepunkten und Docks gegen Almanach/Detailgrafiken weiter praezisieren.
+- Finale Platzierung von Planetensystemen, Aussenposten, Koloniepunkten und Docks anhand weiterer Referenzen weiter praezisieren.
 - Sternennebel-Sonderregeln und Marker erst in spaeteren Regel-PRs ergaenzen.
