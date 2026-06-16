@@ -7,6 +7,7 @@ Diese Datei fasst die wichtigsten Regel- und Strukturelemente aus der bereitgest
 - Mehrere Spieler erkunden ein Weltraum-Brett mit bekannten Startsystemen, weiteren Planetensystemen und festen Aussenposten.
 - Jeder Spieler beginnt mit mehreren Kolonie- oder Raumhafen-artigen Startstrukturen.
 - Die Startaufstellung gibt bereits erste Siegpunkte und erste Produktionsmoeglichkeiten.
+- Nach Abschluss der Platzierungsphase erhalten alle Spieler einmalig ihre Startausstattung: 3 Karten vom Nachschubstapel, 1 halbe Medaille und 1 Antrieb.
 - Ziel ist es, ueber Kolonien, Raumhaefen, Stationen, Sondermarker und Fraktionsmehrheiten Siegpunkte zu sammeln.
 - Ein sinnvoller erster Zielwert fuer den Prototyp ist 15 Siegpunkte, weil die Referenz damit das Spielende definiert.
 
@@ -38,6 +39,8 @@ Kolonien und Raumhaefen grenzen typischerweise an zwei Planeten. Dadurch kann ei
 - Handelsware hat als Ressource eine Sonderrolle und kann guenstiger gegen den Vorrat getauscht werden.
 - Bauen verbraucht konkrete Rohstoffkombinationen und platziert neue Figuren oder verbessert das Mutterschiff-/Spielerprofil.
 - Neue Kolonie- und Handelsschiffe werden nicht automatisch gesetzt: Nach dem Bau waehlt der Spieler einen freien Raumhafenpunkt neben einem eigenen Raumhafen.
+- Personenvorraete begrenzen die Verfuegbarkeit: 9 Kolonien, 7 Handelsstationen, 3 Transporter/Schiffe und 3 Raumhaefen pro Spieler.
+- Kolonieschiffe und Handelsschiffe verbrauchen jeweils einen Transporter; beim Gruenden einer Kolonie oder Handelsstation geht der Transporter in den persoenlichen Vorrat zurueck.
 
 ## Schiffe und Bewegung
 

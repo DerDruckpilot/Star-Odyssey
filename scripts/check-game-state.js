@@ -15,6 +15,7 @@ import {
   drawSupply,
   endCurrentTurn,
   finishEncounter,
+  foundColony,
   getTradeRatesForPlayer,
   moveShip,
   placePendingShip,
@@ -31,6 +32,7 @@ import {
   startPendingSpaceportUpgrade,
   foundTradeStation,
   getShipDestinationState,
+  getPlayerInventory,
   tradeWithSupply,
   useBoughtFame,
   normalizeGameState,
@@ -88,8 +90,20 @@ assert(game.phase === "production", "Game should enter production after placemen
 assert(game.currentPlayerIndex === 0, "Starting player should remain active after placement.");
 assert(game.board.structures.length === 6, "Two players should place 6 starting structures.");
 assert(game.board.ships.length === 2, "Two players should place 2 colony ships.");
+assert(game.startingSetupGranted === true, "Starting setup should be granted exactly once after placement.");
+assert(game.players.every((player) => getResourceTotal(player) === 3), "Each player should receive 3 supply cards after placement.");
+assert(game.players.every((player) => player.halfMedals === 1), "Each player should receive 1 half medal after placement.");
+assert(game.players.every((player) => player.upgrades?.drive === 1), "Each player should receive 1 starting drive after placement.");
 assert(hasUniqueNumberTokens(game), "Each assigned number token should be used only once.");
 assert(startTokensMatchGroups(game), "Start system tokens should match their start groups.");
+assert(
+  normalizeGameState(JSON.parse(JSON.stringify(game)), {
+    language: "de",
+    playerCount: 2,
+    boardLayout
+  }).startingSetupGranted === true,
+  "Save/load normalization should preserve that the starting setup was already granted."
+);
 
 const specialPlanet = findPlanetWithSpecialToken(game);
 if (specialPlanet) {
@@ -217,6 +231,45 @@ const resourcesBeforePlacement = game.players[0].resources.ore;
 game = placePendingShip(game, boardLayout, launchPoint.id);
 assert(!game.board.pendingShipPlacement, "Pending ship placement should clear after selecting a launch point.");
 assert(game.players[0].resources.ore === resourcesBeforePlacement - 1, "Ship resources should be paid only after selecting a launch point.");
+assert(getPlayerInventory(game, "player-1").transporter.inUse === 2, "A newly placed ship should consume one transporter.");
+
+let transporterLimitState = normalizeGameState(JSON.parse(JSON.stringify(game)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+transporterLimitState = {
+  ...transporterLimitState,
+  phase: "tradeBuild",
+  currentPlayerIndex: 0,
+  players: transporterLimitState.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      resources: {
+        ore: 2,
+        fuel: 2,
+        carbon: 2,
+        food: 2,
+        goods: 2
+      }
+    }
+    : player),
+  board: {
+    ...transporterLimitState.board,
+    ships: [
+      ...transporterLimitState.board.ships,
+      {
+        id: "player-1-third-ship",
+        ownerPlayerId: "player-1",
+        type: "tradeShip",
+        locationId: boardLayout.points.find((point) => point.id !== transporterLimitState.board.ships[0]?.locationId)?.id ?? boardLayout.points[0].id,
+        status: "active"
+      }
+    ]
+  }
+};
+transporterLimitState = buildShip(transporterLimitState, boardLayout, "tradeShip");
+assert(!transporterLimitState.board.pendingShipPlacement, "Players must not build a fourth transporter ship.");
 
 game = {
   ...game,
@@ -500,6 +553,10 @@ encounterGame = {
     resources: index === 0
       ? { ore: 0, fuel: 0, carbon: 0, food: 0, goods: 0 }
       : player.resources,
+    upgrades: index === 0
+      ? { drive: 1, cargo: 0, cannon: 0 }
+      : player.upgrades,
+    friendshipCards: index === 0 ? [] : player.friendshipCards,
     halfMedals: index === 0 ? 1 : player.halfMedals,
     victoryPoints: index === 0 ? 4 : player.victoryPoints
   })),
@@ -516,6 +573,13 @@ encounterGame = {
       }]
   }
 };
+
+const nonEncounterFlightState = determineFlightSpeed(encounterGame, {
+  balls: ["blue", "red"]
+});
+assert(nonEncounterFlightState.flightSpeedBase === 4, "Colored mothership balls should determine the base speed by their values.");
+assert(nonEncounterFlightState.flightSpeedTotal === 5, "Flight speed should add the player's starting drive to the base speed.");
+assert(!nonEncounterFlightState.activeEncounter, "Colored mothership balls should not start an encounter.");
 
 encounterGame = determineFlightSpeed(encounterGame, {
   balls: ["black", "yellow"],
@@ -751,6 +815,19 @@ if (freeColonySite) {
   assert(
     colonyLandingResult.board.ships.find((ship) => ship.id === "player-1-colony-landing")?.locationId === freeColonySite.nodeId,
     "Colony ships should be able to end on valid colony sites."
+  );
+  const transporterBeforeFounding = getPlayerInventory(colonyLandingResult, "player-1").transporter.available;
+  const exploredColonyState = {
+    ...colonyLandingResult,
+    board: {
+      ...colonyLandingResult.board,
+      exploredSystems: [...new Set([...(colonyLandingResult.board.exploredSystems ?? []), freeColonySite.systemId])]
+    }
+  };
+  const foundedColonyState = foundColony(exploredColonyState, boardLayout, "player-1-colony-landing");
+  assert(
+    getPlayerInventory(foundedColonyState, "player-1").transporter.available === transporterBeforeFounding + 1,
+    "Founding a colony should return the transporter to the player's reserve."
   );
 
   const tradeShipBlockedAtColonySite = createMovementTestState(game, {

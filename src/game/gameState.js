@@ -23,6 +23,12 @@ const mothershipBallValues = {
   black: 0
 };
 const mothershipBallPool = ["yellow", "yellow", "blue", "red", "black"];
+const playerFigureLimits = {
+  colony: 9,
+  tradeStation: 7,
+  transporter: 3,
+  spaceport: 3
+};
 
 export const currentGameStorageKey = "star-odyssey-current-game";
 export const turnPhases = ["placement", "setup", "production", "tradeBuild", "flight", "turnEnd", "gameOver"];
@@ -47,6 +53,59 @@ export function calculateVictoryPoints(gameState, playerId) {
   const halfMedalPoints = Math.floor(Math.max(0, player?.halfMedals ?? 0) / 2);
 
   return structurePoints + friendshipPoints + specialMedalPoints + halfMedalPoints;
+}
+
+export function getPlayerInventory(gameState, playerId) {
+  if (!gameState || !playerId) {
+    return createPlayerInventory();
+  }
+
+  const structures = Array.isArray(gameState.board?.structures)
+    ? gameState.board.structures.filter((structure) => structure?.ownerPlayerId === playerId)
+    : [];
+  const ships = normalizeShips(gameState.board?.ships)
+    .filter((ship) => ship.ownerPlayerId === playerId);
+  const colonyStructures = structures
+    .filter((structure) => structure.type === "colony" || structure.type === "spaceport")
+    .length;
+  const tradeStationStructures = structures
+    .filter((structure) => structure.type === "tradeStation")
+    .length;
+  const spaceportsInUse = structures
+    .filter((structure) => structure.type === "spaceport")
+    .length;
+  const colonyShipsInUse = ships
+    .filter((ship) => ship.type === "colonyShip")
+    .length;
+  const tradeShipsInUse = ships
+    .filter((ship) => ship.type === "tradeShip")
+    .length;
+  const coloniesInUse = colonyStructures + colonyShipsInUse;
+  const tradeStationsInUse = tradeStationStructures + tradeShipsInUse;
+  const transportersInUse = ships.length;
+
+  return {
+    colony: {
+      inUse: coloniesInUse,
+      available: Math.max(0, playerFigureLimits.colony - coloniesInUse),
+      limit: playerFigureLimits.colony
+    },
+    tradeStation: {
+      inUse: tradeStationsInUse,
+      available: Math.max(0, playerFigureLimits.tradeStation - tradeStationsInUse),
+      limit: playerFigureLimits.tradeStation
+    },
+    transporter: {
+      inUse: transportersInUse,
+      available: Math.max(0, playerFigureLimits.transporter - transportersInUse),
+      limit: playerFigureLimits.transporter
+    },
+    spaceport: {
+      inUse: spaceportsInUse,
+      available: Math.max(0, playerFigureLimits.spaceport - spaceportsInUse),
+      limit: playerFigureLimits.spaceport
+    }
+  };
 }
 
 export function getTradeRatesForPlayer(gameState, playerId) {
@@ -106,7 +165,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
   const startingShips = [];
   const players = attachPlayerAssets(createPlayers(safePlayerCount, language), startingStructures, startingShips);
 
-  return {
+  return finalizeDerivedState({
     gameId: createId("game"),
     createdAt: now,
     updatedAt: now,
@@ -133,6 +192,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
     supplyDiscard: [],
     hasDrawnSupplyThisTurn: false,
     supplyDrawTurnKey: null,
+    startingSetupGranted: false,
     friendshipTurnState: createFriendshipTurnState(`1:${players[0]?.id ?? "player-1"}`),
     activeTradeOffer: null,
     sevenResolution: null,
@@ -168,7 +228,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
         messageParams: {}
       }
     ]
-  };
+  });
 }
 
 export function rollProduction(gameState, boardLayout, forcedRoll = null) {
@@ -400,8 +460,7 @@ export function placeInitialColony(gameState, boardLayout, siteId) {
   const nextMode = placement.step === "placeFirstColony" ? "forward" : "complete";
   const nextStep = placement.step === "placeFirstColony" ? "placeSecondColony" : "complete";
   const nextPlacement = advancePlacementOrder(placement, gameState, placement.step, nextStep, nextMode);
-
-  return updateGameState(gameState, {
+  const nextState = updateGameState(gameState, {
     currentPlayerIndex: nextPlacement.currentPlayerIndex,
     phase: nextPlacement.phase ?? "placement",
     placement: nextPlacement.placement,
@@ -414,6 +473,47 @@ export function placeInitialColony(gameState, boardLayout, siteId) {
       ships
     },
     players: syncPlayersWithBoardAssets(gameState.players, updatedStructures, ships)
+  });
+
+  if (nextPlacement.phase === "production") {
+    return grantStartingSetup(nextState);
+  }
+
+  return nextState;
+}
+
+function grantStartingSetup(gameState) {
+  if (gameState.startingSetupGranted) return gameState;
+
+  let supplyDeck = gameState.supplyDeck;
+  const players = gameState.players.map((player) => {
+    const draw = drawSupplyCards(supplyDeck, 3);
+    supplyDeck = draw.supplyDeck;
+    const resources = normalizeResources(player.resources);
+    for (const resource of draw.drawnCards) {
+      resources[resource] = (resources[resource] ?? 0) + 1;
+    }
+
+    return {
+      ...player,
+      resources,
+      halfMedals: Math.max(0, player.halfMedals ?? 0) + 1,
+      upgrades: {
+        ...normalizeUpgrades(player.upgrades),
+        drive: Math.min(6, (player.upgrades?.drive ?? 0) + 1)
+      }
+    };
+  });
+
+  return updateGameState(gameState, {
+    players,
+    supplyDeck,
+    startingSetupGranted: true,
+    logEntry: {
+      type: "setup",
+      messageKey: "logStartingSetupGranted",
+      messageParams: {}
+    }
   });
 }
 
@@ -1621,8 +1721,12 @@ export function buildShip(gameState, boardLayout, shipType) {
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const definition = buildActionDefinitions.find((action) => action.id === shipType);
+  const inventory = getPlayerInventory(gameState, activePlayer?.id);
   const launchPoint = findFreeLaunchPoint(gameState, boardLayout, activePlayer?.id);
-  if (!activePlayer || !definition || !launchPoint || !canPay(activePlayer.resources, definition.cost)) {
+  const hasRequiredFigure = shipType === "colonyShip"
+    ? (inventory.colony.available > 0 && inventory.transporter.available > 0)
+    : (inventory.tradeStation.available > 0 && inventory.transporter.available > 0);
+  if (!activePlayer || !definition || !launchPoint || !hasRequiredFigure || !canPay(activePlayer.resources, definition.cost)) {
     return gameState;
   }
 
@@ -1647,14 +1751,19 @@ export function placePendingShip(gameState, boardLayout, targetNodeId) {
   const pending = normalizePendingShipPlacement(gameState.board?.pendingShipPlacement, gameState.players);
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const definition = buildActionDefinitions.find((action) => action.id === pending?.shipType);
+  const inventory = getPlayerInventory(gameState, activePlayer?.id);
   const launchPoint = getAvailableShipLaunchPoints(gameState, boardLayout, activePlayer?.id)
     .find((point) => point.id === targetNodeId);
+  const hasRequiredFigure = pending?.shipType === "colonyShip"
+    ? (inventory.colony.available > 0 && inventory.transporter.available > 0)
+    : (inventory.tradeStation.available > 0 && inventory.transporter.available > 0);
   if (
     !pending ||
     !activePlayer ||
     pending.ownerPlayerId !== activePlayer.id ||
     !definition ||
     !launchPoint ||
+    !hasRequiredFigure ||
     !canPay(activePlayer.resources, definition.cost)
   ) {
     return gameState;
@@ -1711,8 +1820,15 @@ export function startPendingSpaceportUpgrade(gameState) {
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const definition = buildActionDefinitions.find((action) => action.id === "spaceport");
+  const inventory = getPlayerInventory(gameState, activePlayer?.id);
   const colonies = findUpgradeableColonies(gameState, activePlayer?.id);
-  if (!activePlayer || !definition || colonies.length === 0 || !canPay(activePlayer.resources, definition.cost)) {
+  if (
+    !activePlayer ||
+    !definition ||
+    colonies.length === 0 ||
+    inventory.spaceport.available <= 0 ||
+    !canPay(activePlayer.resources, definition.cost)
+  ) {
     return gameState;
   }
 
@@ -1743,9 +1859,18 @@ export function confirmPendingSpaceportUpgrade(gameState, structureId) {
   const pending = normalizePendingSpaceportUpgrade(gameState.board?.pendingSpaceportUpgrade, gameState.players);
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const definition = buildActionDefinitions.find((action) => action.id === "spaceport");
+  const inventory = getPlayerInventory(gameState, activePlayer?.id);
   const colony = findUpgradeableColonies(gameState, activePlayer?.id)
     .find((structure) => structure.id === structureId);
-  if (!pending || !activePlayer || pending.ownerPlayerId !== activePlayer.id || !definition || !colony || !canPay(activePlayer.resources, definition.cost)) {
+  if (
+    !pending ||
+    !activePlayer ||
+    pending.ownerPlayerId !== activePlayer.id ||
+    !definition ||
+    !colony ||
+    inventory.spaceport.available <= 0 ||
+    !canPay(activePlayer.resources, definition.cost)
+  ) {
     return gameState;
   }
 
@@ -1906,6 +2031,9 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     supplyDiscard: Array.isArray(gameState.supplyDiscard) ? gameState.supplyDiscard.filter((resource) => supplyResourceTypes.includes(resource)) : [],
     hasDrawnSupplyThisTurn: Boolean(gameState.hasDrawnSupplyThisTurn),
     supplyDrawTurnKey: typeof gameState.supplyDrawTurnKey === "string" ? gameState.supplyDrawTurnKey : null,
+    startingSetupGranted: typeof gameState.startingSetupGranted === "boolean"
+      ? gameState.startingSetupGranted
+      : normalizedPhase !== "placement",
     friendshipTurnState: normalizeFriendshipTurnState(gameState.friendshipTurnState, gameState),
     activeTradeOffer: normalizeActiveTradeOffer(gameState.activeTradeOffer, normalizedPlayers),
     sevenResolution: normalizeSevenResolution(gameState.sevenResolution, normalizedPlayers),
@@ -1953,6 +2081,7 @@ function createPlayers(playerCount, language) {
     specialMedals: [],
     friendshipCards: [],
     friendshipMarkers: [],
+    stock: createPlayerInventory(),
     ships: [],
     structures: [],
     stations: []
@@ -2041,9 +2170,19 @@ function normalizePlayer(player, index, language) {
     specialMedals: normalizeSpecialMedals(player.specialMedals),
     friendshipCards: normalizeFriendshipCards(player.friendshipCards),
     friendshipMarkers: normalizeFriendshipMarkers(player.friendshipMarkers),
+    stock: createPlayerInventory(),
     ships: Array.isArray(player.ships) ? player.ships : [],
     structures: Array.isArray(player.structures) ? player.structures : [],
     stations: Array.isArray(player.stations) ? player.stations : []
+  };
+}
+
+function createPlayerInventory() {
+  return {
+    colony: { inUse: 0, available: playerFigureLimits.colony, limit: playerFigureLimits.colony },
+    tradeStation: { inUse: 0, available: playerFigureLimits.tradeStation, limit: playerFigureLimits.tradeStation },
+    transporter: { inUse: 0, available: playerFigureLimits.transporter, limit: playerFigureLimits.transporter },
+    spaceport: { inUse: 0, available: playerFigureLimits.spaceport, limit: playerFigureLimits.spaceport }
   };
 }
 
@@ -2061,6 +2200,22 @@ function createSupplyDeck() {
   return shuffle([
     ...supplyResourceTypes.flatMap((resource) => Array.from({ length: supplyCardsPerResource }, () => resource))
   ]);
+}
+
+function drawSupplyCards(supplyDeck, count) {
+  const drawnCards = [];
+  let nextSupplyDeck = normalizeSupplyDeck(supplyDeck);
+
+  while (drawnCards.length < count) {
+    if (nextSupplyDeck.length === 0) nextSupplyDeck = createSupplyDeck();
+    drawnCards.push(nextSupplyDeck[0]);
+    nextSupplyDeck = nextSupplyDeck.slice(1);
+  }
+
+  return {
+    drawnCards,
+    supplyDeck: nextSupplyDeck
+  };
 }
 
 function createEncounterDeck() {
@@ -2700,6 +2855,7 @@ function finalizeDerivedState(gameState) {
 function syncCalculatedVictoryPoints(gameState) {
   return (gameState.players ?? []).map((player) => ({
     ...player,
+    stock: getPlayerInventory(gameState, player.id),
     victoryPoints: calculateVictoryPoints(gameState, player.id)
   }));
 }

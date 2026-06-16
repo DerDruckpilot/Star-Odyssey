@@ -19,6 +19,7 @@ Star Odyssey ist rundenbasiert. Es gibt keinen Echtzeitdruck und keine freie Act
 
 - Spieleranzahl und Spielerfarben werden festgelegt.
 - Startstrukturen, Startschiffe, erste Rohstoffe und Anfangswerte werden gesetzt.
+- Nach der Platzierungsphase erhalten alle Spieler genau einmal 3 Nachschubkarten, 1 halbe Medaille und 1 Antrieb.
 - Das Board wird mit bekannten und verdeckten Bereichen initialisiert.
 - Der erste aktive Spieler wird bestimmt.
 

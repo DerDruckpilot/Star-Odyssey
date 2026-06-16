@@ -1603,10 +1603,17 @@ function renderBuildControls(player = getActivePlayer()) {
     const cost = document.createElement("small");
     cost.textContent = `${t("cost")}: ${formatCost(action.cost)}`;
 
+    const disabledReasonKey = getBuildUnavailableReason(player, action);
     const button = createButton(t("build"), () => runBuildAction(action.id), "small-button");
     button.disabled = Boolean(pendingShipPlacement) || Boolean(pendingSpaceportUpgrade) || !canTradeBuildActions(player) || !canPlayerBuild(player, action);
 
-    card.append(label, cost, button);
+    card.append(label, cost);
+    if (disabledReasonKey) {
+      const hint = document.createElement("small");
+      hint.textContent = t(disabledReasonKey);
+      card.append(hint);
+    }
+    card.append(button);
     wrapper.append(card);
   }
 
@@ -2546,9 +2553,31 @@ function runBuildAction(actionId) {
 
 function canPlayerBuild(player, action) {
   if (!player || !canPlayerPay(player, action.cost)) return false;
+  if (getBuildUnavailableReason(player, action)) return false;
   if (action.id === "spaceport") return hasUpgradeableColony(player.id);
   if (["colonyShip", "tradeShip"].includes(action.id)) return Boolean(findFreeLaunchPointForActivePlayer(player.id));
   return false;
+}
+
+function getBuildUnavailableReason(player, action) {
+  if (!player) return "";
+
+  const stock = player.stock ?? {};
+  if (action.id === "colonyShip") {
+    if ((stock.transporter?.available ?? 0) <= 0) return "noTransporterAvailable";
+    if ((stock.colony?.available ?? 0) <= 0) return "noColonyAvailable";
+  }
+
+  if (action.id === "tradeShip") {
+    if ((stock.transporter?.available ?? 0) <= 0) return "noTransporterAvailable";
+    if ((stock.tradeStation?.available ?? 0) <= 0) return "noTradeStationAvailable";
+  }
+
+  if (action.id === "spaceport" && (stock.spaceport?.available ?? 0) <= 0) {
+    return "limitReached";
+  }
+
+  return "";
 }
 
 function canPlayerPay(player, cost) {
