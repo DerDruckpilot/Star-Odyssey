@@ -1,7 +1,7 @@
 import { boardLayout, resourceColors } from "./data/boardLayout.js";
-import { bankTradeRates, buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
+import { buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
 import { getEncounterCardById } from "./data/encounterCards.js";
-import { getFriendshipCardById } from "./data/friendshipCards.js";
+import { getFriendshipCardById, getFriendshipCardSummary, getFriendshipCardTitle } from "./data/friendshipCards.js";
 import {
   formatTokenLabel,
   getPlanetToken,
@@ -29,8 +29,11 @@ import {
   finishEncounter,
   foundColony,
   foundTradeStation,
+  getCargoValueForPlayer,
+  getMovementBonusForPlayer,
   getReachableNodes,
   getShipDestinationState,
+  getTradeRatesForPlayer,
   normalizeGameState,
   moveShip,
   placePendingShip,
@@ -42,12 +45,14 @@ import {
   resolveSevenSteal,
   rollProduction,
   rollPlacementStart,
+  selectPendingFriendshipCard,
   setSevenStealTarget,
   startPendingSpaceportUpgrade,
   submitSevenDiscard,
   touchGameState,
   tradeWithSupply,
   updateSevenDiscardSelection,
+  useBoughtFame,
 } from "./game/gameState.js";
 import { defaultLanguage, getText, languages } from "./i18n.js";
 
@@ -356,6 +361,20 @@ function drawSupplyForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
 
   state.gameState = drawSupply(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function chooseFriendshipCard(cardId) {
+  if (!state.gameState) return;
+  state.gameState = selectPendingFriendshipCard(state.gameState, cardId);
+  saveCurrentGameState();
+  render();
+}
+
+function useBoughtFameCard() {
+  if (!state.gameState) return;
+  state.gameState = useBoughtFame(state.gameState);
   saveCurrentGameState();
   render();
 }
@@ -1067,14 +1086,23 @@ function renderFriendshipSummary(player = getActivePlayer()) {
     const cardList = document.createElement("div");
     cardList.className = "friendship-card-list";
 
+    const cardListTitle = document.createElement("p");
+    cardListTitle.textContent = t("activeFriendshipCards");
+    wrapper.append(cardListTitle);
+
     for (const card of friendshipCards) {
       const cardElement = document.createElement("article");
       cardElement.className = "friendship-card";
       const cardTitle = document.createElement("strong");
-      cardTitle.textContent = t(`friendshipCardTitle_${card.titleKey}`);
+      cardTitle.textContent = getFriendshipCardTitle(card, state.language);
       const cardSummary = document.createElement("p");
-      cardSummary.textContent = t(`friendshipCardSummary_${card.summaryKey}`);
+      cardSummary.textContent = getFriendshipCardSummary(card, state.language);
       cardElement.append(cardTitle, cardSummary);
+      if (!card.implemented) {
+        const status = document.createElement("small");
+        status.textContent = t("notImplementedYet");
+        cardElement.append(status);
+      }
       cardList.append(cardElement);
     }
 
@@ -1101,6 +1129,11 @@ function renderPhaseActions(player = getActivePlayer()) {
 
   if (state.gameState.sevenResolution?.active) {
     wrapper.append(renderSevenResolutionActions(player));
+    return wrapper;
+  }
+
+  if (state.gameState.board?.pendingFriendshipCardSelection) {
+    wrapper.append(renderPendingFriendshipCardSelection(player));
     return wrapper;
   }
 
@@ -1135,7 +1168,11 @@ function renderPhaseActions(player = getActivePlayer()) {
       wrapper.append(renderFlightControls());
     }
     const endTurnButton = createButton(t("endTurn"), endTurn, "small-button");
-    endTurnButton.disabled = Boolean(state.gameState.board?.pendingTradeStationPlacement || state.gameState.activeEncounter);
+    endTurnButton.disabled = Boolean(
+      state.gameState.board?.pendingTradeStationPlacement ||
+      state.gameState.board?.pendingFriendshipCardSelection ||
+      state.gameState.activeEncounter
+    );
     wrapper.append(endTurnButton);
   }
 
@@ -1181,6 +1218,53 @@ function renderSupplyDrawControls() {
     const hint = document.createElement("p");
     hint.textContent = t("noSupplyDrawAvailable");
     wrapper.append(hint);
+  }
+
+  return wrapper;
+}
+
+function renderPendingFriendshipCardSelection(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "friendship-card-selection";
+  const pending = state.gameState?.board?.pendingFriendshipCardSelection;
+  if (!pending) return wrapper;
+
+  const title = document.createElement("p");
+  title.textContent = t("chooseFriendshipCard");
+  wrapper.append(title);
+
+  const hint = document.createElement("p");
+  hint.textContent = t("chooseFriendshipCardHint");
+  wrapper.append(hint);
+
+  if (player?.id !== pending.ownerPlayerId) {
+    const wait = document.createElement("p");
+    wait.textContent = t("notYourTurn");
+    wrapper.append(wait);
+    return wrapper;
+  }
+
+  for (const cardId of pending.availableCardIds ?? []) {
+    const card = getFriendshipCardById(cardId);
+    if (!card) continue;
+    const cardButton = document.createElement("button");
+    cardButton.type = "button";
+    cardButton.className = "friendship-choice-button";
+    cardButton.addEventListener("click", () => chooseFriendshipCard(cardId));
+
+    const cardTitle = document.createElement("strong");
+    cardTitle.textContent = getFriendshipCardTitle(card, state.language);
+    const cardSummary = document.createElement("span");
+    cardSummary.textContent = getFriendshipCardSummary(card, state.language);
+    cardButton.append(cardTitle, cardSummary);
+
+    if (!card.implemented) {
+      const status = document.createElement("small");
+      status.textContent = t("notImplementedYet");
+      cardButton.append(status);
+    }
+
+    wrapper.append(cardButton);
   }
 
   return wrapper;
@@ -1549,7 +1633,7 @@ function renderBankTradeControls(player = getActivePlayer()) {
     })
   );
 
-  const rate = getBankTradeRate(state.tradeFromResource);
+  const rate = getBankTradeRate(player, state.tradeFromResource);
   const tradeButton = createButton(t("trade"), tradeActivePlayerWithSupply, "small-button");
   tradeButton.disabled = !canTradeBuildActions(player) || !canPlayerTrade(player);
 
@@ -1572,6 +1656,18 @@ function renderPlayerTradeControls(player = getActivePlayer()) {
 
   const activeTradeOffer = state.gameState?.activeTradeOffer;
   const activePlayer = getActivePlayer();
+
+  const boughtFameCard = (player?.friendshipCards ?? [])
+    .map((cardId) => getFriendshipCardById(cardId))
+    .find((card) => card?.implemented && card.effectType === "buyHalfMedal");
+
+  if (boughtFameCard) {
+    const fameHint = document.createElement("p");
+    fameHint.textContent = getFriendshipCardSummary(boughtFameCard, state.language);
+    const fameButton = createButton(t("buyHalfMedal"), useBoughtFameCard, "small-button");
+    fameButton.disabled = !canUseBoughtFame(player, boughtFameCard);
+    wrapper.append(fameHint, fameButton);
+  }
 
   if (activeTradeOffer) {
     wrapper.append(renderActiveTradeOffer(player, activeTradeOffer));
@@ -1843,11 +1939,7 @@ function formatFlightSpeed(gameState) {
 
 function getDisplayedFlightBonus(player) {
   if (!player) return 0;
-  return (player.upgrades?.drive ?? 0) + (player.friendshipCards ?? []).reduce((sum, cardId) => {
-    if (cardId.startsWith("wise-speed-combat-")) return sum + 1;
-    if (cardId === "wise-drive-boost") return sum + 2;
-    return sum;
-  }, 0);
+  return (player.upgrades?.drive ?? 0) + getMovementBonusForPlayer(state.gameState, player.id);
 }
 
 function formatLogEntry(entry) {
@@ -1865,7 +1957,10 @@ function formatMessageParam(key, value) {
   if (key === "resources") return String(value).split(", ").map((resource) => getResourceLabel(resource)).join(", ");
   if (key === "upgrade") return getUpgradeLabel(value);
   if (key === "ship") return getShipTypeLabel(value);
-  if (key === "card") return t(`friendshipCardTitle_${value}`) || String(value);
+  if (key === "card") {
+    const card = getFriendshipCardById(value);
+    return card ? getFriendshipCardTitle(card, state.language) : (t(`friendshipCardTitle_${value}`) || String(value));
+  }
   return String(value);
 }
 
@@ -2205,7 +2300,7 @@ function canFoundTradeStationWithShip(ship) {
     ship.type === "tradeShip" &&
     outpost &&
     getAvailableTradeStationDocks(outpost.id).length > 0 &&
-    (getActivePlayer()?.upgrades?.cargo ?? 0) >= getTradeStationRequirement(ship.locationId)
+    getCargoValueForPlayer(state.gameState, getActivePlayer()?.id) >= getTradeStationRequirement(ship.locationId)
   );
 }
 
@@ -2398,8 +2493,15 @@ function getCurrentSupplyDrawTurnKey() {
   return `${state.gameState?.turnNumber ?? 1}:${getActivePlayer()?.id ?? "unknown"}`;
 }
 
-function getBankTradeRate(resource) {
-  return resource === "goods" ? bankTradeRates.goods : bankTradeRates.default;
+function getBankTradeRate(player, resource) {
+  const baseRate = getTradeRatesForPlayer(state.gameState, player?.id)?.[resource] ?? 3;
+  if (resource !== "goods") return baseRate;
+
+  const goodsCard = (player?.friendshipCards ?? [])
+    .map((cardId) => getFriendshipCardById(cardId))
+    .find((card) => card?.implemented && card.effectType === "tradeRate" && card.effectValue?.resource === "goods" && card.effectValue?.oncePerTurn);
+  const alreadyUsed = goodsCard && state.gameState?.friendshipTurnState?.usedActionKeys?.includes(goodsCard.id);
+  return alreadyUsed ? 2 : baseRate;
 }
 
 function canTradeBuildActions(player) {
@@ -2416,7 +2518,14 @@ function canCreatePlayerTradeOffer(player) {
 
 function canPlayerTrade(player) {
   if (!player || state.tradeFromResource === state.tradeToResource) return false;
-  return (player.resources?.[state.tradeFromResource] ?? 0) >= getBankTradeRate(state.tradeFromResource);
+  return (player.resources?.[state.tradeFromResource] ?? 0) >= getBankTradeRate(player, state.tradeFromResource);
+}
+
+function canUseBoughtFame(player, card) {
+  if (!player || !card || !canTradeBuildActions(player)) return false;
+  const cost = card.effectValue?.cost ?? {};
+  const alreadyUsed = card.effectValue?.oncePerTurn && state.gameState?.friendshipTurnState?.usedActionKeys?.includes(card.id);
+  return !alreadyUsed && Object.entries(cost).every(([resource, amount]) => (player.resources?.[resource] ?? 0) >= amount);
 }
 
 function canPlayerBuyUpgrade(player, upgrade) {

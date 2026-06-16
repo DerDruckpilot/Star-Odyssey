@@ -49,6 +49,54 @@ export function calculateVictoryPoints(gameState, playerId) {
   return structurePoints + friendshipPoints + specialMedalPoints + halfMedalPoints;
 }
 
+export function getTradeRatesForPlayer(gameState, playerId) {
+  const player = getPlayerById(gameState, playerId);
+  const rates = {
+    ore: bankTradeRates.default,
+    fuel: bankTradeRates.default,
+    carbon: bankTradeRates.default,
+    food: bankTradeRates.default,
+    goods: bankTradeRates.goods
+  };
+
+  for (const card of getFriendshipCardsForPlayer(player)) {
+    if (!card.implemented || card.effectType !== "tradeRate") continue;
+    const resource = card.effectValue?.resource;
+    const rate = card.effectValue?.rate;
+    if (!supplyResourceTypes.includes(resource) || !Number.isInteger(rate)) continue;
+    rates[resource] = Math.min(rates[resource], rate);
+  }
+
+  return rates;
+}
+
+export function getMovementBonusForPlayer(gameState, playerId) {
+  return getFriendshipCardsForPlayer(getPlayerById(gameState, playerId))
+    .reduce((sum, card) => sum + (card.implemented && card.effectType === "upgradeBoost"
+      ? (card.effectValue?.drive ?? 0)
+      : 0), 0);
+}
+
+export function getCargoValueForPlayer(gameState, playerId) {
+  const player = getPlayerById(gameState, playerId);
+  const baseCargo = player?.upgrades?.cargo ?? 0;
+  const friendshipCargo = getFriendshipCardsForPlayer(player)
+    .reduce((sum, card) => sum + (card.implemented && card.effectType === "upgradeBoost"
+      ? (card.effectValue?.cargo ?? 0)
+      : 0), 0);
+  return baseCargo + friendshipCargo;
+}
+
+export function getCannonValueForPlayer(gameState, playerId) {
+  const player = getPlayerById(gameState, playerId);
+  const baseCannons = player?.upgrades?.cannon ?? 0;
+  const friendshipCannons = getFriendshipCardsForPlayer(player)
+    .reduce((sum, card) => sum + (card.implemented && card.effectType === "upgradeBoost"
+      ? (card.effectValue?.cannon ?? 0)
+      : 0), 0);
+  return baseCannons + friendshipCannons;
+}
+
 export function createGameState({ language, playerCount, boardLayout }) {
   const now = new Date().toISOString();
   const safePlayerCount = [2, 3, 4].includes(playerCount) ? playerCount : 2;
@@ -85,6 +133,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
     supplyDiscard: [],
     hasDrawnSupplyThisTurn: false,
     supplyDrawTurnKey: null,
+    friendshipTurnState: createFriendshipTurnState(`1:${players[0]?.id ?? "player-1"}`),
     activeTradeOffer: null,
     sevenResolution: null,
     placement: createPlacementState(safePlayerCount),
@@ -101,6 +150,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
         boardPlacement,
         (boardLayout.startSystems ?? []).map((system) => system.id)
       ),
+      pendingFriendshipCardSelection: null,
       pendingTradeStationPlacement: null,
       pendingShipPlacement: null,
       pendingSpaceportUpgrade: null,
@@ -680,7 +730,7 @@ export function determineFlightSpeed(gameState, forcedRoll = null) {
   }
 
   const flightRoll = createFlightRoll(forcedRoll);
-  const driveLevel = getPlayerFlightBonus(activePlayer);
+  const driveLevel = getPlayerFlightBonus(gameState, activePlayer.id);
   const baseSpeed = flightRoll.baseSpeed;
   const totalSpeed = baseSpeed + driveLevel;
   const remainingMovementByShipId = Object.fromEntries(
@@ -942,7 +992,7 @@ export function foundTradeStation(gameState, boardLayout, shipId) {
     ship.type !== "tradeShip" ||
     !outpost ||
     availableDocks.length === 0 ||
-    (activePlayer.upgrades?.cargo ?? 0) < requiredCargo
+    getCargoValueForPlayer(gameState, activePlayer.id) < requiredCargo
   ) {
     return gameState;
   }
@@ -995,7 +1045,7 @@ export function confirmPendingTradeStationPlacement(gameState, boardLayout, targ
     ship.type !== "tradeShip" ||
     !outpost ||
     !selectedDock ||
-    (activePlayer.upgrades?.cargo ?? 0) < requiredCargo
+    getCargoValueForPlayer(gameState, activePlayer.id) < requiredCargo
   ) {
     return gameState;
   }
@@ -1021,25 +1071,15 @@ export function confirmPendingTradeStationPlacement(gameState, boardLayout, targ
       }
       : candidate
   ));
-  const friendshipCardId = Array.isArray(outpost.friendshipCards) && outpost.friendshipCards.length > 0
-    ? outpost.friendshipCards[0]
-    : null;
-  const outpostsAfterCard = updatedOutposts.map((candidate) => (
-    candidate.id === outpost.id
-      ? {
-        ...candidate,
-        friendshipCards: friendshipCardId
-          ? candidate.friendshipCards.filter((cardId) => cardId !== friendshipCardId)
-          : candidate.friendshipCards
-      }
-      : candidate
-  ));
-  const playersWithAssets = syncPlayersWithBoardAssets(gameState.players, updatedStructures, updatedShips)
-    .map((player) => player.id === activePlayer.id && friendshipCardId
-      ? { ...player, friendshipCards: [...normalizeFriendshipCards(player.friendshipCards), friendshipCardId] }
-      : player
-    );
-  const friendshipResult = applyFriendshipMarkerState(playersWithAssets, outpostsAfterCard, updatedStructures, outpost.id);
+  const friendshipResult = applyFriendshipMarkerState(
+    syncPlayersWithBoardAssets(gameState.players, updatedStructures, updatedShips),
+    updatedOutposts,
+    updatedStructures,
+    outpost.id
+  );
+  const availableCardIds = Array.isArray(outpost.friendshipCards)
+    ? outpost.friendshipCards.filter((cardId) => typeof cardId === "string")
+    : [];
   const logEntries = [
     {
       type: "founding",
@@ -1049,18 +1089,6 @@ export function confirmPendingTradeStationPlacement(gameState, boardLayout, targ
       }
     }
   ];
-
-  if (friendshipCardId) {
-    const card = getFriendshipCardById(friendshipCardId);
-    logEntries.push({
-      type: "friendship",
-      messageKey: "logFriendshipCardGained",
-      messageParams: {
-        player: activePlayer.name,
-        card: card?.titleKey ?? friendshipCardId
-      }
-    });
-  }
 
   if (friendshipResult.markerChange?.type === "granted") {
     logEntries.push({
@@ -1082,20 +1110,71 @@ export function confirmPendingTradeStationPlacement(gameState, boardLayout, targ
     });
   }
 
+  const grantedCardId = availableCardIds.length === 1 ? availableCardIds[0] : null;
+  const finalPlayers = grantedCardId
+    ? applyFriendshipCardOnGain(
+      grantFriendshipCardToPlayer(friendshipResult.players, activePlayer.id, grantedCardId),
+      activePlayer.id,
+      getFriendshipCardById(grantedCardId)
+    )
+    : friendshipResult.players;
+  const finalOutposts = grantedCardId
+    ? removeFriendshipCardFromOutposts(friendshipResult.outposts, outpost.id, grantedCardId)
+    : friendshipResult.outposts;
+
   return updateGameState(gameState, {
-    players: friendshipResult.players,
+    players: finalPlayers,
     remainingMovementByShipId,
     board: {
       ...gameState.board,
       selectedElement: { type: "structure", id: structure.id },
-      placedOutposts: friendshipResult.outposts,
+      placedOutposts: finalOutposts,
+      pendingFriendshipCardSelection: grantedCardId || availableCardIds.length === 0
+        ? null
+        : {
+          ownerPlayerId: activePlayer.id,
+          outpostId: outpost.id,
+          availableCardIds,
+          grantedStationId: structure.id
+        },
       pendingTradeStationPlacement: null,
       structures: updatedStructures,
       colonies: updatedStructures.filter((candidate) => candidate.type === "colony"),
       stations: updatedStructures.filter((candidate) => candidate.type === "tradeStation"),
       ships: updatedShips
     },
-    logEntries
+    logEntries: grantedCardId
+      ? [...logEntries, createFriendshipCardGainLogEntry(activePlayer.name, grantedCardId)]
+      : logEntries
+  });
+}
+
+export function selectPendingFriendshipCard(gameState, cardId) {
+  if (isGameOverState(gameState)) return gameState;
+
+  const pending = normalizePendingFriendshipCardSelection(gameState.board?.pendingFriendshipCardSelection, gameState.players);
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  if (
+    !pending ||
+    !activePlayer ||
+    pending.ownerPlayerId !== activePlayer.id ||
+    !pending.availableCardIds.includes(cardId)
+  ) {
+    return gameState;
+  }
+
+  const players = grantFriendshipCardToPlayer(gameState.players, activePlayer.id, cardId);
+  const card = getFriendshipCardById(cardId);
+  const playersAfterEffects = applyFriendshipCardOnGain(players, activePlayer.id, card);
+
+  return updateGameState(gameState, {
+    players: playersAfterEffects,
+    board: {
+      ...gameState.board,
+      placedOutposts: removeFriendshipCardFromOutposts(gameState.board?.placedOutposts ?? [], pending.outpostId, cardId),
+      pendingFriendshipCardSelection: null
+    },
+    logEntry: createFriendshipCardGainLogEntry(activePlayer.name, cardId)
   });
 }
 
@@ -1256,7 +1335,7 @@ export function getShipDestinationState(gameState, boardLayout, shipId, targetNo
       .filter((structure) => structure.type === "tradeStation" && structure.outpostId === outpost.id)
       .length + 1;
     const owningPlayer = gameState.players.find((player) => player.id === ship.ownerPlayerId);
-    if ((owningPlayer?.upgrades?.cargo ?? 0) < requiredCargo || !hasOpenDock) {
+    if (getCargoValueForPlayer(gameState, owningPlayer?.id) < requiredCargo || !hasOpenDock) {
       return {
         validDestination: false,
         passable: true,
@@ -1281,8 +1360,15 @@ export function tradeWithSupply(gameState, { fromResource, toResource }) {
   if (gameState.phase !== "tradeBuild" || fromResource === toResource) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
-  const rate = getTradeRate(fromResource);
-  if (!activePlayer || !canPay(activePlayer.resources, { [fromResource]: rate })) return gameState;
+  const tradeRates = getTradeRatesForPlayer(gameState, activePlayer?.id);
+  let rate = tradeRates[fromResource] ?? getTradeRate(fromResource);
+  if (!activePlayer) return gameState;
+  let actionCard = getTradeRateCardForResource(gameState, activePlayer.id, fromResource, rate);
+  if (actionCard && isFriendshipTurnActionUsed(gameState, actionCard.id)) {
+    rate = getTradeRate(fromResource);
+    actionCard = null;
+  }
+  if (!canPay(activePlayer.resources, { [fromResource]: rate })) return gameState;
 
   const players = gameState.players.map((player, index) => {
     if (index !== gameState.currentPlayerIndex) return player;
@@ -1300,6 +1386,9 @@ export function tradeWithSupply(gameState, { fromResource, toResource }) {
 
   return updateGameState(gameState, {
     players,
+    friendshipTurnState: actionCard
+      ? markFriendshipTurnAction(gameState, actionCard.id)
+      : gameState.friendshipTurnState,
     logEntry: {
       type: "trade",
       messageKey: "logBankTrade",
@@ -1309,6 +1398,35 @@ export function tradeWithSupply(gameState, { fromResource, toResource }) {
         giveResource: fromResource,
         receiveAmount: 1,
         receiveResource: toResource
+      }
+    }
+  });
+}
+
+export function useBoughtFame(gameState) {
+  if (isGameOverState(gameState) || gameState.phase !== "tradeBuild") return gameState;
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const card = getFriendshipCardsForPlayer(activePlayer)
+    .find((entry) => entry.implemented && entry.effectType === "buyHalfMedal");
+  if (!activePlayer || !card) return gameState;
+  if (card.effectValue?.oncePerTurn && isFriendshipTurnActionUsed(gameState, card.id)) return gameState;
+  if (!canPay(activePlayer.resources, card.effectValue?.cost ?? {})) return gameState;
+
+  const players = gameState.players.map((player) => player.id === activePlayer.id
+    ? withHalfMedalDelta({
+      ...player,
+      resources: payCost(player.resources, card.effectValue?.cost ?? {})
+    }, card.effectValue?.halfMedals ?? 1)
+    : player);
+
+  return updateGameState(gameState, {
+    players,
+    friendshipTurnState: markFriendshipTurnAction(gameState, card.id),
+    logEntry: {
+      type: "friendship",
+      messageKey: "logBoughtFameUsed",
+      messageParams: {
+        player: activePlayer.name
       }
     }
   });
@@ -1680,6 +1798,7 @@ export function cancelPendingSpaceportUpgrade(gameState) {
 
 export function endCurrentTurn(gameState) {
   if (isGameOverState(gameState)) return gameState;
+  if (gameState.board?.pendingFriendshipCardSelection) return gameState;
   const nextPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.playerCount;
   const nextTurnNumber = nextPlayerIndex === 0 ? gameState.turnNumber + 1 : gameState.turnNumber;
 
@@ -1698,11 +1817,13 @@ export function endCurrentTurn(gameState) {
     hasRolledFlightSpeed: false,
     hasDrawnSupplyThisTurn: false,
     supplyDrawTurnKey: null,
+    friendshipTurnState: createFriendshipTurnState(`${nextTurnNumber}:${gameState.players[nextPlayerIndex]?.id ?? "unknown"}`),
     activeTradeOffer: null,
     sevenResolution: null,
     board: {
       ...gameState.board,
       selectedElement: null,
+      pendingFriendshipCardSelection: null,
       pendingTradeStationPlacement: null,
       pendingShipPlacement: null,
       pendingSpaceportUpgrade: null
@@ -1785,6 +1906,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     supplyDiscard: Array.isArray(gameState.supplyDiscard) ? gameState.supplyDiscard.filter((resource) => supplyResourceTypes.includes(resource)) : [],
     hasDrawnSupplyThisTurn: Boolean(gameState.hasDrawnSupplyThisTurn),
     supplyDrawTurnKey: typeof gameState.supplyDrawTurnKey === "string" ? gameState.supplyDrawTurnKey : null,
+    friendshipTurnState: normalizeFriendshipTurnState(gameState.friendshipTurnState, gameState),
     activeTradeOffer: normalizeActiveTradeOffer(gameState.activeTradeOffer, normalizedPlayers),
     sevenResolution: normalizeSevenResolution(gameState.sevenResolution, normalizedPlayers),
     placement: normalizePlacementState(gameState.placement, normalizedPlayerCount),
@@ -1797,6 +1919,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
       emptySlots: normalizedPlacement.emptySlots,
       exploredSystems: normalizedExploredSystems,
       numberTokens: normalizedNumberTokens,
+      pendingFriendshipCardSelection: normalizePendingFriendshipCardSelection(gameState.board?.pendingFriendshipCardSelection, normalizedPlayers),
       pendingTradeStationPlacement: normalizePendingTradeStationPlacement(gameState.board?.pendingTradeStationPlacement, normalizedPlayers),
       pendingShipPlacement: normalizePendingShipPlacement(gameState.board?.pendingShipPlacement, normalizedPlayers),
       pendingSpaceportUpgrade: normalizePendingSpaceportUpgrade(gameState.board?.pendingSpaceportUpgrade, normalizedPlayers),
@@ -1850,6 +1973,13 @@ function createPlacementState(playerCount) {
     reverseOrder: [],
     currentOrderIndex: 0,
     selectedSpaceportSiteId: null
+  };
+}
+
+function createFriendshipTurnState(turnKey) {
+  return {
+    turnKey,
+    usedActionKeys: []
   };
 }
 
@@ -2033,7 +2163,11 @@ function getTurnKey(gameState) {
 
 function createSevenResolution(gameState) {
   const discardRequirements = Object.fromEntries(gameState.players
-    .map((player) => [player.id, countResources(player.resources) > 7 ? Math.floor(countResources(player.resources) / 2) : 0])
+    .map((player) => {
+      const threshold = getSevenDiscardThresholdForPlayer(gameState, player.id);
+      const resourceCount = countResources(player.resources);
+      return [player.id, resourceCount > threshold ? Math.floor(resourceCount / 2) : 0];
+    })
     .filter(([, count]) => count > 0));
 
   return {
@@ -2332,7 +2466,7 @@ function applyCombatOutcome(player, effects = []) {
 
 function resolveEncounterCombat(gameState, player, effect) {
   const roll = createCombatRoll();
-  const strength = roll.total + getPlayerCombatBonus(player);
+  const strength = roll.total + getPlayerCombatBonus(gameState, player.id);
 
   return {
     enemyStrength: effect.enemyStrength ?? 0,
@@ -2353,6 +2487,102 @@ function createCombatRoll() {
 
 function formatResourceList(resources) {
   return resources.join(", ");
+}
+
+function getPlayerById(gameState, playerId) {
+  return Array.isArray(gameState?.players)
+    ? gameState.players.find((player) => player.id === playerId) ?? null
+    : null;
+}
+
+function getFriendshipCardsForPlayer(player) {
+  return normalizeFriendshipCards(player?.friendshipCards)
+    .map((cardId) => getFriendshipCardById(cardId))
+    .filter(Boolean);
+}
+
+function getSevenDiscardThresholdForPlayer(gameState, playerId) {
+  return getFriendshipCardsForPlayer(getPlayerById(gameState, playerId))
+    .reduce((threshold, card) => (
+      card.implemented && card.effectType === "sevenDiscardThreshold"
+        ? Math.max(threshold, card.effectValue?.threshold ?? 7)
+        : threshold
+    ), 7);
+}
+
+function getTradeRateCardForResource(gameState, playerId, resource, rate) {
+  return getFriendshipCardsForPlayer(getPlayerById(gameState, playerId))
+    .find((card) => (
+      card.implemented &&
+      card.effectType === "tradeRate" &&
+      card.effectValue?.resource === resource &&
+      card.effectValue?.rate === rate &&
+      card.effectValue?.oncePerTurn
+    )) ?? null;
+}
+
+function isFriendshipTurnActionUsed(gameState, actionKey) {
+  const state = normalizeFriendshipTurnState(gameState.friendshipTurnState, gameState);
+  return state.turnKey === getTurnKey(gameState) && state.usedActionKeys.includes(actionKey);
+}
+
+function markFriendshipTurnAction(gameState, actionKey) {
+  const currentState = normalizeFriendshipTurnState(gameState.friendshipTurnState, gameState);
+  const turnKey = getTurnKey(gameState);
+  const usedActionKeys = currentState.turnKey === turnKey ? currentState.usedActionKeys : [];
+  return {
+    turnKey,
+    usedActionKeys: [...new Set([...usedActionKeys, actionKey])]
+  };
+}
+
+function grantFriendshipCardToPlayer(players, playerId, cardId) {
+  return players.map((player) => player.id === playerId
+    ? {
+      ...player,
+      friendshipCards: [...normalizeFriendshipCards(player.friendshipCards), cardId]
+    }
+    : player);
+}
+
+function removeFriendshipCardFromOutposts(outposts, outpostId, cardId) {
+  return (outposts ?? []).map((outpost) => outpost.id === outpostId
+    ? {
+      ...outpost,
+      friendshipCards: Array.isArray(outpost.friendshipCards)
+        ? outpost.friendshipCards.filter((entry) => entry !== cardId)
+        : []
+    }
+    : outpost);
+}
+
+function applyFriendshipCardOnGain(players, playerId, card) {
+  if (!card?.implemented || card.timing !== "onGain") return players;
+
+  return players.map((player) => {
+    if (player.id !== playerId) return player;
+    if (card.effectType === "gainHalfMedal") {
+      return withHalfMedalDelta(player, card.effectValue?.halfMedals ?? 1);
+    }
+    if (card.effectType === "gainUpgrade") {
+      return withUpgradeDelta(player, card.effectValue?.upgrade, card.effectValue?.amount ?? 1);
+    }
+    if (card.effectType === "gainResource") {
+      return withResourceDelta(player, card.effectValue?.resource, card.effectValue?.amount ?? 1);
+    }
+    return player;
+  });
+}
+
+function createFriendshipCardGainLogEntry(playerName, cardId) {
+  return {
+    type: "friendship",
+    messageKey: "logFriendshipCardGained",
+    messageParams: {
+      player: playerName,
+      card: cardId
+    }
+  };
 }
 
 function countResources(resources) {
@@ -2402,26 +2632,13 @@ function isValidUpgradeId(upgrade) {
   return ["drive", "cargo", "cannon"].includes(upgrade);
 }
 
-function getPlayerFlightBonus(player) {
-  const baseDrives = player.upgrades?.drive ?? 0;
-  const friendshipBonus = (player.friendshipCards ?? []).reduce((sum, cardId) => {
-    if (cardId.startsWith("wise-speed-combat-")) return sum + 1;
-    if (cardId === "wise-drive-boost") return sum + 2;
-    return sum;
-  }, 0);
-
-  return baseDrives + friendshipBonus;
+function getPlayerFlightBonus(gameState, playerId) {
+  const player = getPlayerById(gameState, playerId);
+  return (player?.upgrades?.drive ?? 0) + getMovementBonusForPlayer(gameState, playerId);
 }
 
-function getPlayerCombatBonus(player) {
-  const baseCannons = player.upgrades?.cannon ?? 0;
-  const friendshipBonus = (player.friendshipCards ?? []).reduce((sum, cardId) => {
-    if (cardId.startsWith("wise-speed-combat-")) return sum + 1;
-    if (cardId === "wise-cannon-boost") return sum + 2;
-    return sum;
-  }, 0);
-
-  return baseCannons + friendshipBonus;
+function getPlayerCombatBonus(gameState, playerId) {
+  return getCannonValueForPlayer(gameState, playerId);
 }
 
 function createDefaultUpgrades() {
@@ -2722,6 +2939,23 @@ function normalizePendingShipPlacement(pendingShipPlacement, players = []) {
   };
 }
 
+function normalizePendingFriendshipCardSelection(pendingFriendshipCardSelection, players = []) {
+  if (!pendingFriendshipCardSelection || typeof pendingFriendshipCardSelection !== "object") return null;
+  const playerIds = new Set((players ?? []).map((player) => player.id));
+  if (!playerIds.has(pendingFriendshipCardSelection.ownerPlayerId)) return null;
+
+  return {
+    ownerPlayerId: pendingFriendshipCardSelection.ownerPlayerId,
+    outpostId: typeof pendingFriendshipCardSelection.outpostId === "string" ? pendingFriendshipCardSelection.outpostId : null,
+    availableCardIds: Array.isArray(pendingFriendshipCardSelection.availableCardIds)
+      ? pendingFriendshipCardSelection.availableCardIds.filter((cardId) => typeof cardId === "string")
+      : [],
+    grantedStationId: typeof pendingFriendshipCardSelection.grantedStationId === "string"
+      ? pendingFriendshipCardSelection.grantedStationId
+      : null
+  };
+}
+
 function normalizePendingTradeStationPlacement(pendingTradeStationPlacement, players = []) {
   if (!pendingTradeStationPlacement || typeof pendingTradeStationPlacement !== "object") return null;
   const playerIds = new Set((players ?? []).map((player) => player.id));
@@ -2805,6 +3039,18 @@ function normalizeActiveTradeOffer(activeTradeOffer, players = []) {
       ? activeTradeOffer.status
       : "pending",
     createdAt: activeTradeOffer.createdAt || new Date().toISOString()
+  };
+}
+
+function normalizeFriendshipTurnState(friendshipTurnState, gameState) {
+  const fallback = createFriendshipTurnState(getTurnKey(gameState));
+  if (!friendshipTurnState || typeof friendshipTurnState !== "object") return fallback;
+
+  return {
+    turnKey: typeof friendshipTurnState.turnKey === "string" ? friendshipTurnState.turnKey : fallback.turnKey,
+    usedActionKeys: Array.isArray(friendshipTurnState.usedActionKeys)
+      ? [...new Set(friendshipTurnState.usedActionKeys.filter((entry) => typeof entry === "string"))]
+      : []
   };
 }
 
@@ -3074,7 +3320,10 @@ function resolveAdjacentSpecialMarkers(gameState, boardLayout, nodeId, activePla
     const token = getPlanetToken(numberTokens, planet.id);
     if (!isActiveSpecialToken(token)) continue;
     const requiredUpgrade = getTokenRequirementUpgrade(token);
-    if ((activePlayer.upgrades?.[requiredUpgrade] ?? 0) < token.value) continue;
+    const effectiveValue = requiredUpgrade === "cannon"
+      ? getCannonValueForPlayer(gameState, activePlayer.id)
+      : getCargoValueForPlayer(gameState, activePlayer.id);
+    if (effectiveValue < token.value) continue;
 
     const result = resolveSpecialToken(numberTokens, planet.id, activePlayer.id);
     numberTokens = result.numberTokens;
@@ -3189,6 +3438,7 @@ function distributeProduction(gameState, boardLayout, rollTotal) {
   }));
   const playersById = new Map(players.map((player) => [player.id, player]));
   const gains = [];
+  const producedResourcesByPlayerId = new Map(players.map((player) => [player.id, createEmptyResources()]));
 
   for (const planet of producingPlanets) {
     for (const structure of structures) {
@@ -3197,10 +3447,28 @@ function distributeProduction(gameState, boardLayout, rollTotal) {
       if (!player) continue;
 
       player.resources[planet.resource] = (player.resources[planet.resource] ?? 0) + 1;
+      producedResourcesByPlayerId.get(player.id)[planet.resource] += 1;
       gains.push({
         player: player.name,
         resource: planet.resource,
         amount: 1
+      });
+    }
+  }
+
+  for (const player of players) {
+    const producedResources = producedResourcesByPlayerId.get(player.id);
+    for (const card of getFriendshipCardsForPlayer(player)) {
+      if (!card.implemented || card.effectType !== "productionBonus") continue;
+      const resource = card.effectValue?.resource;
+      const amount = card.effectValue?.amount ?? 1;
+      if (!resource || (producedResources?.[resource] ?? 0) <= 0) continue;
+
+      player.resources[resource] = (player.resources[resource] ?? 0) + amount;
+      gains.push({
+        player: player.name,
+        resource,
+        amount
       });
     }
   }

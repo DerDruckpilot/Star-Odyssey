@@ -74,7 +74,8 @@ Kolonien und Raumhaefen grenzen typischerweise an zwei Planeten. Dadurch kann ei
 - Aussenposten haben einen zentralen Andockpunkt und mehrere Stationsplaetze/Docks.
 - Fuer jede neue Handelsstation an einem Aussenposten steigt die benoetigte Frachtmodul-Stufe um 1.
 - Der Spieler mit der klaren Mehrheit an Handelsstationen eines Aussenpostens haelt den Freundschaftsmarker dieses Volkes und erhaelt dafuer 2 Siegpunkte.
-- Jede gegruendete Handelsstation liefert zusaetzlich eine Freundschaftskarte des jeweiligen Volkes.
+- Jede gegruendete Handelsstation liefert zusaetzlich eine waehlbare Freundschaftskarte des jeweiligen Volkes.
+- Einfache Freundschaftskarten wirken bereits passiv auf Handel, Produktion, Geschwindigkeit, Kampfkraft oder einmalige Zugaktionen; komplexere Karten bleiben datengetrieben vorbereitet.
 
 ## Ausbauten
 

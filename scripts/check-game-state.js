@@ -15,6 +15,7 @@ import {
   drawSupply,
   endCurrentTurn,
   finishEncounter,
+  getTradeRatesForPlayer,
   moveShip,
   placePendingShip,
   placeInitialColony,
@@ -25,10 +26,13 @@ import {
   resolveSevenSteal,
   rollPlacementStart,
   rollProduction,
+  selectPendingFriendshipCard,
   setSevenStealTarget,
   startPendingSpaceportUpgrade,
   foundTradeStation,
   getShipDestinationState,
+  tradeWithSupply,
+  useBoughtFame,
   normalizeGameState,
   submitSevenDiscard,
   updateSevenDiscardSelection
@@ -324,11 +328,22 @@ if (outpostUnderTest) {
   game = foundTradeStation(game, boardLayout, "player-1-trade-ship-a");
   assert(game.board.pendingTradeStationPlacement?.availableDockIds?.length >= 3, "Trade station founding should start with a pending dock selection.");
   game = confirmPendingTradeStationPlacement(game, boardLayout, firstDockNodeId);
+  assert((game.board.pendingFriendshipCardSelection?.availableCardIds?.length ?? 0) > 1, "Founding a trade station should start a friendship card choice when multiple cards are available.");
+  const selectedFriendshipCardId = game.board.pendingFriendshipCardSelection?.availableCardIds?.[0];
+  assert(Boolean(selectedFriendshipCardId), "A valid friendship card should be selectable.");
+  if (selectedFriendshipCardId) {
+    game = selectPendingFriendshipCard(game, selectedFriendshipCardId);
+  }
   assert(game.board.structures.some((structure) => structure.type === "tradeStation" && structure.locationId === firstDockNodeId), "Trade station should occupy the selected dock.");
   assert(!game.board.ships.some((ship) => ship.id === "player-1-trade-ship-a"), "Trade ship should be consumed when founding a trade station.");
   assert(game.players[0].friendshipMarkers.includes(outpostUnderTest.id), "The first outpost founder should receive the friendship marker.");
   assert(game.players[0].victoryPoints === playerOnePointsBeforeMarker + 2, "Friendship marker should grant 2 victory points.");
   assert(game.players[0].friendshipCards.length === 1, "Founding a trade station should grant one friendship card.");
+  assert(
+    !game.board.placedOutposts.find((outpost) => outpost.id === outpostUnderTest.id)?.friendshipCards?.includes(selectedFriendshipCardId),
+    "Chosen friendship cards should be removed from the outpost pool."
+  );
+  assert(!game.board.pendingFriendshipCardSelection, "Friendship card selection should clear after choosing a card.");
 
   game = {
     ...game,
@@ -389,6 +404,7 @@ if (outpostUnderTest) {
     normalizedOutpostGame.board.placedOutposts.find((outpost) => outpost.id === outpostUnderTest.id)?.friendshipHolderPlayerId === "player-2",
     "Save/load normalization should preserve friendship marker holders."
   );
+  assert(normalizedOutpostGame.players[0].friendshipCards.length === game.players[0].friendshipCards.length, "Save/load normalization should preserve friendship cards.");
 
   const pendingCancelState = foundTradeStation({
     ...game,
@@ -421,6 +437,54 @@ if (outpostUnderTest) {
   const cancelledPendingState = cancelPendingTradeStationPlacement(pendingCancelState);
   assert(!cancelledPendingState.board.pendingTradeStationPlacement, "Cancelling a pending trade station placement should clear the pending state.");
 }
+
+let friendshipEffectGame = createGameState({
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+friendshipEffectGame = {
+  ...friendshipEffectGame,
+  phase: "tradeBuild",
+  players: friendshipEffectGame.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      resources: {
+        ore: 2,
+        fuel: 0,
+        carbon: 0,
+        food: 0,
+        goods: 2
+      },
+      friendshipCards: ["traders-ore-2to1", "traders-goods-1to1", "diplomats-bought-fame-1", "wise-drive-boost"]
+    }
+    : player)
+};
+assert(getTradeRatesForPlayer(friendshipEffectGame, "player-1").ore === 2, "Trader friendship cards should improve ore trade to 2:1.");
+assert(getTradeRatesForPlayer(friendshipEffectGame, "player-1").goods === 1, "Goods trade card should enable 1:1 trades.");
+friendshipEffectGame = tradeWithSupply(friendshipEffectGame, { fromResource: "goods", toResource: "food" });
+assert(friendshipEffectGame.players[0].resources.goods === 1 && friendshipEffectGame.players[0].resources.food === 1, "Goods 1:1 trade should consume one goods and grant one resource.");
+friendshipEffectGame = useBoughtFame(friendshipEffectGame);
+assert(friendshipEffectGame.players[0].halfMedals === 1, "Bought fame should grant one half medal.");
+const goodsAfterFame = friendshipEffectGame.players[0].resources.goods;
+friendshipEffectGame = useBoughtFame(friendshipEffectGame);
+assert(friendshipEffectGame.players[0].resources.goods === goodsAfterFame, "Bought fame should be usable only once per turn.");
+friendshipEffectGame = determineFlightSpeed({
+  ...friendshipEffectGame,
+  phase: "flight",
+  hasRolledFlightSpeed: false,
+  board: {
+    ...friendshipEffectGame.board,
+    ships: [{
+      id: "player-1-colony-ship-bonus",
+      ownerPlayerId: "player-1",
+      type: "colonyShip",
+      locationId: boardLayout.points[0].id,
+      status: "active"
+    }]
+  }
+}, { balls: ["yellow", "blue"] });
+assert(friendshipEffectGame.flightSpeedTotal === 5, "Wise people drive bonus should increase flight speed.");
 
 let encounterGame = normalizeGameState(JSON.parse(JSON.stringify(game)), {
   language: "de",

@@ -600,6 +600,11 @@ h1 {
   gap: 0.45rem;
 }
 
+.friendship-card-selection {
+  display: grid;
+  gap: 0.45rem;
+}
+
 .friendship-card {
   padding: 0.65rem 0.75rem;
   border: 1px solid rgba(148, 163, 184, 0.35);
@@ -608,6 +613,22 @@ h1 {
 
 .friendship-card p {
   margin: 0.35rem 0 0;
+}
+
+.friendship-card small,
+.friendship-choice-button small {
+  color: #fbbf24;
+}
+
+.friendship-choice-button {
+  display: grid;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  text-align: left;
+  border: 1px solid rgba(125, 211, 252, 0.32);
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.68);
 }
 
 .resource-select {
