@@ -7,6 +7,7 @@ import {
   createGameState,
   currentGameStorageKey,
   determineFlightSpeed,
+  drawSupply,
   endCurrentTurn,
   foundColony,
   foundTradeStation,
@@ -36,6 +37,7 @@ const state = {
   tradeToResource: "food",
   modal: null,
   hudPlayerId: null,
+  hudTab: "turn",
   notice: ""
 };
 
@@ -134,6 +136,7 @@ function closeModal() {
 
 function openPlayerHud(playerId) {
   state.hudPlayerId = playerId;
+  state.hudTab = "turn";
   state.modal = null;
   state.notice = "";
   render();
@@ -233,6 +236,14 @@ function rollProductionForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "production") return;
 
   state.gameState = rollProduction(state.gameState, boardLayout);
+  saveCurrentGameState();
+  render();
+}
+
+function drawSupplyForActivePlayer() {
+  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+
+  state.gameState = drawSupply(state.gameState);
   saveCurrentGameState();
   render();
 }
@@ -469,23 +480,18 @@ function renderBoardShell() {
   board.setAttribute("aria-label", t("boardAreaLabel"));
   board.append(renderBoardSvg());
 
-  screen.append(hiddenTitle, board, renderBoardHud(), renderPlayerHudButtons(), renderPlayerHudModal(), controls, renderNotice());
+  screen.append(hiddenTitle, board, renderCompactBoardStatus(), renderPlayerHudButtons(), renderPlayerHudModal(), controls, renderNotice());
   return screen;
 }
 
-function renderBoardHud() {
-  const hud = document.createElement("aside");
-  hud.className = "board-hud";
-  hud.append(
-    renderTurnSummary(),
-    renderResourceSummary(),
-    renderUpgradeSummary(),
-    renderFleetSummary(),
-    renderPhaseActions(),
-    renderEventLog(),
-    renderSelectionPanel()
-  );
-  return hud;
+function renderCompactBoardStatus() {
+  const status = document.createElement("div");
+  status.className = "compact-board-status";
+  const activePlayer = getActivePlayer();
+  status.textContent = state.gameState
+    ? `${activePlayer?.name ?? ""} · ${t("round")} ${state.gameState.turnNumber} · ${getPhaseLabel(state.gameState.phase)}`
+    : "";
+  return status;
 }
 
 function renderPlayerHudButtons() {
@@ -493,12 +499,13 @@ function renderPlayerHudButtons() {
   const wrapper = document.createElement("div");
   wrapper.className = "player-hud-launcher";
 
-  for (const player of players) {
+  players.forEach((player, index) => {
     const isActive = player.id === getActivePlayer()?.id;
-    const button = createButton(player.name, () => openPlayerHud(player.id), `player-hud-button${isActive ? " is-active" : ""}`);
+    const label = t("playerNumber").replace("{number}", index + 1);
+    const button = createButton(label, () => openPlayerHud(player.id), `player-hud-button${isActive ? " is-active" : ""}`);
     button.setAttribute("aria-pressed", String(state.hudPlayerId === player.id));
     wrapper.append(button);
-  }
+  });
 
   return wrapper;
 }
@@ -529,20 +536,57 @@ function renderPlayerHudModal() {
 
   const content = document.createElement("div");
   content.className = "player-hud-content";
-  content.append(
-    renderTurnSummary(player),
-    renderResourceSummary(player),
-    renderUpgradeSummary(player),
-    renderFleetSummary(player)
-  );
-
-  if (player.id === getActivePlayer()?.id) {
-    content.append(renderPhaseActions(), renderEventLog(), renderSelectionPanel());
-  }
+  content.append(renderPlayerHudTabs(), renderPlayerHudTabContent(player));
 
   panel.append(header, content);
   overlay.append(panel);
   return overlay;
+}
+
+function renderPlayerHudTabs() {
+  const tabs = document.createElement("div");
+  tabs.className = "player-hud-tabs";
+  const tabDefinitions = [
+    ["turn", t("tabTurn")],
+    ["resources", t("tabResources")],
+    ["upgrades", t("tabUpgrades")],
+    ["fleet", t("tabFleet")],
+    ["log", t("tabLog")]
+  ];
+
+  for (const [tabId, label] of tabDefinitions) {
+    const button = createButton(label, () => {
+      state.hudTab = tabId;
+      render();
+    }, "hud-tab-button");
+    button.setAttribute("aria-pressed", String(state.hudTab === tabId));
+    tabs.append(button);
+  }
+
+  return tabs;
+}
+
+function renderPlayerHudTabContent(player) {
+  const content = document.createElement("div");
+  content.className = "player-hud-tab-content";
+  const isActivePlayer = player.id === getActivePlayer()?.id;
+
+  if (state.hudTab === "resources") {
+    content.append(renderResourceSummary(player));
+    if (isActivePlayer && state.gameState?.phase === "tradeBuild") content.append(renderBankTradeControls());
+  } else if (state.hudTab === "upgrades") {
+    content.append(renderUpgradeSummary(player));
+    if (isActivePlayer && state.gameState?.phase === "tradeBuild") content.append(renderUpgradeControls());
+  } else if (state.hudTab === "fleet") {
+    content.append(renderFleetSummary(player));
+    if (isActivePlayer && state.gameState?.phase === "tradeBuild") content.append(renderBuildControls());
+  } else if (state.hudTab === "log") {
+    content.append(renderEventLog(), renderSelectionPanel());
+  } else {
+    content.append(renderTurnSummary(player), renderPhaseActions(player));
+  }
+
+  return content;
 }
 
 function renderTurnSummary(player = getActivePlayer()) {
@@ -552,12 +596,13 @@ function renderTurnSummary(player = getActivePlayer()) {
   const gameState = state.gameState;
   const activePlayer = gameState?.players?.[gameState.currentPlayerIndex];
   const rows = [
-    player?.name ?? activePlayer?.name ?? t("noActiveGame"),
+    `${t("activePlayer")}: ${activePlayer?.name ?? t("noActiveGame")}`,
+    player?.id !== activePlayer?.id ? `${t("selected")}: ${player?.name ?? t("noSelection")}` : null,
     `${t("round")} ${gameState?.turnNumber ?? 1}`,
     `${t("phase")}: ${getPhaseLabel(gameState?.phase)}`,
     `${t("lastRoll")}: ${formatLastRoll(gameState?.lastRoll)}`,
     `${t("flightSpeed")}: ${formatFlightSpeed(gameState)}`
-  ];
+  ].filter(Boolean);
 
   for (const row of rows) {
     const item = document.createElement("p");
@@ -640,7 +685,7 @@ function renderFleetSummary(player = getActivePlayer()) {
   return wrapper;
 }
 
-function renderPhaseActions() {
+function renderPhaseActions(player = getActivePlayer()) {
   const wrapper = document.createElement("div");
   wrapper.className = "phase-actions";
 
@@ -655,13 +700,18 @@ function renderPhaseActions() {
     return wrapper;
   }
 
+  if (player?.id !== getActivePlayer()?.id) {
+    const hint = document.createElement("p");
+    hint.textContent = t("notYourTurn");
+    wrapper.append(hint);
+    return wrapper;
+  }
+
   if (state.gameState.phase === "production") {
     wrapper.append(createButton(t("rollProduction"), rollProductionForActivePlayer, "small-button"));
   } else if (state.gameState.phase === "tradeBuild") {
+    wrapper.append(renderSupplyDrawControls());
     wrapper.append(
-      renderBankTradeControls(),
-      renderBuildControls(),
-      renderUpgradeControls(),
       createButton(t("toFlightPhase"), goToFlightPhase, "small-button")
     );
   } else if (state.gameState.phase === "flight") {
@@ -671,6 +721,22 @@ function renderPhaseActions() {
       wrapper.append(renderFlightControls());
     }
     wrapper.append(createButton(t("endTurn"), endTurn, "small-button"));
+  }
+
+  return wrapper;
+}
+
+function renderSupplyDrawControls() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "supply-draw-controls";
+  const drawCount = getSupplyDrawCount(getActivePlayer());
+
+  if (drawCount > 0 && !state.gameState?.hasDrawnSupplyThisTurn) {
+    wrapper.append(createButton(t("drawSupply").replace("{count}", drawCount), drawSupplyForActivePlayer, "small-button"));
+  } else {
+    const hint = document.createElement("p");
+    hint.textContent = t("noSupplyDrawAvailable");
+    wrapper.append(hint);
   }
 
   return wrapper;
@@ -901,6 +967,7 @@ function formatLogEntry(entry) {
 
 function formatMessageParam(key, value) {
   if (["resource", "giveResource", "receiveResource"].includes(key)) return getResourceLabel(value);
+  if (key === "resources") return String(value).split(", ").map((resource) => getResourceLabel(resource)).join(", ");
   if (key === "upgrade") return getUpgradeLabel(value);
   if (key === "ship") return getShipTypeLabel(value);
   return String(value);
@@ -1193,6 +1260,13 @@ function isFoundablePoint(nodeId) {
 
 function getActiveUpgradeLevel(upgradeId) {
   return getActivePlayer()?.upgrades?.[upgradeId] ?? 0;
+}
+
+function getSupplyDrawCount(player) {
+  const victoryPoints = player?.victoryPoints ?? 0;
+  if (victoryPoints >= 4 && victoryPoints <= 7) return 2;
+  if (victoryPoints >= 8 && victoryPoints <= 9) return 1;
+  return 0;
 }
 
 function getBankTradeRate(resource) {

@@ -108,6 +108,7 @@ const translations = {
     adjacentSites: "Angrenzende Bauplätze",
     adjacentPlanets: "Angrenzende Planeten",
     owner: "Besitzer",
+    activePlayer: "Aktiver Spieler",
     round: "Runde",
     phase: "Phase",
     lastRoll: "Letzter Wurf",
@@ -127,6 +128,14 @@ const translations = {
     endTurn: "Zug beenden",
     eventLog: "Ereignislog",
     noLogEntries: "Keine Ereignisse",
+    tabTurn: "Zug",
+    tabResources: "Rohstoffe",
+    tabUpgrades: "Ausbauten",
+    tabFleet: "Schiffe & Stationen",
+    tabLog: "Log",
+    notYourTurn: "Nicht am Zug.",
+    drawSupply: "Nachschub ziehen ({count})",
+    noSupplyDrawAvailable: "Kein Nachschub verfügbar.",
     logNewGameStarted: "Neues Spiel gestartet.",
     logProductionRolled: "Erträge gewürfelt: {total}.",
     logSevenPlaceholder: "Bei 7 werden später Sonderregeln ausgeführt.",
@@ -143,7 +152,8 @@ const translations = {
     logSystemExplored: "{player} erkundet ein neues Planetensystem.",
     logColonyFounded: "{player} gründet eine Kolonie.",
     logTradeStationFounded: "{player} gründet eine Handelsstation.",
-    logTurnEnded: "{player} beendet den Zug. {nextPlayer} ist dran."
+    logTurnEnded: "{player} beendet den Zug. {nextPlayer} ist dran.",
+    logSupplyDrawn: "{player} zieht {count} Nachschub: {resources}."
   },
   en: {
     subtitle: "A digital space board game",
@@ -250,6 +260,7 @@ const translations = {
     adjacentSites: "Adjacent sites",
     adjacentPlanets: "Adjacent planets",
     owner: "Owner",
+    activePlayer: "Active player",
     round: "Round",
     phase: "Phase",
     lastRoll: "Last roll",
@@ -269,6 +280,14 @@ const translations = {
     endTurn: "End turn",
     eventLog: "Event log",
     noLogEntries: "No events",
+    tabTurn: "Turn",
+    tabResources: "Resources",
+    tabUpgrades: "Upgrades",
+    tabFleet: "Ships & Stations",
+    tabLog: "Log",
+    notYourTurn: "Not your turn.",
+    drawSupply: "Draw supply ({count})",
+    noSupplyDrawAvailable: "No supply draw available.",
     logNewGameStarted: "New game started.",
     logProductionRolled: "Production rolled: {total}.",
     logSevenPlaceholder: "Special rules for 7 will be added later.",
@@ -285,7 +304,8 @@ const translations = {
     logSystemExplored: "{player} explores a new planetary system.",
     logColonyFounded: "{player} founds a colony.",
     logTradeStationFounded: "{player} founds a trade station.",
-    logTurnEnded: "{player} ends the turn. {nextPlayer} is next."
+    logTurnEnded: "{player} ends the turn. {nextPlayer} is next.",
+    logSupplyDrawn: "{player} draws {count} supply: {resources}."
   }
 };
 

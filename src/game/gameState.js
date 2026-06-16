@@ -1,6 +1,8 @@
 import { bankTradeRates, buildActionDefinitions, upgradeDefinitions } from "../data/buildCosts.js";
 
 const playerColorKeys = ["red", "blue", "yellow", "white"];
+const supplyResourceTypes = ["ore", "fuel", "carbon", "food", "goods"];
+const supplyCardsPerResource = 8;
 
 export const currentGameStorageKey = "star-odyssey-current-game";
 export const turnPhases = ["setup", "production", "tradeBuild", "flight", "turnEnd"];
@@ -28,6 +30,9 @@ export function createGameState({ language, playerCount, boardLayout }) {
     flightSpeedTotal: null,
     remainingMovementByShipId: {},
     hasRolledFlightSpeed: false,
+    supplyDeck: createSupplyDeck(),
+    supplyDiscard: [],
+    hasDrawnSupplyThisTurn: false,
     board: {
       layoutVersion: boardLayout.layoutVersion,
       selectedElement: null,
@@ -84,6 +89,51 @@ export function rollProduction(gameState, boardLayout) {
       },
       ...productionResult.logEntries
     ]
+  });
+}
+
+export function drawSupply(gameState) {
+  if (gameState.phase !== "tradeBuild" || gameState.hasDrawnSupplyThisTurn) return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const drawCount = getSupplyDrawCount(activePlayer);
+  if (!activePlayer || drawCount <= 0) return gameState;
+
+  const drawnCards = [];
+  let supplyDeck = normalizeSupplyDeck(gameState.supplyDeck);
+
+  while (drawnCards.length < drawCount) {
+    if (supplyDeck.length === 0) supplyDeck = createSupplyDeck();
+    drawnCards.push(supplyDeck[0]);
+    supplyDeck = supplyDeck.slice(1);
+  }
+
+  const players = gameState.players.map((player, index) => {
+    if (index !== gameState.currentPlayerIndex) return player;
+    const resources = normalizeResources(player.resources);
+    for (const resource of drawnCards) {
+      resources[resource] = (resources[resource] ?? 0) + 1;
+    }
+
+    return {
+      ...player,
+      resources
+    };
+  });
+
+  return updateGameState(gameState, {
+    players,
+    supplyDeck,
+    hasDrawnSupplyThisTurn: true,
+    logEntry: {
+      type: "production",
+      messageKey: "logSupplyDrawn",
+      messageParams: {
+        player: activePlayer.name,
+        count: drawnCards.length,
+        resources: formatResourceList(drawnCards)
+      }
+    }
   });
 }
 
@@ -576,6 +626,9 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     flightSpeedTotal: normalizedPhase === "flight" && Number.isInteger(gameState.flightSpeedTotal) ? gameState.flightSpeedTotal : null,
     remainingMovementByShipId: normalizedPhase === "flight" ? normalizeRemainingMovement(gameState.remainingMovementByShipId) : {},
     hasRolledFlightSpeed: normalizedPhase === "flight" && Boolean(gameState.hasRolledFlightSpeed),
+    supplyDeck: normalizeSupplyDeck(gameState.supplyDeck),
+    supplyDiscard: Array.isArray(gameState.supplyDiscard) ? gameState.supplyDiscard.filter((resource) => supplyResourceTypes.includes(resource)) : [],
+    hasDrawnSupplyThisTurn: Boolean(gameState.hasDrawnSupplyThisTurn),
     board: {
       ...fallback.board,
       ...(gameState.board || {}),
@@ -642,6 +695,31 @@ function createEmptyResources() {
     food: 0,
     goods: 0
   };
+}
+
+function createSupplyDeck() {
+  return shuffle([
+    ...supplyResourceTypes.flatMap((resource) => Array.from({ length: supplyCardsPerResource }, () => resource))
+  ]);
+}
+
+function normalizeSupplyDeck(supplyDeck) {
+  const normalizedDeck = Array.isArray(supplyDeck)
+    ? supplyDeck.filter((resource) => supplyResourceTypes.includes(resource))
+    : [];
+
+  return normalizedDeck.length > 0 ? normalizedDeck : createSupplyDeck();
+}
+
+function getSupplyDrawCount(player) {
+  const victoryPoints = player?.victoryPoints ?? 0;
+  if (victoryPoints >= 4 && victoryPoints <= 7) return 2;
+  if (victoryPoints >= 8 && victoryPoints <= 9) return 1;
+  return 0;
+}
+
+function formatResourceList(resources) {
+  return resources.join(", ");
 }
 
 function createDefaultUpgrades() {
@@ -1051,6 +1129,15 @@ function getActivePlayerName(gameState) {
 
 function rollDie() {
   return Math.floor(Math.random() * 6) + 1;
+}
+
+function shuffle(items) {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const targetIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[targetIndex]] = [shuffled[targetIndex], shuffled[index]];
+  }
+  return shuffled;
 }
 
 function normalizePhase(phase) {
