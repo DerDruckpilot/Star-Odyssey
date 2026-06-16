@@ -3,6 +3,10 @@ import {
   createGameState,
   drawSupply,
   endCurrentTurn,
+  placeInitialColony,
+  placeInitialColonyShip,
+  placeInitialSpaceport,
+  rollPlacementStart,
   rollProduction
 } from "../src/game/gameState.js";
 
@@ -17,7 +21,45 @@ function assert(condition, message) {
   }
 }
 
+function getUsedSiteNodeIds(game) {
+  return new Set((game.board?.structures ?? []).map((structure) => structure.locationId));
+}
+
+function getNextFreeStartSite(game) {
+  const usedNodeIds = getUsedSiteNodeIds(game);
+  return boardLayout.startSites.find((site) => !usedNodeIds.has(site.nodeId));
+}
+
+function placeSpaceportAndShip(game) {
+  const site = getNextFreeStartSite(game);
+  game = placeInitialSpaceport(game, boardLayout, site.id);
+  const selectedSite = boardLayout.startSites.find((candidate) => candidate.id === game.placement.selectedSpaceportSiteId);
+  return placeInitialColonyShip(game, boardLayout, selectedSite.launchNodeIds[0]);
+}
+
 let game = createGameState({ language: "de", playerCount: 2, boardLayout });
+
+assert(game.phase === "placement", "New games should start in placement phase.");
+
+game = rollPlacementStart(game, { dice: [6, 6], total: 12 });
+game = rollPlacementStart(game, { dice: [3, 4], total: 7 });
+
+assert(game.placement.startPlayerId === "player-1", "Player 1 should win the deterministic starting roll.");
+assert(game.placement.order.join(",") === "player-1,player-2", "Placement order should start with the starting player.");
+assert(game.placement.reverseOrder.join(",") === "player-2,player-1", "Reverse placement order should be inverted.");
+
+game = placeSpaceportAndShip(game);
+game = placeSpaceportAndShip(game);
+game = placeInitialColony(game, boardLayout, getNextFreeStartSite(game).id);
+game = placeInitialColony(game, boardLayout, getNextFreeStartSite(game).id);
+game = placeInitialColony(game, boardLayout, getNextFreeStartSite(game).id);
+game = placeInitialColony(game, boardLayout, getNextFreeStartSite(game).id);
+
+assert(game.phase === "production", "Game should enter production after placement is complete.");
+assert(game.currentPlayerIndex === 0, "Starting player should remain active after placement.");
+assert(game.board.structures.length === 6, "Two players should place 6 starting structures.");
+assert(game.board.ships.length === 2, "Two players should place 2 colony ships.");
+
 game = rollProduction(game, boardLayout);
 game = drawSupply(game);
 

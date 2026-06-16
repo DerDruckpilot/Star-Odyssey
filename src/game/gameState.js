@@ -5,14 +5,14 @@ const supplyResourceTypes = ["ore", "fuel", "carbon", "food", "goods"];
 const supplyCardsPerResource = 8;
 
 export const currentGameStorageKey = "star-odyssey-current-game";
-export const turnPhases = ["setup", "production", "tradeBuild", "flight", "turnEnd"];
+export const turnPhases = ["placement", "setup", "production", "tradeBuild", "flight", "turnEnd"];
 
 export function createGameState({ language, playerCount, boardLayout }) {
   const now = new Date().toISOString();
   const safePlayerCount = [2, 3, 4].includes(playerCount) ? playerCount : 2;
   const boardPlacement = createBoardPlacement(boardLayout);
-  const startingStructures = createStartingStructures(safePlayerCount, boardLayout);
-  const startingShips = createStartingShips(safePlayerCount, boardLayout, startingStructures);
+  const startingStructures = [];
+  const startingShips = [];
   const players = attachPlayerAssets(createPlayers(safePlayerCount, language), startingStructures, startingShips);
 
   return {
@@ -24,7 +24,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
     players,
     currentPlayerIndex: 0,
     turnNumber: 1,
-    phase: "production",
+    phase: "placement",
     lastRoll: null,
     flightSpeedBase: null,
     flightSpeedTotal: null,
@@ -34,6 +34,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
     supplyDiscard: [],
     hasDrawnSupplyThisTurn: false,
     supplyDrawTurnKey: null,
+    placement: createPlacementState(safePlayerCount),
     board: {
       layoutVersion: boardLayout.layoutVersion,
       selectedElement: null,
@@ -90,6 +91,204 @@ export function rollProduction(gameState, boardLayout) {
       },
       ...productionResult.logEntries
     ]
+  });
+}
+
+export function rollPlacementStart(gameState, forcedRoll = null) {
+  if (gameState.phase !== "placement" || gameState.placement?.step !== "rollStartPlayer") return gameState;
+
+  const placement = normalizePlacementState(gameState.placement, gameState.playerCount);
+  const rollingPlayerId = placement.rollPlayerIds[placement.currentRollIndex];
+  const rollingPlayerIndex = getPlayerIndexById(gameState, rollingPlayerId);
+  if (rollingPlayerIndex < 0) return gameState;
+
+  const roll = forcedRoll ?? rollTwoDice();
+  const rolls = {
+    ...placement.rolls,
+    [rollingPlayerId]: roll
+  };
+  const nextRollIndex = placement.currentRollIndex + 1;
+
+  if (nextRollIndex < placement.rollPlayerIds.length) {
+    const nextPlayerId = placement.rollPlayerIds[nextRollIndex];
+    return updateGameState(gameState, {
+      currentPlayerIndex: getPlayerIndexById(gameState, nextPlayerId),
+      placement: {
+        ...placement,
+        rolls,
+        currentRollIndex: nextRollIndex
+      },
+      logEntry: {
+        type: "placement",
+        messageKey: "logPlacementRolled",
+        messageParams: {
+          player: gameState.players[rollingPlayerIndex]?.name ?? rollingPlayerId,
+          total: roll.total
+        }
+      }
+    });
+  }
+
+  const maxRoll = Math.max(...Object.values(rolls).map((entry) => entry.total));
+  const tiedPlayerIds = Object.entries(rolls)
+    .filter(([, entry]) => entry.total === maxRoll)
+    .map(([playerId]) => playerId);
+
+  if (tiedPlayerIds.length > 1) {
+    return updateGameState(gameState, {
+      currentPlayerIndex: getPlayerIndexById(gameState, tiedPlayerIds[0]),
+      placement: {
+        ...placement,
+        rollPlayerIds: tiedPlayerIds,
+        currentRollIndex: 0,
+        rolls: {},
+        rollHistory: [...placement.rollHistory, rolls],
+        tiedPlayerIds
+      },
+      logEntry: {
+        type: "placement",
+        messageKey: "logPlacementTie",
+        messageParams: {}
+      }
+    });
+  }
+
+  const startPlayerId = tiedPlayerIds[0];
+  const startPlayerIndex = getPlayerIndexById(gameState, startPlayerId);
+  const order = createPlacementOrder(startPlayerIndex, gameState.playerCount)
+    .map((index) => gameState.players[index]?.id)
+    .filter(Boolean);
+
+  return updateGameState(gameState, {
+    currentPlayerIndex: startPlayerIndex,
+    placement: {
+      ...placement,
+      step: "placeSpaceport",
+      startPlayerId,
+      order,
+      reverseOrder: [...order].reverse(),
+      currentOrderIndex: 0,
+      rolls,
+      rollHistory: [...placement.rollHistory, rolls],
+      tiedPlayerIds: [],
+      selectedSpaceportSiteId: null
+    },
+    logEntry: {
+      type: "placement",
+      messageKey: "logPlacementStartPlayer",
+      messageParams: {
+        player: gameState.players[startPlayerIndex]?.name ?? startPlayerId
+      }
+    }
+  });
+}
+
+export function placeInitialSpaceport(gameState, boardLayout, siteId) {
+  if (gameState.phase !== "placement" || gameState.placement?.step !== "placeSpaceport") return gameState;
+
+  const placement = normalizePlacementState(gameState.placement, gameState.playerCount);
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const site = getStartColonySite(boardLayout, siteId);
+  const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout, { useFallback: false });
+  if (!activePlayer || !site || isStructureAtLocation(structures, site.nodeId)) return gameState;
+
+  const structure = {
+    id: createId("spaceport"),
+    ownerPlayerId: activePlayer.id,
+    type: "spaceport",
+    locationId: site.nodeId,
+    systemId: site.systemId,
+    adjacentPlanetIds: site.adjacentPlanetIds ?? []
+  };
+
+  return updateGameState(gameState, {
+    board: {
+      ...gameState.board,
+      selectedElement: { type: "spacePoint", id: site.nodeId },
+      structures: [...structures, structure],
+      colonies: structures.filter((candidate) => candidate.type === "colony"),
+      ships: normalizeShips(gameState.board?.ships)
+    },
+    placement: {
+      ...placement,
+      step: "placeColonyShip",
+      selectedSpaceportSiteId: site.id
+    },
+    players: syncPlayersWithBoardAssets(gameState.players, [...structures, structure], normalizeShips(gameState.board?.ships))
+  });
+}
+
+export function placeInitialColonyShip(gameState, boardLayout, nodeId) {
+  if (gameState.phase !== "placement" || gameState.placement?.step !== "placeColonyShip") return gameState;
+
+  const placement = normalizePlacementState(gameState.placement, gameState.playerCount);
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const site = getStartColonySite(boardLayout, placement.selectedSpaceportSiteId);
+  const ships = normalizeShips(gameState.board?.ships);
+  const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout, { useFallback: false });
+  if (!activePlayer || !site || !site.launchNodeIds?.includes(nodeId) || isNodeOccupied(ships, structures, nodeId)) return gameState;
+
+  const ship = {
+    id: createId("colony-ship"),
+    ownerPlayerId: activePlayer.id,
+    type: "colonyShip",
+    locationId: nodeId,
+    status: "docked"
+  };
+  const updatedShips = [...ships, ship];
+  const nextPlacement = advancePlacementOrder(placement, gameState, "placeSpaceport", "placeFirstColony", "reverse");
+
+  return updateGameState(gameState, {
+    currentPlayerIndex: nextPlacement.currentPlayerIndex,
+    placement: nextPlacement.placement,
+    board: {
+      ...gameState.board,
+      selectedElement: { type: "ship", id: ship.id },
+      structures,
+      ships: updatedShips
+    },
+    players: syncPlayersWithBoardAssets(gameState.players, structures, updatedShips)
+  });
+}
+
+export function placeInitialColony(gameState, boardLayout, siteId) {
+  if (gameState.phase !== "placement" || !["placeFirstColony", "placeSecondColony"].includes(gameState.placement?.step)) {
+    return gameState;
+  }
+
+  const placement = normalizePlacementState(gameState.placement, gameState.playerCount);
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const site = getStartColonySite(boardLayout, siteId);
+  const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout, { useFallback: false });
+  const ships = normalizeShips(gameState.board?.ships);
+  if (!activePlayer || !site || isStructureAtLocation(structures, site.nodeId)) return gameState;
+
+  const structure = {
+    id: createId("colony"),
+    ownerPlayerId: activePlayer.id,
+    type: "colony",
+    locationId: site.nodeId,
+    systemId: site.systemId,
+    adjacentPlanetIds: site.adjacentPlanetIds ?? []
+  };
+  const updatedStructures = [...structures, structure];
+  const nextMode = placement.step === "placeFirstColony" ? "forward" : "complete";
+  const nextStep = placement.step === "placeFirstColony" ? "placeSecondColony" : "complete";
+  const nextPlacement = advancePlacementOrder(placement, gameState, placement.step, nextStep, nextMode);
+
+  return updateGameState(gameState, {
+    currentPlayerIndex: nextPlacement.currentPlayerIndex,
+    phase: nextPlacement.phase ?? "placement",
+    placement: nextPlacement.placement,
+    turnNumber: nextPlacement.phase === "production" ? 1 : gameState.turnNumber,
+    board: {
+      ...gameState.board,
+      selectedElement: { type: "structure", id: structure.id },
+      structures: updatedStructures,
+      colonies: updatedStructures.filter((candidate) => candidate.type === "colony"),
+      ships
+    },
+    players: syncPlayersWithBoardAssets(gameState.players, updatedStructures, ships)
   });
 }
 
@@ -200,7 +399,8 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
   const ships = normalizeShips(gameState.board?.ships);
   const ship = ships.find((candidate) => candidate.id === shipId);
   const remainingMovement = gameState.remainingMovementByShipId?.[shipId] ?? 0;
-  const pathCost = getShortestPathCost(boardLayout, ship?.locationId, targetNodeId);
+  const blockedNodeIds = getBlockedSystemNodeIds(gameState, boardLayout);
+  const pathCost = getShortestPathCost(boardLayout, ship?.locationId, targetNodeId, blockedNodeIds);
   if (
     !activePlayer ||
     !ship ||
@@ -208,6 +408,7 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
     targetNodeId === ship.locationId ||
     pathCost === null ||
     pathCost > remainingMovement ||
+    blockedNodeIds.has(targetNodeId) ||
     isNodeOccupied(ships, gameState.board?.structures, targetNodeId, shipId)
   ) {
     return gameState;
@@ -262,7 +463,7 @@ export function foundColony(gameState, boardLayout, shipId) {
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const ships = normalizeShips(gameState.board?.ships);
   const ship = ships.find((candidate) => candidate.id === shipId);
-  const colonySite = (boardLayout.colonySites ?? []).find((site) => site.nodeId === ship?.locationId);
+  const colonySite = getGameColonySites(gameState, boardLayout).find((site) => site.nodeId === ship?.locationId);
   if (
     !activePlayer ||
     !ship ||
@@ -375,7 +576,7 @@ export function foundTradeStation(gameState, boardLayout, shipId) {
   });
 }
 
-export function getReachableNodes(boardLayout, ships, shipId, maxDistance, structures = []) {
+export function getReachableNodes(boardLayout, ships, shipId, maxDistance, structures = [], blockedNodeIds = []) {
   const ship = normalizeShips(ships).find((candidate) => candidate.id === shipId);
   if (!ship || maxDistance <= 0) return [];
 
@@ -385,6 +586,7 @@ export function getReachableNodes(boardLayout, ships, shipId, maxDistance, struc
   for (const structure of structures ?? []) {
     if (structure?.locationId) occupiedNodeIds.add(structure.locationId);
   }
+  const blocked = new Set(blockedNodeIds);
   const graph = createConnectionGraph(boardLayout);
   const queue = [{ id: ship.locationId, distance: 0 }];
   const visited = new Map([[ship.locationId, 0]]);
@@ -393,7 +595,7 @@ export function getReachableNodes(boardLayout, ships, shipId, maxDistance, struc
     const current = queue.shift();
     for (const nextId of graph.get(current.id) ?? []) {
       const nextDistance = current.distance + 1;
-      if (nextDistance > maxDistance || visited.has(nextId) || occupiedNodeIds.has(nextId)) continue;
+      if (nextDistance > maxDistance || visited.has(nextId) || occupiedNodeIds.has(nextId) || blocked.has(nextId)) continue;
       visited.set(nextId, nextDistance);
       queue.push({ id: nextId, distance: nextDistance });
     }
@@ -598,9 +800,12 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
   const normalizedPlayerCount = [2, 3, 4].includes(gameState.playerCount)
     ? gameState.playerCount
     : fallback.playerCount;
+  const normalizedPhase = normalizePhase(gameState.phase);
   const fallbackPlayers = createPlayers(normalizedPlayerCount, gameState.language || language);
-  const normalizedStructures = normalizeStructures(gameState.board?.structures, normalizedPlayerCount, boardLayout);
-  const normalizedShips = normalizeShips(gameState.board?.ships);
+  const normalizedStructures = normalizeStructures(gameState.board?.structures, normalizedPlayerCount, boardLayout, {
+    useFallback: normalizedPhase !== "placement"
+  });
+  const normalizedShips = sanitizeShips(normalizeShips(gameState.board?.ships), boardLayout, normalizedStructures);
   const normalizedPlacement = normalizeBoardPlacement(gameState.board, boardLayout);
   const normalizedPlayers = fallbackPlayers.map((fallbackPlayer, index) => (
     Array.isArray(gameState.players) && gameState.players[index]
@@ -614,7 +819,6 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
   const normalizedCurrentPlayerIndex = Number.isInteger(gameState.currentPlayerIndex)
     ? Math.min(Math.max(gameState.currentPlayerIndex, 0), normalizedPlayerCount - 1)
     : 0;
-  const normalizedPhase = normalizePhase(gameState.phase);
 
   return {
     ...fallback,
@@ -634,6 +838,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     supplyDiscard: Array.isArray(gameState.supplyDiscard) ? gameState.supplyDiscard.filter((resource) => supplyResourceTypes.includes(resource)) : [],
     hasDrawnSupplyThisTurn: Boolean(gameState.hasDrawnSupplyThisTurn),
     supplyDrawTurnKey: typeof gameState.supplyDrawTurnKey === "string" ? gameState.supplyDrawTurnKey : null,
+    placement: normalizePlacementState(gameState.placement, normalizedPlayerCount),
     board: {
       ...fallback.board,
       ...(gameState.board || {}),
@@ -671,6 +876,65 @@ function createPlayers(playerCount, language) {
     structures: [],
     stations: []
   }));
+}
+
+function createPlacementState(playerCount) {
+  const rollPlayerIds = Array.from({ length: playerCount }, (_, index) => `player-${index + 1}`);
+  return {
+    step: "rollStartPlayer",
+    rollPlayerIds,
+    currentRollIndex: 0,
+    rolls: {},
+    rollHistory: [],
+    tiedPlayerIds: [],
+    startPlayerId: null,
+    order: [],
+    reverseOrder: [],
+    currentOrderIndex: 0,
+    selectedSpaceportSiteId: null
+  };
+}
+
+function normalizePlacementState(placement, playerCount) {
+  const fallback = createPlacementState(playerCount);
+  if (!placement || typeof placement !== "object") return fallback;
+
+  const playerIds = new Set(fallback.rollPlayerIds);
+  const normalizePlayerIds = (ids) => Array.isArray(ids) ? ids.filter((id) => playerIds.has(id)) : [];
+  const rollPlayerIds = normalizePlayerIds(placement.rollPlayerIds);
+  const order = normalizePlayerIds(placement.order);
+  const reverseOrder = normalizePlayerIds(placement.reverseOrder);
+
+  return {
+    ...fallback,
+    ...placement,
+    step: normalizePlacementStep(placement.step),
+    rollPlayerIds: rollPlayerIds.length > 0 ? rollPlayerIds : fallback.rollPlayerIds,
+    currentRollIndex: Number.isInteger(placement.currentRollIndex) ? Math.max(0, placement.currentRollIndex) : 0,
+    rolls: normalizePlacementRolls(placement.rolls),
+    rollHistory: Array.isArray(placement.rollHistory) ? placement.rollHistory : [],
+    tiedPlayerIds: normalizePlayerIds(placement.tiedPlayerIds),
+    startPlayerId: playerIds.has(placement.startPlayerId) ? placement.startPlayerId : null,
+    order,
+    reverseOrder: reverseOrder.length > 0 ? reverseOrder : [...order].reverse(),
+    currentOrderIndex: Number.isInteger(placement.currentOrderIndex) ? Math.max(0, placement.currentOrderIndex) : 0,
+    selectedSpaceportSiteId: typeof placement.selectedSpaceportSiteId === "string" ? placement.selectedSpaceportSiteId : null
+  };
+}
+
+function normalizePlacementStep(step) {
+  if (["rollStartPlayer", "placeSpaceport", "placeColonyShip", "placeFirstColony", "placeSecondColony", "complete"].includes(step)) {
+    return step;
+  }
+  return "rollStartPlayer";
+}
+
+function normalizePlacementRolls(rolls) {
+  if (!rolls || typeof rolls !== "object") return {};
+
+  return Object.fromEntries(Object.entries(rolls)
+    .filter(([, roll]) => Number.isInteger(roll?.total))
+    .map(([playerId, roll]) => [playerId, normalizeRoll(roll)]));
 }
 
 function normalizePlayer(player, index, language) {
@@ -818,10 +1082,13 @@ function attachPlayerAssets(players, structures, ships) {
   }));
 }
 
-function normalizeStructures(structures, playerCount, boardLayout) {
-  if (!Array.isArray(structures) || structures.length === 0) {
+function normalizeStructures(structures, playerCount, boardLayout, options = {}) {
+  const useFallback = options.useFallback ?? true;
+  if ((!Array.isArray(structures) || structures.length === 0) && useFallback) {
     return createStartingStructures(playerCount, boardLayout);
   }
+
+  if (!Array.isArray(structures)) return [];
 
   return structures
     .filter((structure) => structure && structure.id && structure.ownerPlayerId && structure.locationId)
@@ -869,14 +1136,20 @@ function createFallbackBoardPlacement(boardLayout) {
 
 function normalizeBoardPlacement(boardState, boardLayout) {
   if (Array.isArray(boardState?.placedSystems) && Array.isArray(boardState?.placedOutposts)) {
-    return normalizePlacementObject({
+    return enrichBoardPlacement(boardLayout, normalizePlacementObject({
       placedSystems: boardState.placedSystems,
       placedOutposts: boardState.placedOutposts,
       emptySlots: boardState.emptySlots
-    });
+    }));
   }
 
   return createDefaultBoardPlacement(boardLayout);
+}
+
+function enrichBoardPlacement(boardLayout, placement) {
+  return typeof boardLayout.enrichPlacement === "function"
+    ? boardLayout.enrichPlacement(placement)
+    : placement;
 }
 
 function normalizePlacementObject(placement) {
@@ -891,6 +1164,20 @@ function getPlacedPlanetSystems(gameState, boardLayout) {
   return Array.isArray(gameState.board?.placedSystems)
     ? gameState.board.placedSystems
     : (boardLayout.planetSystems ?? []);
+}
+
+function getGameColonySites(gameState, boardLayout) {
+  return [
+    ...(boardLayout.startSites ?? []),
+    ...getPlacedPlanetSystems(gameState, boardLayout).flatMap((system) => system.colonySites ?? [])
+  ];
+}
+
+function getBlockedSystemNodeIds(gameState, boardLayout) {
+  return new Set([
+    ...(boardLayout.startSystems ?? []),
+    ...getPlacedPlanetSystems(gameState, boardLayout)
+  ].flatMap((system) => system.blockedNodeIds ?? []));
 }
 
 function getPlacedProductionPlanets(gameState, boardLayout) {
@@ -927,6 +1214,30 @@ function normalizeShips(ships = []) {
         status: ship.status === "active" ? "active" : "docked"
       }))
     : [];
+}
+
+function sanitizeShips(ships, boardLayout, structures) {
+  const pointIds = new Set((boardLayout.points ?? []).map((point) => point.id));
+  const blockedNodeIds = new Set([
+    ...(boardLayout.startSystems ?? []),
+    ...(boardLayout.planetSystems ?? [])
+  ].flatMap((system) => system.blockedNodeIds ?? []));
+  const occupied = new Set((structures ?? []).map((structure) => structure.locationId));
+
+  return ships.map((ship) => {
+    if (pointIds.has(ship.locationId) && !blockedNodeIds.has(ship.locationId)) {
+      occupied.add(ship.locationId);
+      return ship;
+    }
+
+    const fallbackPoint = (boardLayout.spaceportLaunchPoints ?? [])
+      .find((point) => !occupied.has(point.id));
+    if (fallbackPoint) {
+      occupied.add(fallbackPoint.id);
+      return { ...ship, locationId: fallbackPoint.id };
+    }
+    return ship;
+  });
 }
 
 function normalizeRemainingMovement(remainingMovementByShipId = {}) {
@@ -973,6 +1284,62 @@ function syncPlayersWithBoardAssets(players, structures, ships) {
   }));
 }
 
+function getPlayerIndexById(gameState, playerId) {
+  return gameState.players.findIndex((player) => player.id === playerId);
+}
+
+function createPlacementOrder(startPlayerIndex, playerCount) {
+  return Array.from({ length: playerCount }, (_, offset) => (startPlayerIndex + offset) % playerCount);
+}
+
+function getStartColonySite(boardLayout, siteId) {
+  return (boardLayout.startSites ?? []).find((site) => site.id === siteId || site.nodeId === siteId);
+}
+
+function advancePlacementOrder(placement, gameState, currentStep, nextStep, nextMode) {
+  const currentOrder = currentStep === "placeFirstColony" ? placement.reverseOrder : placement.order;
+  const nextOrder = nextMode === "reverse" ? placement.reverseOrder : placement.order;
+  const nextIndex = placement.currentOrderIndex + 1;
+
+  if (nextIndex < currentOrder.length) {
+    const nextPlayerId = currentOrder[nextIndex];
+    return {
+      currentPlayerIndex: getPlayerIndexById(gameState, nextPlayerId),
+      placement: {
+        ...placement,
+        step: currentStep,
+        currentOrderIndex: nextIndex,
+        selectedSpaceportSiteId: null
+      }
+    };
+  }
+
+  if (nextMode === "complete") {
+    const startPlayerIndex = getPlayerIndexById(gameState, placement.startPlayerId);
+    return {
+      currentPlayerIndex: startPlayerIndex >= 0 ? startPlayerIndex : 0,
+      phase: "production",
+      placement: {
+        ...placement,
+        step: "complete",
+        currentOrderIndex: 0,
+        selectedSpaceportSiteId: null
+      }
+    };
+  }
+
+  const firstPlayerId = nextOrder[0];
+  return {
+    currentPlayerIndex: getPlayerIndexById(gameState, firstPlayerId),
+    placement: {
+      ...placement,
+      step: nextStep,
+      currentOrderIndex: 0,
+      selectedSpaceportSiteId: null
+    }
+  };
+}
+
 function exploreAdjacentSystems(gameState, boardLayout, nodeId, playerName) {
   const placedSystems = getPlacedPlanetSystems(gameState, boardLayout);
   const exploredSystemIds = new Set(normalizeExploredSystems(gameState.board?.exploredSystems, boardLayout, placedSystems));
@@ -1008,7 +1375,7 @@ function isStructureAtLocation(structures, locationId) {
   return (structures ?? []).some((structure) => structure?.locationId === locationId);
 }
 
-function getShortestPathCost(boardLayout, fromNodeId, toNodeId) {
+function getShortestPathCost(boardLayout, fromNodeId, toNodeId, blockedNodeIds = new Set()) {
   if (!fromNodeId || !toNodeId) return null;
   if (fromNodeId === toNodeId) return 0;
 
@@ -1020,6 +1387,7 @@ function getShortestPathCost(boardLayout, fromNodeId, toNodeId) {
     const current = queue.shift();
     for (const nextId of graph.get(current.id) ?? []) {
       if (visited.has(nextId)) continue;
+      if (blockedNodeIds.has(nextId)) continue;
       if (nextId === toNodeId) return current.distance + 1;
       visited.add(nextId);
       queue.push({ id: nextId, distance: current.distance + 1 });
@@ -1142,6 +1510,14 @@ function getActivePlayerName(gameState) {
 
 function rollDie() {
   return Math.floor(Math.random() * 6) + 1;
+}
+
+function rollTwoDice() {
+  const dice = [rollDie(), rollDie()];
+  return {
+    dice,
+    total: dice[0] + dice[1]
+  };
 }
 
 function shuffle(items) {

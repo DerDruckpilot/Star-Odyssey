@@ -322,32 +322,43 @@ const dockNodesByOutpost = {
 };
 
 for (const system of [...boardLayout.startSystems, ...boardLayout.planetSystems]) {
-  system.name = system.name ?? system.id;
-  system.isExplored = !system.hidden;
-  system.planetIds = system.planets.map((planet) => planet.id);
-  system.adjacentNodeIds = colonySiteNodesBySystem[system.id] ?? [];
-  system.colonySiteIds = (colonySiteNodesBySystem[system.id] ?? []).map((nodeId) => `${system.id}-${nodeId}-colony-site`);
-  system.resources = system.resources.map(normalizeResource);
-  for (const planet of system.planets) {
-    planet.resource = normalizeResource(planet.resource);
-    Object.assign(planet, planetProduction[planet.id] ?? { number: null, adjacentSiteIds: [] });
-    planet.systemId = system.id;
-    planet.resourceType = planet.resource;
-    planet.numberToken = planet.number;
-    planet.isRevealed = !system.hidden;
-  }
+  applySystemMetadata(system);
 }
 
-boardLayout.colonySites = Object.entries(colonySiteNodesBySystem).flatMap(([systemId, nodeIds]) => {
-  const system = boardLayout.planetSystems.find((candidate) => candidate.id === systemId);
-  return nodeIds.map((nodeId) => ({
-    id: `${systemId}-${nodeId}-colony-site`,
-    nodeId,
-    systemId,
-    adjacentPlanetIds: system?.planetIds ?? [],
-    occupiedByStructureId: null
-  }));
+boardLayout.startSites = boardLayout.startSystems.flatMap((system) => (
+  (system.colonySites ?? []).map((site) => {
+    const point = pointsById.get(site.nodeId);
+    return {
+      ...site,
+      x: point?.x ?? system.x,
+      y: point?.y ?? system.y,
+      type: "colonySite",
+      startSystemId: system.id,
+      isStartSite: true
+    };
+  })
+));
+
+boardLayout.colonySites = [...boardLayout.startSites, ...boardLayout.planetSystems.flatMap((system) => system.colonySites ?? [])];
+
+boardLayout.startAssignments = boardLayout.startSystems.map((system, index) => {
+  const sites = boardLayout.startSites.filter((site) => site.systemId === system.id);
+  return {
+    playerIndex: index,
+    structures: [
+      { type: "colony", locationId: sites[0]?.id },
+      { type: "colony", locationId: sites[1]?.id },
+      { type: "spaceport", locationId: sites[2]?.id }
+    ].filter((structure) => structure.locationId)
+  };
 });
+
+boardLayout.spaceportLaunchPoints = createUniqueLaunchPoints(boardLayout.colonySites.flatMap((site) => (
+  (site.launchNodeIds ?? []).flatMap((nodeId) => [
+    createLaunchPoint(nodeId, site.nodeId),
+    createLaunchPoint(nodeId, site.id)
+  ])
+)));
 
 boardLayout.docks = Object.entries(dockNodesByOutpost).flatMap(([outpostId, nodeIds]) => (
   nodeIds.map((nodeId, index) => ({
@@ -370,6 +381,10 @@ boardLayout.productionPlanets = [...boardLayout.startSystems, ...boardLayout.pla
     ...planet,
     systemId: system.id
   })));
+
+boardLayout.createRandomPlacement = () => enrichPlacement(createWildSpacePlacement());
+boardLayout.createDefaultPlacement = () => enrichPlacement(createDefaultWildSpacePlacement());
+boardLayout.enrichPlacement = enrichPlacement;
 
 function createCoordinateRange(startColumn, endColumn, rowNumber) {
   const startIndex = getColumnIndex(startColumn);
@@ -694,6 +709,14 @@ function createLaunchPoint(id, spaceportLocationId) {
   };
 }
 
+function createUniqueLaunchPoints(points) {
+  const launchPoints = new Map();
+  for (const point of points.filter(Boolean)) {
+    launchPoints.set(`${point.id}:${point.spaceportLocationId}`, point);
+  }
+  return [...launchPoints.values()];
+}
+
 function normalizeResource(resource) {
   return resource === "trade" ? "goods" : resource;
 }
@@ -708,4 +731,81 @@ function averagePoints(points) {
     x: total.x / points.length,
     y: total.y / points.length
   };
+}
+
+function applySystemMetadata(system) {
+  const planets = system.planets ?? [];
+  const planetByHexId = new Map(planets
+    .filter((planet) => planet.coordinate)
+    .map((planet) => [planet.coordinate, planet]));
+  const systemHexIds = new Set(planetByHexId.keys());
+  const adjacentNodeIds = [];
+  const blockedNodeIds = [];
+  const colonySites = [];
+
+  for (const point of boardGraph.points) {
+    const adjacentPlanets = point.hexIds
+      .map((hexId) => planetByHexId.get(hexId))
+      .filter(Boolean);
+    if (adjacentPlanets.length === 0) continue;
+
+    if (adjacentPlanets.length === planets.length) {
+      blockedNodeIds.push(point.id);
+      continue;
+    }
+
+    adjacentNodeIds.push(point.id);
+
+    if (adjacentPlanets.length === 2) {
+      colonySites.push({
+        id: `${system.id}-${point.id}-colony-site`,
+        nodeId: point.id,
+        systemId: system.id,
+        adjacentPlanetIds: adjacentPlanets.map((planet) => planet.id),
+        launchNodeIds: getExternalNeighborNodeIds(point.id, systemHexIds),
+        occupiedByStructureId: null
+      });
+    }
+  }
+
+  system.name = system.name ?? system.id;
+  system.isExplored = !system.hidden;
+  system.planetIds = planets.map((planet) => planet.id);
+  system.systemHexIds = [...systemHexIds];
+  system.adjacentNodeIds = [...new Set(adjacentNodeIds)];
+  system.blockedNodeIds = [...new Set(blockedNodeIds)];
+  system.colonySites = colonySites;
+  system.colonySiteIds = colonySites.map((site) => site.id);
+  system.resources = (system.resources ?? []).map(normalizeResource);
+
+  for (const planet of planets) {
+    planet.resource = normalizeResource(planet.resource);
+    Object.assign(planet, planetProduction[planet.id] ?? { number: planet.number ?? null, adjacentSiteIds: [] });
+    planet.systemId = system.id;
+    planet.resourceType = planet.resource;
+    planet.numberToken = planet.number;
+    planet.isRevealed = !system.hidden;
+  }
+
+  return system;
+}
+
+function enrichPlacement(placement) {
+  return {
+    ...placement,
+    placedSystems: (placement.placedSystems ?? []).map((system) => applySystemMetadata(system))
+  };
+}
+
+function getExternalNeighborNodeIds(nodeId, systemHexIds) {
+  const neighbors = boardConnections
+    .filter((connection) => connection.from === nodeId || connection.to === nodeId)
+    .map((connection) => connection.from === nodeId ? connection.to : connection.from);
+
+  return neighbors.filter((neighborId) => {
+    const point = pointsById.get(neighborId);
+    if (!point) return false;
+    const touchingSystemHexCount = point.hexIds.filter((hexId) => systemHexIds.has(hexId)).length;
+    return touchingSystemHexCount < 2;
+  });
 }

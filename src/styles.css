@@ -361,7 +361,8 @@ h1 {
 }
 
 .player-hud-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.75rem;
   align-items: flex-start;
   justify-content: space-between;
@@ -414,6 +415,7 @@ h1 {
 }
 
 .player-hud-tabs {
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.25rem;
@@ -744,6 +746,11 @@ h1 {
   fill: #166534;
 }
 
+.space-point--colony-site {
+  stroke-width: 2.4;
+  stroke: rgba(250, 204, 21, 0.88);
+}
+
 .space-point--dock {
   fill: #854d0e;
 }
@@ -768,6 +775,12 @@ h1 {
   stroke: #ecfdf5;
   stroke-width: 6;
   filter: drop-shadow(0 0 10px rgba(52, 211, 153, 0.72));
+}
+
+.space-point.is-placement-target {
+  fill: #bef264;
+  stroke: #facc15;
+  filter: drop-shadow(0 0 9px rgba(190, 242, 100, 0.72));
 }
 
 .space-point.is-occupied:not(.is-reachable) {

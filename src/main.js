@@ -14,7 +14,11 @@ import {
   getReachableNodes,
   normalizeGameState,
   moveShip,
+  placeInitialColony,
+  placeInitialColonyShip,
+  placeInitialSpaceport,
   rollProduction,
+  rollPlacementStart,
   touchGameState,
   tradeWithSupply,
   upgradeColonyToSpaceport
@@ -201,6 +205,7 @@ function enableBoardElementSelection(element, type, id) {
 function selectBoardElement(type, id) {
   if (!state.gameState) return;
 
+  if (type === "spacePoint" && handlePlacementPointSelection(id)) return;
   if (type === "spacePoint" && moveSelectedShipTo(id)) return;
 
   state.gameState = touchGameState({
@@ -212,6 +217,30 @@ function selectBoardElement(type, id) {
   });
   saveCurrentGameState();
   render();
+}
+
+function handlePlacementPointSelection(nodeId) {
+  if (state.gameState?.phase !== "placement") return false;
+
+  const step = state.gameState.placement?.step;
+  if (step === "placeSpaceport") {
+    const site = getStartColonySiteAtNode(nodeId);
+    if (!site || !isValidPlacementColonySite(site)) return false;
+    state.gameState = placeInitialSpaceport(state.gameState, boardLayout, site.id);
+  } else if (step === "placeColonyShip") {
+    if (!isValidPlacementLaunchNode(nodeId)) return false;
+    state.gameState = placeInitialColonyShip(state.gameState, boardLayout, nodeId);
+  } else if (["placeFirstColony", "placeSecondColony"].includes(step)) {
+    const site = getStartColonySiteAtNode(nodeId);
+    if (!site || !isValidPlacementColonySite(site)) return false;
+    state.gameState = placeInitialColony(state.gameState, boardLayout, site.id);
+  } else {
+    return false;
+  }
+
+  saveCurrentGameState();
+  render();
+  return true;
 }
 
 function determineSpeedForActivePlayer() {
@@ -236,6 +265,14 @@ function rollProductionForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "production") return;
 
   state.gameState = rollProduction(state.gameState, boardLayout);
+  saveCurrentGameState();
+  render();
+}
+
+function rollPlacementForActivePlayer() {
+  if (!state.gameState || state.gameState.phase !== "placement") return;
+
+  state.gameState = rollPlacementStart(state.gameState);
   saveCurrentGameState();
   render();
 }
@@ -540,7 +577,8 @@ function renderPlayerHudModal() {
 
   const content = document.createElement("div");
   content.className = "player-hud-content";
-  content.append(renderPlayerHudTabs(), renderPlayerHudTabContent(player));
+  header.append(renderPlayerHudTabs());
+  content.append(renderPlayerHudTabContent(player));
 
   panel.append(header, content);
   overlay.append(panel);
@@ -724,7 +762,9 @@ function renderPhaseActions(player = getActivePlayer()) {
     return wrapper;
   }
 
-  if (state.gameState.phase === "production") {
+  if (state.gameState.phase === "placement") {
+    wrapper.append(renderPlacementActions());
+  } else if (state.gameState.phase === "production") {
     wrapper.append(createButton(t("rollProduction"), rollProductionForActivePlayer, "small-button"));
   } else if (state.gameState.phase === "tradeBuild") {
     const hint = document.createElement("p");
@@ -741,6 +781,34 @@ function renderPhaseActions(player = getActivePlayer()) {
       wrapper.append(renderFlightControls());
     }
     wrapper.append(createButton(t("endTurn"), endTurn, "small-button"));
+  }
+
+  return wrapper;
+}
+
+function renderPlacementActions() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "placement-actions";
+  const placement = state.gameState?.placement;
+
+  const rows = [
+    `${t("placementStep")}: ${getPlacementStepLabel(placement?.step)}`,
+    `${t("placementOrder")}: ${formatPlacementOrder(placement?.order)}`,
+    `${t("placementRolls")}: ${formatPlacementRolls(placement)}`
+  ];
+
+  for (const row of rows) {
+    const item = document.createElement("p");
+    item.textContent = row;
+    wrapper.append(item);
+  }
+
+  const instruction = document.createElement("p");
+  instruction.textContent = getPlacementInstruction(placement);
+  wrapper.append(instruction);
+
+  if (placement?.step === "rollStartPlayer") {
+    wrapper.append(createButton(t("rollStartPlayer"), rollPlacementForActivePlayer, "small-button"));
   }
 
   return wrapper;
@@ -951,6 +1019,7 @@ function renderSelectionPanel() {
 
 function getPhaseLabel(phase) {
   const phaseLabels = {
+    placement: t("phasePlacement"),
     setup: t("phaseSetup"),
     production: t("phaseProduction"),
     tradeBuild: t("phaseTradeBuild"),
@@ -959,6 +1028,37 @@ function getPhaseLabel(phase) {
   };
 
   return phaseLabels[phase] ?? phase ?? t("phaseProduction");
+}
+
+function getPlacementStepLabel(step) {
+  const labels = {
+    rollStartPlayer: t("placementRollStartPlayer"),
+    placeSpaceport: t("placementPlaceSpaceport"),
+    placeColonyShip: t("placementPlaceColonyShip"),
+    placeFirstColony: t("placementPlaceFirstColony"),
+    placeSecondColony: t("placementPlaceSecondColony"),
+    complete: t("placementComplete")
+  };
+  return labels[step] ?? t("phasePlacement");
+}
+
+function getPlacementInstruction(placement) {
+  if (placement?.step === "rollStartPlayer") return t("placementRollInstruction");
+  if (placement?.step === "placeColonyShip") return t("placementSelectLaunchNode");
+  if (["placeSpaceport", "placeFirstColony", "placeSecondColony"].includes(placement?.step)) return t("placementSelectColonySite");
+  return "";
+}
+
+function formatPlacementOrder(order = []) {
+  return order.length > 0 ? order.map(getOwnerName).join(", ") : t("none");
+}
+
+function formatPlacementRolls(placement) {
+  const rolls = placement?.rolls ?? {};
+  const entries = Object.entries(rolls);
+  if (entries.length === 0) return t("none");
+
+  return entries.map(([playerId, roll]) => `${getOwnerName(playerId)} ${roll.total}`).join(", ");
 }
 
 function formatLastRoll(roll) {
@@ -1051,11 +1151,12 @@ function resolveSelectedBoardElement() {
     const colonySite = getColonySiteAtNode(point.id);
     const dock = getDockAtNode(point.id);
     const details = [
-      `${t("type")}: ${point.type}`,
+      `${t("type")}: ${colonySite ? t("colonySite") : point.type}`,
       `${t("occupied")}: ${occupyingShip || occupyingStructure ? t("yes") : t("no")}`
     ];
     if (colonySite) {
       details.push(`${t("colonySite")}: ${occupyingStructure ? t("occupied") : t("free")}`);
+      details.push(`${t("planetSystem")}: ${colonySite.systemId}`);
       details.push(`${t("adjacentPlanets")}: ${formatIdList(colonySite.adjacentPlanetIds)}`);
     }
     if (dock) {
@@ -1207,7 +1308,25 @@ function getShipMovementDetails(ship) {
 }
 
 function getColonySiteAtNode(nodeId) {
-  return (boardLayout.colonySites ?? []).find((site) => site.nodeId === nodeId);
+  return getVisibleColonySites().find((site) => site.nodeId === nodeId);
+}
+
+function getStartColonySiteAtNode(nodeId) {
+  return (boardLayout.startSites ?? []).find((site) => site.nodeId === nodeId);
+}
+
+function getVisibleColonySites() {
+  return [
+    ...(boardLayout.startSites ?? []),
+    ...getVisiblePlanetSystems().flatMap((system) => system.colonySites ?? [])
+  ];
+}
+
+function getBlockedSystemNodeIds() {
+  return new Set([
+    ...(boardLayout.startSystems ?? []),
+    ...getVisiblePlanetSystems()
+  ].flatMap((system) => system.blockedNodeIds ?? []));
 }
 
 function getDockAtNode(nodeId) {
@@ -1264,7 +1383,8 @@ function getReachableNodeMap() {
     state.gameState.board?.ships ?? [],
     selectedShip.id,
     getShipRemainingMovement(selectedShip.id),
-    state.gameState.board?.structures ?? []
+    state.gameState.board?.structures ?? [],
+    getBlockedSystemNodeIds()
   ).map((node) => [node.id, node.distance]));
 }
 
@@ -1287,6 +1407,41 @@ function getSupplyDrawCount(player) {
   if (victoryPoints >= 4 && victoryPoints <= 7) return 2;
   if (victoryPoints >= 8 && victoryPoints <= 9) return 1;
   return 0;
+}
+
+function getPlacementPointClass(nodeId) {
+  if (state.gameState?.phase !== "placement") return "";
+  const step = state.gameState.placement?.step;
+  const site = getStartColonySiteAtNode(nodeId);
+
+  if (["placeSpaceport", "placeFirstColony", "placeSecondColony"].includes(step) && site && isValidPlacementColonySite(site)) {
+    return " is-placement-target";
+  }
+
+  if (step === "placeColonyShip" && isValidPlacementLaunchNode(nodeId)) {
+    return " is-placement-target";
+  }
+
+  return "";
+}
+
+function isValidPlacementColonySite(site) {
+  return Boolean(
+    site?.isStartSite &&
+    !getStructureAtLocation(site.nodeId) &&
+    state.gameState?.phase === "placement"
+  );
+}
+
+function isValidPlacementLaunchNode(nodeId) {
+  const site = (boardLayout.startSites ?? [])
+    .find((candidate) => candidate.id === state.gameState?.placement?.selectedSpaceportSiteId);
+  return Boolean(
+    site?.launchNodeIds?.includes(nodeId) &&
+    !getShipAtLocation(nodeId) &&
+    !getStructureAtLocation(nodeId) &&
+    !getBlockedSystemNodeIds().has(nodeId)
+  );
 }
 
 function hasActivePlayerDrawnSupplyThisTurn() {
@@ -1555,15 +1710,20 @@ function renderOutpost(outpost) {
 function renderPointsLayer() {
   const group = createSvgElement("g", { class: "board-points-layer" });
   const reachableNodes = getReachableNodeMap();
+  const blockedNodeIds = getBlockedSystemNodeIds();
 
   for (const point of boardLayout.points) {
+    if (blockedNodeIds.has(point.id)) continue;
+    const colonySite = getColonySiteAtNode(point.id);
     const selectedClass = isSelectedElement("spacePoint", point.id) ? " is-selected" : "";
     const reachableClass = reachableNodes.has(point.id) ? " is-reachable" : "";
     const occupiedClass = getShipAtLocation(point.id) ? " is-occupied" : "";
     const foundableClass = isFoundablePoint(point.id) ? " is-foundable" : "";
-    const radius = point.type === "boundary" ? 5 : point.type === "space" ? 7 : 11;
+    const placementClass = getPlacementPointClass(point.id);
+    const colonySiteClass = colonySite ? " space-point--colony-site" : "";
+    const radius = colonySite ? 10 : point.type === "boundary" ? 5 : point.type === "space" ? 7 : 11;
     const pointElement = createSvgElement("circle", {
-      class: `space-point space-point--${point.type}${selectedClass}${reachableClass}${occupiedClass}${foundableClass}`,
+      class: `space-point space-point--${point.type}${colonySiteClass}${selectedClass}${reachableClass}${occupiedClass}${foundableClass}${placementClass}`,
       cx: point.x,
       cy: point.y,
       r: radius
