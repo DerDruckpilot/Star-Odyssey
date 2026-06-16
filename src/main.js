@@ -1,5 +1,6 @@
 import { boardLayout, resourceColors } from "./data/boardLayout.js";
 import { bankTradeRates, buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
+import { getEncounterCardById } from "./data/encounterCards.js";
 import { getFriendshipCardById } from "./data/friendshipCards.js";
 import {
   formatTokenLabel,
@@ -24,6 +25,7 @@ import {
   drawSupply,
   distributeSevenSupply,
   endCurrentTurn,
+  finishEncounter,
   foundColony,
   foundTradeStation,
   getReachableNodes,
@@ -34,6 +36,7 @@ import {
   placeInitialColonyShip,
   placeInitialSpaceport,
   respondToTradeOffer,
+  resolveEncounterChoice,
   resolveSevenSteal,
   rollProduction,
   rollPlacementStart,
@@ -286,6 +289,25 @@ function determineSpeedForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "flight") return;
 
   state.gameState = determineFlightSpeed(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function resolveActiveEncounterChoice(choiceId, payload = {}) {
+  if (!state.gameState?.activeEncounter) return;
+
+  state.gameState = resolveEncounterChoice(state.gameState, {
+    choiceId,
+    ...payload
+  });
+  saveCurrentGameState();
+  render();
+}
+
+function finishActiveEncounter() {
+  if (!state.gameState?.activeEncounter) return;
+
+  state.gameState = finishEncounter(state.gameState);
   saveCurrentGameState();
   render();
 }
@@ -849,6 +871,7 @@ function renderTurnSummary(player = getActivePlayer()) {
     `${t("round")} ${gameState?.turnNumber ?? 1}`,
     `${t("phase")}: ${getPhaseLabel(gameState?.phase)}`,
     gameState?.sevenResolution?.active ? `${t("sevenStep")}: ${getSevenStepLabel(gameState.sevenResolution.step)}` : null,
+    gameState?.activeEncounter ? `${t("encounter")}: ${getEncounterTitle(gameState.activeEncounter.cardId)}` : null,
     `${t("lastRoll")}: ${formatLastRoll(gameState?.lastRoll)}`,
     `${t("flightSpeed")}: ${formatFlightSpeed(gameState)}`
   ].filter(Boolean);
@@ -1013,6 +1036,11 @@ function renderPhaseActions(player = getActivePlayer()) {
     return wrapper;
   }
 
+  if (state.gameState.phase === "flight" && state.gameState.activeEncounter) {
+    wrapper.append(renderEncounterActions(player));
+    return wrapper;
+  }
+
   if (player?.id !== getActivePlayer()?.id) {
     const hint = document.createElement("p");
     hint.textContent = t("notYourTurn");
@@ -1039,7 +1067,7 @@ function renderPhaseActions(player = getActivePlayer()) {
       wrapper.append(renderFlightControls());
     }
     const endTurnButton = createButton(t("endTurn"), endTurn, "small-button");
-    endTurnButton.disabled = Boolean(state.gameState.board?.pendingTradeStationPlacement);
+    endTurnButton.disabled = Boolean(state.gameState.board?.pendingTradeStationPlacement || state.gameState.activeEncounter);
     wrapper.append(endTurnButton);
   }
 
@@ -1258,6 +1286,101 @@ function renderSevenSupplyStep(player) {
     wrapper.append(waiting);
   }
 
+  return wrapper;
+}
+
+function renderEncounterActions(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-panel";
+  const encounter = state.gameState?.activeEncounter;
+  const card = encounter ? getEncounterCardById(encounter.cardId) : null;
+  if (!encounter || !card) return wrapper;
+
+  const activePlayer = getActivePlayer();
+  const title = document.createElement("p");
+  title.textContent = `${t("encounterCard")}: ${getEncounterTitle(encounter.cardId)}`;
+  const prompt = document.createElement("p");
+  prompt.textContent = getLocalizedEncounterText(card.prompt);
+  wrapper.append(title, prompt);
+
+  if (player?.id !== activePlayer?.id) {
+    const waiting = document.createElement("p");
+    waiting.textContent = t("notYourTurn");
+    wrapper.append(waiting);
+    return wrapper;
+  }
+
+  if (encounter.status === "resolved") {
+    const result = document.createElement("p");
+    result.textContent = getLocalizedEncounterText(encounter.resultText) || t("movementAfterEncounter");
+    wrapper.append(result, createButton(t("finishEncounter"), finishActiveEncounter, "small-button"));
+    return wrapper;
+  }
+
+  const chooseHint = document.createElement("p");
+  chooseHint.textContent = t("encounterChoose");
+  wrapper.append(chooseHint);
+
+  if (card.requiresCombat) {
+    wrapper.append(createButton(t("resolveCombat"), () => resolveActiveEncounterChoice(card.choices?.[0]?.id ?? "combat"), "small-button"));
+    return wrapper;
+  }
+
+  if (card.requiresInput === "resourceGain") {
+    wrapper.append(renderEncounterResourceChoices(card));
+    return wrapper;
+  }
+
+  if (card.requiresInput === "upgradeGain" || card.requiresInput === "upgradeLoss") {
+    wrapper.append(renderEncounterUpgradeChoices(card));
+    return wrapper;
+  }
+
+  const choiceList = document.createElement("div");
+  choiceList.className = "encounter-choice-list";
+  for (const choice of card.choices ?? []) {
+    const label = getLocalizedEncounterText(choice.label) || choice.id;
+    choiceList.append(createButton(label, () => resolveActiveEncounterChoice(choice.id), "small-button"));
+  }
+  wrapper.append(choiceList);
+  return wrapper;
+}
+
+function renderEncounterResourceChoices(card) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  for (const resource of resourceTypes) {
+    wrapper.append(createButton(
+      `${t("chooseResource")} · ${getResourceLabel(resource)}`,
+      () => resolveActiveEncounterChoice(card.choices?.[0]?.id ?? "choose-resource", { resource }),
+      "small-button"
+    ));
+  }
+  return wrapper;
+}
+
+function renderEncounterUpgradeChoices(card) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  const activePlayer = getActivePlayer();
+  const hasAvailableLoss = upgradeDefinitions.some((upgrade) => (activePlayer?.upgrades?.[upgrade.id] ?? 0) > 0);
+
+  if (card.requiresInput === "upgradeLoss" && !hasAvailableLoss) {
+    wrapper.append(createButton(t("continue"), () => resolveActiveEncounterChoice(card.choices?.[0]?.id ?? "choose-loss"), "small-button"));
+    return wrapper;
+  }
+
+  for (const upgrade of upgradeDefinitions) {
+    const button = createButton(
+      `${t("chooseUpgrade")} · ${getUpgradeLabel(upgrade.id)}`,
+      () => resolveActiveEncounterChoice(card.choices?.[0]?.id ?? "choose-upgrade", { upgrade: upgrade.id }),
+      "small-button"
+    );
+    if (card.requiresInput === "upgradeLoss" && (activePlayer?.upgrades?.[upgrade.id] ?? 0) <= 0) {
+      button.disabled = true;
+    }
+    wrapper.append(button);
+  }
   return wrapper;
 }
 
@@ -1643,7 +1766,16 @@ function formatLastRoll(roll) {
 
 function formatFlightSpeed(gameState) {
   if (!gameState?.hasRolledFlightSpeed) return t("none");
-  return `${gameState.flightSpeedTotal} (${gameState.flightSpeedBase} + ${getActivePlayer()?.upgrades?.drive ?? 0})`;
+  return `${gameState.flightSpeedTotal} (${gameState.flightSpeedBase} + ${getDisplayedFlightBonus(getActivePlayer())})`;
+}
+
+function getDisplayedFlightBonus(player) {
+  if (!player) return 0;
+  return (player.upgrades?.drive ?? 0) + (player.friendshipCards ?? []).reduce((sum, cardId) => {
+    if (cardId.startsWith("wise-speed-combat-")) return sum + 1;
+    if (cardId === "wise-drive-boost") return sum + 2;
+    return sum;
+  }, 0);
 }
 
 function formatLogEntry(entry) {
@@ -2031,7 +2163,7 @@ function isValidPendingTradeStationNode(nodeId) {
 
 function getReachableNodeMap() {
   const selectedShip = getSelectedShip();
-  if (!selectedShip || state.gameState?.phase !== "flight" || !state.gameState.hasRolledFlightSpeed) return new Map();
+  if (!selectedShip || state.gameState?.phase !== "flight" || !state.gameState.hasRolledFlightSpeed || state.gameState?.activeEncounter) return new Map();
 
   return new Map(getReachableNodes(
     boardLayout,
@@ -2071,6 +2203,17 @@ function getSevenStepLabel(step) {
     supply: t("sevenStepSupply")
   };
   return labels[step] ?? step;
+}
+
+function getEncounterTitle(cardId) {
+  const card = getEncounterCardById(cardId);
+  return getLocalizedEncounterText(card?.title) || t("noEncounter");
+}
+
+function getLocalizedEncounterText(text) {
+  if (!text) return "";
+  if (typeof text === "string") return text;
+  return text[state.language] ?? text.de ?? text.en ?? "";
 }
 
 function getSevenDiscardRequirement(playerId) {

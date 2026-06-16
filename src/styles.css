@@ -541,7 +541,9 @@ h1 {
 .seven-step,
 .seven-status-list,
 .seven-target-list,
-.seven-discard-grid {
+.seven-discard-grid,
+.encounter-panel,
+.encounter-choice-list {
   display: grid;
   gap: 0.5rem;
 }

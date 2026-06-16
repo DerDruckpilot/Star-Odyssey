@@ -39,6 +39,7 @@ Star Odyssey ist rundenbasiert. Es gibt keinen Echtzeitdruck und keine freie Act
 ## Flug-/Bewegungsphase
 
 - Falls der Spieler Schiffe hat, wird die Bewegung bestimmt.
+- Die Grundgeschwindigkeit entsteht aus einem Mutterschiff-Wurf; Antriebe und passende Freundschaftskarten erhoehen sie.
 - Bewegungspunkte gelten fuer die Schiffe des aktiven Spielers.
 - Ein Schiff bewegt sich Schritt fuer Schritt ueber verbundene Raumpunkte.
 - Zielpunkte werden angezeigt, ausgewaehlt und bestaetigt.
@@ -46,9 +47,10 @@ Star Odyssey ist rundenbasiert. Es gibt keinen Echtzeitdruck und keine freie Act
 
 ## Ereignis/Begegnung
 
-- Begegnungen werden als optionale State-Machine-Abzweigung modelliert.
-- Eine Begegnung kann vor oder waehrend der Bewegung abgehandelt werden.
-- Entscheidungen, Vergleiche und Belohnungen sollen spaeter datengetrieben aus Eventdefinitionen kommen.
+- Eine schwarze Kugel im Mutterschiff-Wurf loest zuerst eine Begegnung aus.
+- Begegnungen laufen als eigener HUD-Unterzustand mit Deck, Ablagestapel und aktiver Karte.
+- Erst nach Abschluss der Begegnung wird die Bewegung in derselben Flugphase freigegeben.
+- Entscheidungen, Vergleiche und Belohnungen kommen datengetrieben aus Eventdefinitionen.
 
 ## Controller-Tauglichkeit
 

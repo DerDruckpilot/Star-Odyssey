@@ -89,9 +89,13 @@ Diese Werte sollten spaeter als Teil des Spielerzustands modelliert werden, nich
 ## Ereignisse und Begegnungen
 
 - Begegnungen koennen in der Flugphase ausgeloest werden.
+- Die Fluggeschwindigkeit wird ueber einen Mutterschiff-Wurf bestimmt; eine schwarze Kugel loest zuerst eine Begegnung aus.
+- Solange eine Begegnung offen ist, duerfen keine Schiffe bewegt werden.
+- Begegnungen ziehen Karten aus einem Deck und wandern nach Abschluss auf einen Ablagestapel.
 - Sie stellen Entscheidungen, Risiken, Belohnungen und manchmal Kampfvergleiche dar.
-- Ergebnisse koennen Rohstoffe, Ausbauten, Bewegungsbeschraenkungen, Medaillen oder Verluste betreffen.
-- Fuer Star Odyssey sollten Begegnungen spaeter datengetrieben als Karten-/Eventdefinitionen entstehen.
+- Ergebnisse koennen Rohstoffe, Ausbauten, Bewegungsbeschraenkungen, halbe Medaillen oder Verluste betreffen.
+- Halbe Medaillen zaehlen paarweise als 1 Siegpunkt.
+- Fuer Star Odyssey laufen Begegnungen datengetrieben ueber Karten-/Eventdefinitionen.
 
 ## Siegpunktlogik und Spielende
 

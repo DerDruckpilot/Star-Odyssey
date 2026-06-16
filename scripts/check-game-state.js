@@ -8,13 +8,17 @@ import {
   confirmPendingSpaceportUpgrade,
   createTradeOffer,
   createGameState,
+  determineFlightSpeed,
   distributeSevenSupply,
   drawSupply,
   endCurrentTurn,
+  finishEncounter,
+  moveShip,
   placePendingShip,
   placeInitialColony,
   placeInitialColonyShip,
   placeInitialSpaceport,
+  resolveEncounterChoice,
   respondToTradeOffer,
   resolveSevenSteal,
   rollPlacementStart,
@@ -412,6 +416,73 @@ if (outpostUnderTest) {
   const cancelledPendingState = cancelPendingTradeStationPlacement(pendingCancelState);
   assert(!cancelledPendingState.board.pendingTradeStationPlacement, "Cancelling a pending trade station placement should clear the pending state.");
 }
+
+let encounterGame = normalizeGameState(JSON.parse(JSON.stringify(game)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+encounterGame = {
+  ...encounterGame,
+  phase: "flight",
+  currentPlayerIndex: 0,
+  players: encounterGame.players.map((player, index) => ({
+    ...player,
+    resources: index === 0
+      ? { ore: 0, fuel: 0, carbon: 0, food: 0, goods: 0 }
+      : player.resources,
+    halfMedals: index === 0 ? 1 : player.halfMedals,
+    victoryPoints: index === 0 ? 4 : player.victoryPoints
+  })),
+  board: {
+    ...encounterGame.board,
+    ships: encounterGame.board.ships.length > 0
+      ? encounterGame.board.ships
+      : [{
+        id: "player-1-colony-ship-test",
+        ownerPlayerId: "player-1",
+        type: "colonyShip",
+        locationId: boardLayout.points[0].id,
+        status: "active"
+      }]
+  }
+};
+
+encounterGame = determineFlightSpeed(encounterGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "honor-medal"
+});
+assert(encounterGame.activeEncounter?.cardId === "honor-medal", "A black mothership ball should start an encounter.");
+assert(encounterGame.flightSpeedBase === 3, "A black mothership ball should force base speed 3.");
+const blockedMoveState = moveShip(
+  encounterGame,
+  boardLayout,
+  encounterGame.board.ships[0].id,
+  boardLayout.points.find((point) => point.id !== encounterGame.board.ships[0].locationId)?.id ?? encounterGame.board.ships[0].locationId
+);
+assert(
+  blockedMoveState.board.ships[0].locationId === encounterGame.board.ships[0].locationId,
+  "Ship movement should be blocked while an encounter is active."
+);
+encounterGame = resolveEncounterChoice(encounterGame, { choiceId: "accept" });
+assert(encounterGame.players[0].halfMedals === 2, "Encounter reward should add a half medal.");
+assert(encounterGame.players[0].victoryPoints === 5, "Two half medals should count as one victory point.");
+const normalizedEncounterState = normalizeGameState(JSON.parse(JSON.stringify(encounterGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(normalizedEncounterState.activeEncounter?.cardId === "honor-medal", "Save/load normalization should preserve the active encounter.");
+encounterGame = finishEncounter(encounterGame);
+assert(!encounterGame.activeEncounter, "Encounter should clear after finishing.");
+assert(encounterGame.encounterDiscard.includes("honor-medal"), "Finished encounters should move to the discard pile.");
+const postEncounterMoveState = moveShip(
+  encounterGame,
+  boardLayout,
+  encounterGame.board.ships[0].id,
+  encounterGame.board.ships[0].locationId
+);
+assert(postEncounterMoveState !== null, "Game state should remain usable after finishing an encounter.");
 
 if (process.exitCode !== 1) {
   console.log("Game state check passed.");

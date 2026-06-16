@@ -1,4 +1,5 @@
 import { bankTradeRates, buildActionDefinitions, upgradeDefinitions } from "../data/buildCosts.js";
+import { getEncounterCardById, getEncounterDeckIds } from "../data/encounterCards.js";
 import { getFriendshipCardById } from "../data/friendshipCards.js";
 import {
   createNumberTokenState,
@@ -15,6 +16,13 @@ import {
 const playerColorKeys = ["red", "blue", "yellow", "white"];
 const supplyResourceTypes = ["ore", "fuel", "carbon", "food", "goods"];
 const supplyCardsPerResource = 8;
+const mothershipBallValues = {
+  yellow: 2,
+  blue: 1,
+  red: 3,
+  black: 0
+};
+const mothershipBallPool = ["yellow", "yellow", "blue", "red", "black"];
 
 export const currentGameStorageKey = "star-odyssey-current-game";
 export const turnPhases = ["placement", "setup", "production", "tradeBuild", "flight", "turnEnd"];
@@ -39,8 +47,14 @@ export function createGameState({ language, playerCount, boardLayout }) {
     turnNumber: 1,
     phase: "placement",
     lastRoll: null,
+    flightRoll: null,
     flightSpeedBase: null,
     flightSpeedTotal: null,
+    encounterTriggered: false,
+    encounterDeck: createEncounterDeck(),
+    encounterDiscard: [],
+    activeEncounter: null,
+    encounterStep: null,
     remainingMovementByShipId: {},
     hasRolledFlightSpeed: false,
     supplyDeck: createSupplyDeck(),
@@ -578,8 +592,12 @@ export function advanceToFlightPhase(gameState) {
   return updateGameState(gameState, {
     phase: "flight",
     activeTradeOffer: null,
+    flightRoll: null,
     flightSpeedBase: null,
     flightSpeedTotal: null,
+    encounterTriggered: false,
+    activeEncounter: null,
+    encounterStep: null,
     remainingMovementByShipId: {},
     hasRolledFlightSpeed: false,
     board: {
@@ -599,41 +617,120 @@ export function advanceToFlightPhase(gameState) {
   });
 }
 
-export function determineFlightSpeed(gameState) {
+export function determineFlightSpeed(gameState, forcedRoll = null) {
   if (gameState.phase !== "flight" || gameState.hasRolledFlightSpeed) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   if (!activePlayer) return gameState;
 
-  const baseSpeed = Math.floor(Math.random() * 3) + 3;
-  const driveLevel = activePlayer.upgrades?.drive ?? 0;
+  const flightRoll = createFlightRoll(forcedRoll);
+  const driveLevel = getPlayerFlightBonus(activePlayer);
+  const baseSpeed = flightRoll.baseSpeed;
   const totalSpeed = baseSpeed + driveLevel;
   const remainingMovementByShipId = Object.fromEntries(
     normalizeShips(gameState.board?.ships)
       .filter((ship) => ship.ownerPlayerId === activePlayer.id)
       .map((ship) => [ship.id, totalSpeed])
   );
+  const encounterTrigger = flightRoll.encounterTriggered;
+  const encounterStart = encounterTrigger
+    ? startEncounter(gameState, forcedRoll?.encounterCardId)
+    : {
+      encounterDeck: gameState.encounterDeck,
+      encounterDiscard: gameState.encounterDiscard,
+      activeEncounter: null,
+      encounterStep: null
+    };
 
   return updateGameState(gameState, {
+    flightRoll,
     flightSpeedBase: baseSpeed,
     flightSpeedTotal: totalSpeed,
+    encounterTriggered: encounterTrigger,
+    encounterDeck: encounterStart.encounterDeck,
+    encounterDiscard: encounterStart.encounterDiscard,
+    activeEncounter: encounterStart.activeEncounter,
+    encounterStep: encounterStart.encounterStep,
     remainingMovementByShipId,
     hasRolledFlightSpeed: true,
+    logEntries: [
+      {
+        type: "flight",
+        messageKey: "logFlightSpeedDetermined",
+        messageParams: {
+          player: activePlayer.name,
+          base: baseSpeed,
+          drive: driveLevel,
+          total: totalSpeed
+        }
+      },
+      ...(encounterTrigger ? [{
+        type: "encounter",
+        messageKey: "logEncounterTriggered",
+        messageParams: {
+          player: activePlayer.name,
+          title: getEncounterCardById(encounterStart.activeEncounter?.cardId)?.title?.[gameState.language] ?? ""
+        }
+      }] : [])
+    ]
+  });
+}
+
+export function resolveEncounterChoice(gameState, payload = {}) {
+  if (gameState.phase !== "flight" || !gameState.activeEncounter) return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const card = getEncounterCardById(gameState.activeEncounter.cardId);
+  if (!activePlayer || !card) return gameState;
+
+  const resolution = applyEncounterEffects(
+    gameState,
+    activePlayer,
+    card,
+    payload
+  );
+  if (!resolution) return gameState;
+
+  return updateGameState(gameState, {
+    players: resolution.players,
+    activeEncounter: {
+      ...gameState.activeEncounter,
+      status: "resolved",
+      choiceId: payload.choiceId ?? null,
+      chosenResource: payload.resource ?? null,
+      chosenUpgrade: payload.upgrade ?? null,
+      combat: resolution.combat ?? null,
+      resultText: resolution.resultText
+    },
+    encounterStep: "resolved",
+    logEntries: resolution.logEntries
+  });
+}
+
+export function finishEncounter(gameState) {
+  if (gameState.phase !== "flight" || !gameState.activeEncounter || gameState.activeEncounter.status !== "resolved") {
+    return gameState;
+  }
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+
+  return updateGameState(gameState, {
+    activeEncounter: null,
+    encounterStep: null,
+    encounterTriggered: false,
+    encounterDiscard: [...(gameState.encounterDiscard ?? []), gameState.activeEncounter.cardId],
     logEntry: {
-      type: "flight",
-      messageKey: "logFlightSpeedDetermined",
+      type: "encounter",
+      messageKey: "logEncounterFinished",
       messageParams: {
-        player: activePlayer.name,
-        base: baseSpeed,
-        drive: driveLevel,
-        total: totalSpeed
+        player: activePlayer?.name ?? ""
       }
     }
   });
 }
 
 export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
-  if (gameState.phase !== "flight" || !gameState.hasRolledFlightSpeed) return gameState;
+  if (gameState.phase !== "flight" || !gameState.hasRolledFlightSpeed || gameState.activeEncounter) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const ships = normalizeShips(gameState.board?.ships);
@@ -1396,8 +1493,12 @@ export function endCurrentTurn(gameState) {
     turnNumber: nextTurnNumber,
     phase: "production",
     lastRoll: null,
+    flightRoll: null,
     flightSpeedBase: null,
     flightSpeedTotal: null,
+    encounterTriggered: false,
+    activeEncounter: null,
+    encounterStep: null,
     remainingMovementByShipId: {},
     hasRolledFlightSpeed: false,
     hasDrawnSupplyThisTurn: false,
@@ -1474,8 +1575,14 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     turnNumber: Number.isInteger(gameState.turnNumber) ? gameState.turnNumber : 1,
     phase: normalizedPhase,
     lastRoll: normalizeRoll(gameState.lastRoll),
+    flightRoll: normalizedPhase === "flight" ? normalizeFlightRoll(gameState.flightRoll) : null,
     flightSpeedBase: normalizedPhase === "flight" && Number.isInteger(gameState.flightSpeedBase) ? gameState.flightSpeedBase : null,
     flightSpeedTotal: normalizedPhase === "flight" && Number.isInteger(gameState.flightSpeedTotal) ? gameState.flightSpeedTotal : null,
+    encounterTriggered: normalizedPhase === "flight" && Boolean(gameState.encounterTriggered),
+    encounterDeck: normalizeEncounterDeck(gameState.encounterDeck, { allowEmpty: true }),
+    encounterDiscard: normalizeEncounterDeck(gameState.encounterDiscard, { allowEmpty: true }),
+    activeEncounter: normalizedPhase === "flight" ? normalizeActiveEncounter(gameState.activeEncounter) : null,
+    encounterStep: normalizedPhase === "flight" && typeof gameState.encounterStep === "string" ? gameState.encounterStep : null,
     remainingMovementByShipId: normalizedPhase === "flight" ? normalizeRemainingMovement(gameState.remainingMovementByShipId) : {},
     hasRolledFlightSpeed: normalizedPhase === "flight" && Boolean(gameState.hasRolledFlightSpeed),
     supplyDeck: normalizeSupplyDeck(gameState.supplyDeck),
@@ -1626,6 +1733,10 @@ function createSupplyDeck() {
   ]);
 }
 
+function createEncounterDeck() {
+  return shuffle(getEncounterDeckIds());
+}
+
 function normalizeSupplyDeck(supplyDeck) {
   const normalizedDeck = Array.isArray(supplyDeck)
     ? supplyDeck.filter((resource) => supplyResourceTypes.includes(resource))
@@ -1634,11 +1745,82 @@ function normalizeSupplyDeck(supplyDeck) {
   return normalizedDeck.length > 0 ? normalizedDeck : createSupplyDeck();
 }
 
+function normalizeEncounterDeck(encounterDeck, options = {}) {
+  const allowEmpty = options.allowEmpty ?? false;
+  const validIds = new Set(getEncounterDeckIds());
+  const normalizedDeck = Array.isArray(encounterDeck)
+    ? encounterDeck.filter((cardId) => validIds.has(cardId))
+    : [];
+
+  if (normalizedDeck.length > 0) return normalizedDeck;
+  return allowEmpty ? [] : createEncounterDeck();
+}
+
 function getSupplyDrawCount(player) {
   const victoryPoints = player?.victoryPoints ?? 0;
   if (victoryPoints >= 4 && victoryPoints <= 7) return 2;
   if (victoryPoints >= 8 && victoryPoints <= 9) return 1;
   return 0;
+}
+
+function createFlightRoll(forcedRoll = null) {
+  const balls = Array.isArray(forcedRoll?.balls) && forcedRoll.balls.length === 2
+    ? forcedRoll.balls
+    : shuffle(mothershipBallPool).slice(0, 2);
+  const encounterTriggered = balls.includes("black");
+  const baseSpeed = encounterTriggered
+    ? 3
+    : balls.reduce((sum, ball) => sum + (mothershipBallValues[ball] ?? 0), 0);
+
+  return {
+    balls,
+    baseSpeed,
+    encounterTriggered
+  };
+}
+
+function normalizeFlightRoll(flightRoll) {
+  if (!flightRoll || !Array.isArray(flightRoll.balls) || flightRoll.balls.length !== 2) return null;
+
+  return {
+    balls: flightRoll.balls.filter((ball) => Object.hasOwn(mothershipBallValues, ball)).slice(0, 2),
+    baseSpeed: Number.isInteger(flightRoll.baseSpeed) ? flightRoll.baseSpeed : 3,
+    encounterTriggered: Boolean(flightRoll.encounterTriggered)
+  };
+}
+
+function normalizeActiveEncounter(activeEncounter) {
+  if (!activeEncounter || typeof activeEncounter !== "object") return null;
+  const card = getEncounterCardById(activeEncounter.cardId);
+  if (!card) return null;
+
+  return {
+    cardId: activeEncounter.cardId,
+    status: ["pending", "resolved"].includes(activeEncounter.status) ? activeEncounter.status : "pending",
+    choiceId: typeof activeEncounter.choiceId === "string" ? activeEncounter.choiceId : null,
+    chosenResource: supplyResourceTypes.includes(activeEncounter.chosenResource) ? activeEncounter.chosenResource : null,
+    chosenUpgrade: ["drive", "cargo", "cannon"].includes(activeEncounter.chosenUpgrade) ? activeEncounter.chosenUpgrade : null,
+    combat: normalizeEncounterCombat(activeEncounter.combat),
+    resultText: normalizeLocalizedText(activeEncounter.resultText)
+  };
+}
+
+function normalizeEncounterCombat(combat) {
+  if (!combat || typeof combat !== "object") return null;
+  return {
+    enemyStrength: Number.isInteger(combat.enemyStrength) ? combat.enemyStrength : 0,
+    rollTotal: Number.isInteger(combat.rollTotal) ? combat.rollTotal : 0,
+    strength: Number.isInteger(combat.strength) ? combat.strength : 0,
+    outcome: ["win", "lose"].includes(combat.outcome) ? combat.outcome : "lose"
+  };
+}
+
+function normalizeLocalizedText(text) {
+  if (!text || typeof text !== "object") return null;
+  return {
+    de: typeof text.de === "string" ? text.de : "",
+    en: typeof text.en === "string" ? text.en : ""
+  };
 }
 
 function hasSupplyDrawnThisTurn(gameState) {
@@ -1734,12 +1916,314 @@ function drawRandomResource(resources) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+function startEncounter(gameState, forcedEncounterCardId = null) {
+  const { cardId, deck, discard } = drawEncounterCard(gameState.encounterDeck, gameState.encounterDiscard, forcedEncounterCardId);
+  if (!cardId) {
+    return {
+      encounterDeck: gameState.encounterDeck,
+      encounterDiscard: gameState.encounterDiscard,
+      activeEncounter: null,
+      encounterStep: null
+    };
+  }
+
+  return {
+    encounterDeck: deck,
+    encounterDiscard: discard,
+    activeEncounter: {
+      cardId,
+      status: "pending",
+      choiceId: null,
+      chosenResource: null,
+      chosenUpgrade: null,
+      combat: null,
+      resultText: null
+    },
+    encounterStep: "choice"
+  };
+}
+
+function drawEncounterCard(encounterDeck, encounterDiscard, forcedEncounterCardId = null) {
+  const validIds = getEncounterDeckIds();
+  let deck = normalizeEncounterDeck(encounterDeck, { allowEmpty: true });
+  let discard = Array.isArray(encounterDiscard) ? [...encounterDiscard] : [];
+
+  if (forcedEncounterCardId && validIds.includes(forcedEncounterCardId)) {
+    deck = deck.filter((cardId) => cardId !== forcedEncounterCardId);
+    discard = discard.filter((cardId) => cardId !== forcedEncounterCardId);
+    return { cardId: forcedEncounterCardId, deck, discard };
+  }
+
+  if (deck.length === 0) {
+    deck = discard.length > 0 ? shuffle(discard) : createEncounterDeck();
+    discard = [];
+  }
+
+  const [cardId, ...remainingDeck] = deck;
+  return {
+    cardId: cardId ?? null,
+    deck: remainingDeck,
+    discard
+  };
+}
+
+function applyEncounterEffects(gameState, activePlayer, card, payload) {
+  const choice = card.choices?.find((entry) => entry.id === payload.choiceId) ?? card.choices?.[0] ?? null;
+  const effects = choice?.effects ?? card.effects ?? [];
+  let players = gameState.players.map((player) => ({ ...player, resources: normalizeResources(player.resources), upgrades: normalizeUpgrades(player.upgrades) }));
+  const logEntries = [];
+  let combat = null;
+  let resultText = card.results ?? null;
+
+  for (const effect of effects) {
+    const result = applyEncounterEffect(gameState, players, activePlayer.id, effect, payload, card);
+    if (!result) return null;
+    players = result.players;
+    combat = result.combat ?? combat;
+    if (result.resultText) resultText = result.resultText;
+    if (result.logEntry) logEntries.push(result.logEntry);
+  }
+
+  return { players, combat, resultText, logEntries };
+}
+
+function applyEncounterEffect(gameState, players, activePlayerId, effect, payload, card) {
+  const activePlayerIndex = players.findIndex((player) => player.id === activePlayerId);
+  if (activePlayerIndex < 0) return { players, combat: null, resultText: card.results ?? null, logEntry: null };
+
+  const activePlayer = players[activePlayerIndex];
+  const updatedPlayers = [...players];
+  let combat = null;
+  let logEntry = null;
+
+  if (effect.type === "gainResource") {
+    updatedPlayers[activePlayerIndex] = withResourceDelta(activePlayer, effect.resource, effect.amount);
+    logEntry = {
+      type: "encounter",
+      messageKey: "logEncounterResourceGain",
+      messageParams: {
+        player: activePlayer.name,
+        amount: effect.amount,
+        resource: effect.resource
+      }
+    };
+  } else if (effect.type === "loseResource") {
+    const owned = activePlayer.resources?.[effect.resource] ?? 0;
+    const loss = Math.min(owned, effect.amount);
+    updatedPlayers[activePlayerIndex] = withResourceDelta(activePlayer, effect.resource, -loss);
+    logEntry = {
+      type: "encounter",
+      messageKey: "logEncounterResourceLoss",
+      messageParams: {
+        player: activePlayer.name,
+        amount: loss,
+        resource: effect.resource
+      }
+    };
+  } else if (effect.type === "chooseResourceGain") {
+    if (!supplyResourceTypes.includes(payload.resource)) return null;
+    updatedPlayers[activePlayerIndex] = withResourceDelta(activePlayer, payload.resource, effect.amount ?? 1);
+    logEntry = {
+      type: "encounter",
+      messageKey: "logEncounterResourceGain",
+      messageParams: {
+        player: activePlayer.name,
+        amount: effect.amount ?? 1,
+        resource: payload.resource
+      }
+    };
+  } else if (effect.type === "gainHalfMedal") {
+    updatedPlayers[activePlayerIndex] = withHalfMedalDelta(activePlayer, effect.amount ?? 1);
+    logEntry = {
+      type: "encounter",
+      messageKey: "logEncounterHalfMedalGain",
+      messageParams: {
+        player: activePlayer.name,
+        amount: effect.amount ?? 1
+      }
+    };
+  } else if (effect.type === "loseHalfMedal") {
+    updatedPlayers[activePlayerIndex] = withHalfMedalDelta(activePlayer, -(effect.amount ?? 1));
+    logEntry = {
+      type: "encounter",
+      messageKey: "logEncounterHalfMedalLoss",
+      messageParams: {
+        player: activePlayer.name,
+        amount: effect.amount ?? 1
+      }
+    };
+  } else if (effect.type === "chooseUpgradeGain") {
+    if (!isValidUpgradeId(payload.upgrade)) return null;
+    updatedPlayers[activePlayerIndex] = withUpgradeDelta(activePlayer, payload.upgrade, effect.amount ?? 1);
+    logEntry = {
+      type: "encounter",
+      messageKey: "logEncounterUpgradeGain",
+      messageParams: {
+        player: activePlayer.name,
+        upgrade: payload.upgrade
+      }
+    };
+  } else if (effect.type === "chooseUpgradeLoss") {
+    if (!isValidUpgradeId(payload.upgrade)) {
+      if (!Object.values(activePlayer.upgrades ?? {}).some((value) => value > 0)) {
+        return { players: updatedPlayers, combat: null, resultText: card.results ?? null, logEntry: null };
+      }
+      return null;
+    }
+    updatedPlayers[activePlayerIndex] = withUpgradeDelta(activePlayer, payload.upgrade, -(effect.amount ?? 1));
+    logEntry = {
+      type: "encounter",
+      messageKey: "logEncounterUpgradeLoss",
+      messageParams: {
+        player: activePlayer.name,
+        upgrade: payload.upgrade
+      }
+    };
+  } else if (effect.type === "loseUpgrade") {
+    updatedPlayers[activePlayerIndex] = withUpgradeDelta(activePlayer, effect.upgrade, -(effect.amount ?? 1));
+    logEntry = {
+      type: "encounter",
+      messageKey: "logEncounterUpgradeLoss",
+      messageParams: {
+        player: activePlayer.name,
+        upgrade: effect.upgrade
+      }
+    };
+  } else if (effect.type === "combat") {
+    combat = resolveEncounterCombat(gameState, activePlayer, effect);
+    updatedPlayers[activePlayerIndex] = applyCombatOutcome(activePlayer, combat.outcome === "win" ? effect.onWin : effect.onLose);
+    logEntry = {
+      type: "encounter",
+      messageKey: combat.outcome === "win" ? "logEncounterCombatWin" : "logEncounterCombatLoss",
+      messageParams: {
+        player: activePlayer.name,
+        strength: combat.strength,
+        enemy: combat.enemyStrength
+      }
+    };
+  }
+
+  return {
+    players: updatedPlayers,
+    combat,
+    resultText: card.results ?? null,
+    logEntry
+  };
+}
+
+function applyCombatOutcome(player, effects = []) {
+  let updatedPlayer = { ...player, resources: normalizeResources(player.resources), upgrades: normalizeUpgrades(player.upgrades) };
+  for (const effect of effects) {
+    if (effect.type === "gainHalfMedal") {
+      updatedPlayer = withHalfMedalDelta(updatedPlayer, effect.amount ?? 1);
+    } else if (effect.type === "loseResource") {
+      const owned = updatedPlayer.resources?.[effect.resource] ?? 0;
+      updatedPlayer = withResourceDelta(updatedPlayer, effect.resource, -Math.min(owned, effect.amount ?? 1));
+    } else if (effect.type === "gainResource") {
+      updatedPlayer = withResourceDelta(updatedPlayer, effect.resource, effect.amount ?? 1);
+    } else if (effect.type === "loseUpgrade") {
+      updatedPlayer = withUpgradeDelta(updatedPlayer, effect.upgrade, -(effect.amount ?? 1));
+    } else if (effect.type === "gainUpgrade") {
+      updatedPlayer = withUpgradeDelta(updatedPlayer, effect.upgrade, effect.amount ?? 1);
+    }
+  }
+  return updatedPlayer;
+}
+
+function resolveEncounterCombat(gameState, player, effect) {
+  const roll = createCombatRoll();
+  const strength = roll.total + getPlayerCombatBonus(player);
+
+  return {
+    enemyStrength: effect.enemyStrength ?? 0,
+    rollTotal: roll.total,
+    strength,
+    balls: roll.balls,
+    outcome: strength >= (effect.enemyStrength ?? 0) ? "win" : "lose"
+  };
+}
+
+function createCombatRoll() {
+  const balls = shuffle(mothershipBallPool).slice(0, 2);
+  return {
+    balls,
+    total: balls.reduce((sum, ball) => sum + (mothershipBallValues[ball] ?? 0), 0)
+  };
+}
+
 function formatResourceList(resources) {
   return resources.join(", ");
 }
 
 function countResources(resources) {
   return Object.values(normalizeResources(resources)).reduce((sum, value) => sum + value, 0);
+}
+
+function withResourceDelta(player, resource, delta) {
+  return {
+    ...player,
+    resources: {
+      ...normalizeResources(player.resources),
+      [resource]: Math.max(0, (player.resources?.[resource] ?? 0) + delta)
+    }
+  };
+}
+
+function withHalfMedalDelta(player, delta) {
+  const previousHalfMedals = Math.max(0, player.halfMedals ?? 0);
+  const nextHalfMedals = Math.max(0, previousHalfMedals + delta);
+  const vpDelta = Math.floor(nextHalfMedals / 2) - Math.floor(previousHalfMedals / 2);
+
+  return {
+    ...player,
+    halfMedals: nextHalfMedals,
+    victoryPoints: Math.max(0, (player.victoryPoints ?? 0) + vpDelta)
+  };
+}
+
+function withUpgradeDelta(player, upgrade, delta) {
+  if (!isValidUpgradeId(upgrade)) return player;
+  const limits = {
+    drive: 6,
+    cargo: 5,
+    cannon: 6
+  };
+  const current = player.upgrades?.[upgrade] ?? 0;
+  const next = Math.min(limits[upgrade], Math.max(0, current + delta));
+
+  return {
+    ...player,
+    upgrades: {
+      ...normalizeUpgrades(player.upgrades),
+      [upgrade]: next
+    }
+  };
+}
+
+function isValidUpgradeId(upgrade) {
+  return ["drive", "cargo", "cannon"].includes(upgrade);
+}
+
+function getPlayerFlightBonus(player) {
+  const baseDrives = player.upgrades?.drive ?? 0;
+  const friendshipBonus = (player.friendshipCards ?? []).reduce((sum, cardId) => {
+    if (cardId.startsWith("wise-speed-combat-")) return sum + 1;
+    if (cardId === "wise-drive-boost") return sum + 2;
+    return sum;
+  }, 0);
+
+  return baseDrives + friendshipBonus;
+}
+
+function getPlayerCombatBonus(player) {
+  const baseCannons = player.upgrades?.cannon ?? 0;
+  const friendshipBonus = (player.friendshipCards ?? []).reduce((sum, cardId) => {
+    if (cardId.startsWith("wise-speed-combat-")) return sum + 1;
+    if (cardId === "wise-cannon-boost") return sum + 2;
+    return sum;
+  }, 0);
+
+  return baseCannons + friendshipBonus;
 }
 
 function createDefaultUpgrades() {
