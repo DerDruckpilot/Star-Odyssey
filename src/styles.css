@@ -275,6 +275,13 @@ h1 {
   display: grid;
   place-items: center;
   padding: min(1.2vw, 1rem);
+  background-color: #05070d;
+  background-image:
+    linear-gradient(rgba(2, 6, 23, 0.18), rgba(2, 6, 23, 0.3)),
+    url("../assets/backgrounds/space-background-4k.jpg");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
 }
 
 .board-overlay-controls {
@@ -693,11 +700,8 @@ h1 {
   max-height: calc(100vh - 0.5rem);
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.42);
-  background:
-    radial-gradient(circle at 18% 50%, rgba(34, 211, 238, 0.14), transparent 10rem),
-    radial-gradient(circle at 82% 32%, rgba(168, 85, 247, 0.12), transparent 12rem),
-    rgba(2, 6, 23, 0.88);
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  background: transparent;
 }
 
 .board-svg {
@@ -707,17 +711,17 @@ h1 {
 }
 
 .quadrant {
-  fill: rgba(15, 23, 42, 0.14);
+  fill: rgba(15, 23, 42, 0.04);
   stroke: none;
 }
 
 .quadrant--back {
-  fill: rgba(15, 23, 42, 0.1);
+  fill: rgba(15, 23, 42, 0.03);
 }
 
 .quadrant--nebula {
-  fill: rgba(234, 179, 8, 0.12);
-  filter: drop-shadow(0 0 7px rgba(250, 204, 21, 0.32));
+  fill: rgba(234, 179, 8, 0.16);
+  filter: drop-shadow(0 0 9px rgba(250, 204, 21, 0.4));
 }
 
 .hex-debug-label,
@@ -733,14 +737,14 @@ h1 {
 }
 
 .board-link {
-  stroke: rgba(125, 211, 252, 0.38);
-  stroke-width: 2;
+  stroke: rgba(224, 242, 254, 0.56);
+  stroke-width: 2.2;
   stroke-linecap: round;
 }
 
 .board-link--nebula {
-  stroke: rgba(250, 204, 21, 0.78);
-  stroke-width: 3;
+  stroke: rgba(250, 204, 21, 0.82);
+  stroke-width: 3.1;
 }
 
 .board-element {
@@ -818,14 +822,14 @@ h1 {
 }
 
 .space-point {
-  fill: #082f49;
-  stroke: #e0f2fe;
-  stroke-width: 2;
+  fill: rgba(8, 47, 73, 0.72);
+  stroke: rgba(240, 249, 255, 0.94);
+  stroke-width: 2.2;
 }
 
 .space-point--boundary {
-  fill: rgba(8, 47, 73, 0.5);
-  stroke: rgba(224, 242, 254, 0.42);
+  fill: rgba(8, 47, 73, 0.42);
+  stroke: rgba(224, 242, 254, 0.5);
   stroke-width: 1.5;
 }
 
