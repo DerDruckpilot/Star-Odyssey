@@ -724,88 +724,88 @@ h1 {
 }
 
 .mothership-overlay--drive-left-rear {
-  width: 24%;
-  transform: translate(-150%, 45%);
+  width: 12.5%;
+  transform: translate(-155%, 31%);
 }
 
 .mothership-overlay--drive-right-rear {
-  width: 24%;
-  transform: translate(50%, 45%);
-}
-
-.mothership-overlay--drive-left-inner {
-  width: 27%;
-  transform: translate(-94%, 50%);
-}
-
-.mothership-overlay--drive-right-inner {
-  width: 27%;
-  transform: translate(-6%, 50%);
+  width: 12.5%;
+  transform: translate(55%, 31%);
 }
 
 .mothership-overlay--drive-left-front {
-  width: 25%;
-  transform: translate(-175%, 58%);
+  width: 14.5%;
+  transform: translate(-104%, 27%);
 }
 
 .mothership-overlay--drive-right-front {
-  width: 25%;
-  transform: translate(75%, 58%);
+  width: 14.5%;
+  transform: translate(4%, 27%);
+}
+
+.mothership-overlay--drive-left-outer {
+  width: 13.5%;
+  transform: translate(-183%, 36%);
+}
+
+.mothership-overlay--drive-right-outer {
+  width: 13.5%;
+  transform: translate(83%, 36%);
 }
 
 .mothership-overlay--cannon-left-rear {
-  width: 24%;
-  transform: translate(-141%, -99%);
+  width: 13%;
+  transform: translate(-143%, -100%);
 }
 
 .mothership-overlay--cannon-right-rear {
-  width: 24%;
-  transform: translate(42%, -99%);
+  width: 13%;
+  transform: translate(43%, -100%);
 }
 
 .mothership-overlay--cannon-left-front {
-  width: 24%;
-  transform: translate(-128%, -82%);
+  width: 14%;
+  transform: translate(-127%, -84%);
 }
 
 .mothership-overlay--cannon-center-left {
-  width: 25%;
-  transform: translate(-92%, -89%);
+  width: 14.5%;
+  transform: translate(-85%, -89%);
 }
 
 .mothership-overlay--cannon-center-right {
-  width: 25%;
-  transform: translate(-8%, -89%);
+  width: 14.5%;
+  transform: translate(-15%, -89%);
 }
 
 .mothership-overlay--cannon-right-front {
-  width: 24%;
-  transform: translate(28%, -82%);
+  width: 14%;
+  transform: translate(27%, -84%);
 }
 
 .mothership-overlay--cargo-left-rear {
-  width: 33%;
-  transform: translate(-132%, -25%);
+  width: 18.5%;
+  transform: translate(-130%, -27%);
 }
 
 .mothership-overlay--cargo-right-rear {
-  width: 33%;
-  transform: translate(32%, -25%);
+  width: 18.5%;
+  transform: translate(31%, -27%);
 }
 
 .mothership-overlay--cargo-left-front {
-  width: 34%;
-  transform: translate(-119%, -18%);
+  width: 20.5%;
+  transform: translate(-123%, -20%);
 }
 
 .mothership-overlay--cargo-center-front {
-  width: 33%;
-  transform: translate(-50%, -18%);
+  width: 20%;
+  transform: translate(-50%, -20%);
 }
 
 .mothership-overlay--cargo-right-front {
-  width: 34%;
-  transform: translate(19%, -18%);
+  width: 20.5%;
+  transform: translate(23%, -20%);
 }
 
 .upgrade-menu .upgrade-controls {

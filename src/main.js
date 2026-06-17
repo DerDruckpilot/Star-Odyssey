@@ -97,23 +97,23 @@ const upgradeMenuAssetPaths = {
 };
 const upgradeMenuOrder = ["cannon", "cargo", "drive"];
 const mothershipUpgradeSlots = [
-  { id: "drive-left-rear", upgradeId: "drive", minValue: 1, assetId: "driveLeftRear", layer: "back" },
-  { id: "drive-right-rear", upgradeId: "drive", minValue: 2, assetId: "driveRightRear", layer: "back" },
+  { id: "drive-left-front", upgradeId: "drive", minValue: 1, assetId: "driveRightRear", layer: "front" },
+  { id: "drive-right-front", upgradeId: "drive", minValue: 2, assetId: "driveLeftRear", layer: "front" },
+  { id: "drive-left-rear", upgradeId: "drive", minValue: 3, assetId: "driveLeftFront", layer: "back" },
+  { id: "drive-right-rear", upgradeId: "drive", minValue: 4, assetId: "driveRightFront", layer: "back" },
+  { id: "drive-left-outer", upgradeId: "drive", minValue: 5, assetId: "driveLeftFront", layer: "front" },
+  { id: "drive-right-outer", upgradeId: "drive", minValue: 6, assetId: "driveRightFront", layer: "front" },
   { id: "cannon-left-rear", upgradeId: "cannon", minValue: 1, assetId: "cannonLeft", layer: "back" },
   { id: "cannon-right-rear", upgradeId: "cannon", minValue: 2, assetId: "cannonRight", layer: "back" },
-  { id: "cargo-left-rear", upgradeId: "cargo", minValue: 1, assetId: "cargoLeftRear", layer: "back" },
-  { id: "cargo-right-rear", upgradeId: "cargo", minValue: 2, assetId: "cargoRightRear", layer: "back" },
-  { id: "drive-left-inner", upgradeId: "drive", minValue: 3, assetId: "driveLeftFront", layer: "front" },
-  { id: "drive-right-inner", upgradeId: "drive", minValue: 4, assetId: "driveRightFront", layer: "front" },
-  { id: "drive-left-front", upgradeId: "drive", minValue: 5, assetId: "driveLeftFront", layer: "front" },
-  { id: "drive-right-front", upgradeId: "drive", minValue: 6, assetId: "driveRightFront", layer: "front" },
   { id: "cannon-left-front", upgradeId: "cannon", minValue: 3, assetId: "cannonLeft", layer: "front" },
   { id: "cannon-center-left", upgradeId: "cannon", minValue: 4, assetId: "cannonCenter", layer: "front" },
   { id: "cannon-center-right", upgradeId: "cannon", minValue: 5, assetId: "cannonCenter", layer: "front" },
   { id: "cannon-right-front", upgradeId: "cannon", minValue: 6, assetId: "cannonRight", layer: "front" },
-  { id: "cargo-left-front", upgradeId: "cargo", minValue: 3, assetId: "cargoLeft", layer: "front" },
-  { id: "cargo-center-front", upgradeId: "cargo", minValue: 4, assetId: "cargoCenter", layer: "front" },
-  { id: "cargo-right-front", upgradeId: "cargo", minValue: 5, assetId: "cargoRight", layer: "front" }
+  { id: "cargo-right-rear", upgradeId: "cargo", minValue: 1, assetId: "cargoRightRear", layer: "back" },
+  { id: "cargo-left-front", upgradeId: "cargo", minValue: 2, assetId: "cargoRight", layer: "front" },
+  { id: "cargo-right-front", upgradeId: "cargo", minValue: 3, assetId: "cargoLeft", layer: "front" },
+  { id: "cargo-left-rear", upgradeId: "cargo", minValue: 4, assetId: "cargoLeftRear", layer: "back" },
+  { id: "cargo-center-front", upgradeId: "cargo", minValue: 5, assetId: "cargoCenter", layer: "front" }
 ];
 
 const state = {
