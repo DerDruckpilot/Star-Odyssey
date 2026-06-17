@@ -9,7 +9,7 @@
 }
 
 .debug-upgrade-shell {
-  width: min(92vw, 96rem);
+  width: min(94vw, 104rem);
   margin: 0 auto;
   padding: 2rem 0;
 }
@@ -17,7 +17,7 @@
 .debug-upgrade-header {
   display: grid;
   gap: 0.35rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 .debug-upgrade-header p,
@@ -27,13 +27,128 @@
 }
 
 .debug-upgrade-header p,
-.debug-upgrade-header span {
+.debug-upgrade-header span,
+.debug-editor-heading span,
+.debug-upgrade-card p {
   color: #cbd5e1;
 }
 
 .debug-upgrade-header h1 {
   font-size: clamp(1.75rem, 3vw, 3.25rem);
   line-height: 1;
+}
+
+.debug-editor-panel {
+  display: grid;
+  grid-template-columns: minmax(18rem, 1fr) minmax(16rem, 0.8fr) minmax(18rem, 1fr);
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.86);
+  box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.28);
+}
+
+.debug-editor-heading,
+.debug-control,
+.debug-load-block {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.debug-editor-heading p,
+.debug-editor-heading h2 {
+  margin: 0;
+}
+
+.debug-editor-heading h2 {
+  font-size: 1.35rem;
+}
+
+.debug-selected-info {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.debug-selected-info div {
+  min-width: 0;
+  padding: 0.55rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(2, 6, 23, 0.52);
+}
+
+.debug-selected-info dt {
+  margin: 0 0 0.2rem;
+  color: #93c5fd;
+  font-size: 0.78rem;
+}
+
+.debug-selected-info dd {
+  margin: 0;
+  overflow: hidden;
+  color: #f8fafc;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-control input[type="range"] {
+  width: 100%;
+}
+
+.debug-control input[type="number"],
+.debug-control input[type="file"],
+.debug-export-output {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  color: #f8fafc;
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.debug-control input[type="number"] {
+  padding: 0.45rem 0.55rem;
+}
+
+.debug-action-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.debug-action-row button,
+.debug-load-block button {
+  min-height: 2.55rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  color: #f8fafc;
+  background: rgba(30, 41, 59, 0.84);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.debug-action-row button:hover,
+.debug-load-block button:hover {
+  border-color: #93c5fd;
+}
+
+.debug-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #e2e8f0;
+}
+
+.debug-export-output {
+  min-height: 12rem;
+  padding: 0.7rem;
+  grid-column: 1 / -1;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.78rem;
+  resize: vertical;
 }
 
 .debug-upgrade-grid {
@@ -58,66 +173,92 @@
   font-size: clamp(1.15rem, 1.8vw, 1.75rem);
 }
 
-.debug-upgrade-card p {
-  color: #cbd5e1;
-}
-
 .debug-upgrade-card .upgrade-ship-panel {
   min-height: clamp(28rem, 58vw, 42rem);
+}
+
+.debug-upgrade-card .mothership-base {
+  z-index: 100;
 }
 
 .debug-upgrade-card .mothership-visual {
   width: min(100%, 38rem);
 }
 
-.debug-upgrade-slot {
+.debug-mothership-visual {
   overflow: visible;
+  touch-action: none;
+}
+
+.debug-upgrade-slot {
+  width: var(--slot-width);
+  z-index: var(--slot-z);
+  overflow: visible;
+  pointer-events: auto;
+  cursor: grab;
+  transform: translate(var(--slot-x), var(--slot-y)) scale(var(--slot-scale));
 }
 
 .debug-upgrade-slot-image {
   display: block;
   width: 100%;
   height: auto;
-}
-
-.debug-upgrade-label-layer {
-  z-index: 4;
   pointer-events: none;
+  user-select: none;
 }
 
-.debug-upgrade-label-anchor {
-  filter: none;
+.debug-upgrade-slot.is-dragging {
+  cursor: grabbing;
+}
+
+.debug-upgrade-slot.is-selected {
+  filter:
+    drop-shadow(0 0 0.55rem rgba(56, 189, 248, 0.95))
+    drop-shadow(0 0.5rem 0.8rem rgba(0, 0, 0, 0.42));
+  outline: 2px solid rgba(56, 189, 248, 0.85);
+  outline-offset: 0.2rem;
 }
 
 .debug-upgrade-slot-label {
   position: absolute;
   left: 50%;
   top: 50%;
+  z-index: 2;
   display: grid;
   place-items: center;
-  min-width: 2.1rem;
-  min-height: 2.1rem;
-  padding: 0.15rem 0.35rem;
-  border: 2px solid rgba(15, 23, 42, 0.95);
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid rgba(191, 219, 254, 0.9);
   border-radius: 999px;
-  color: #0f172a;
-  background: #facc15;
-  box-shadow: 0 0.2rem 0.7rem rgba(0, 0, 0, 0.55);
-  font-size: 0.78rem;
+  color: #eff6ff;
+  background: rgba(15, 23, 42, 0.76);
+  box-shadow: 0 0.15rem 0.55rem rgba(0, 0, 0, 0.45);
+  font: inherit;
+  font-size: 0.74rem;
   font-weight: 900;
-  transform: translate(
-    calc(-50% + var(--debug-label-x, 0rem)),
-    calc(-50% + var(--debug-label-y, 0rem))
-  );
-  z-index: 2;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
 }
 
-@media (max-width: 76rem) {
+.debug-labels-hidden .debug-upgrade-slot-label {
+  display: none;
+}
+
+@media (max-width: 88rem) {
+  .debug-editor-panel,
   .debug-upgrade-grid {
     grid-template-columns: 1fr;
   }
 
   .debug-upgrade-card .upgrade-ship-panel {
     min-height: 32rem;
+  }
+}
+
+@media (max-width: 42rem) {
+  .debug-action-row,
+  .debug-selected-info {
+    grid-template-columns: 1fr;
   }
 }
