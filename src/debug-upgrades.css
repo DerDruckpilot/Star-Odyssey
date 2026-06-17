@@ -1,0 +1,123 @@
+.debug-upgrade-page {
+  min-height: 100vh;
+  margin: 0;
+  color: #f8fafc;
+  background:
+    radial-gradient(circle at 22% 18%, rgba(59, 130, 246, 0.28), transparent 30%),
+    radial-gradient(circle at 78% 24%, rgba(168, 85, 247, 0.2), transparent 26%),
+    #06101e;
+}
+
+.debug-upgrade-shell {
+  width: min(92vw, 96rem);
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+
+.debug-upgrade-header {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 1.5rem;
+}
+
+.debug-upgrade-header p,
+.debug-upgrade-header h1,
+.debug-upgrade-header span {
+  margin: 0;
+}
+
+.debug-upgrade-header p,
+.debug-upgrade-header span {
+  color: #cbd5e1;
+}
+
+.debug-upgrade-header h1 {
+  font-size: clamp(1.75rem, 3vw, 3.25rem);
+  line-height: 1;
+}
+
+.debug-upgrade-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(18rem, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.debug-upgrade-card {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.debug-upgrade-card h2,
+.debug-upgrade-card p {
+  margin: 0;
+}
+
+.debug-upgrade-card h2 {
+  font-size: clamp(1.15rem, 1.8vw, 1.75rem);
+}
+
+.debug-upgrade-card p {
+  color: #cbd5e1;
+}
+
+.debug-upgrade-card .upgrade-ship-panel {
+  min-height: clamp(28rem, 58vw, 42rem);
+}
+
+.debug-upgrade-card .mothership-visual {
+  width: min(100%, 38rem);
+}
+
+.debug-upgrade-slot {
+  overflow: visible;
+}
+
+.debug-upgrade-slot-image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.debug-upgrade-label-layer {
+  z-index: 4;
+  pointer-events: none;
+}
+
+.debug-upgrade-label-anchor {
+  filter: none;
+}
+
+.debug-upgrade-slot-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  min-width: 2.1rem;
+  min-height: 2.1rem;
+  padding: 0.15rem 0.35rem;
+  border: 2px solid rgba(15, 23, 42, 0.95);
+  border-radius: 999px;
+  color: #0f172a;
+  background: #facc15;
+  box-shadow: 0 0.2rem 0.7rem rgba(0, 0, 0, 0.55);
+  font-size: 0.78rem;
+  font-weight: 900;
+  transform: translate(
+    calc(-50% + var(--debug-label-x, 0rem)),
+    calc(-50% + var(--debug-label-y, 0rem))
+  );
+  z-index: 2;
+}
+
+@media (max-width: 76rem) {
+  .debug-upgrade-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .debug-upgrade-card .upgrade-ship-panel {
+    min-height: 32rem;
+  }
+}
