@@ -392,6 +392,10 @@ h1 {
   box-shadow: 0 22px 70px rgba(0, 0, 0, 0.55);
 }
 
+.player-hud-panel--upgrades {
+  width: min(95vw, 62rem);
+}
+
 .player-hud-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -657,6 +661,42 @@ h1 {
   gap: 0.5rem;
 }
 
+.upgrade-menu {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.9fr) minmax(18rem, 1.1fr);
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.upgrade-ship-panel {
+  display: grid;
+  place-items: end center;
+  min-height: 22rem;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  background:
+    radial-gradient(circle at 50% 44%, rgba(59, 130, 246, 0.18), transparent 48%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.8));
+  overflow: hidden;
+}
+
+.upgrade-ship-image {
+  width: min(88%, 21rem);
+  max-height: 30rem;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 1.1rem 1.8rem rgba(0, 0, 0, 0.6));
+}
+
+.upgrade-menu .upgrade-controls {
+  align-content: start;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.upgrade-menu .upgrade-controls > strong {
+  display: none;
+}
+
 .upgrade-card {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -670,6 +710,58 @@ h1 {
 
 .upgrade-card .small-button {
   grid-row: span 2;
+}
+
+.upgrade-card--menu {
+  grid-template-columns: 6.6rem minmax(0, 1fr);
+  gap: 0.7rem;
+  min-height: 7rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.58));
+}
+
+.upgrade-card-preview {
+  display: grid;
+  place-items: center;
+  min-height: 5.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(30, 41, 59, 0.56);
+}
+
+.upgrade-card-blueprint {
+  width: 5rem;
+  height: 5rem;
+  object-fit: contain;
+  opacity: 0.9;
+}
+
+.upgrade-card-body {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.upgrade-card-title {
+  color: #f8fafc;
+  font-size: clamp(0.96rem, 1.35vw, 1.18rem);
+  line-height: 1.15;
+}
+
+.upgrade-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  align-items: center;
+}
+
+.upgrade-card--menu .small-button {
+  grid-row: auto;
+}
+
+.upgrade-card-cost {
+  color: #dbeafe;
 }
 
 .selection-panel ul {
@@ -1134,6 +1226,32 @@ h1 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .upgrade-menu {
+    grid-template-columns: 1fr;
+  }
+
+  .upgrade-ship-panel {
+    min-height: 15rem;
+  }
+
+  .upgrade-ship-image {
+    width: min(68%, 14rem);
+    max-height: 18rem;
+  }
+
+  .upgrade-card--menu {
+    grid-template-columns: 4.8rem minmax(0, 1fr);
+  }
+
+  .upgrade-card-preview {
+    min-height: 4.4rem;
+  }
+
+  .upgrade-card-blueprint {
+    width: 3.8rem;
+    height: 3.8rem;
+  }
+
   .turn-summary,
   .resource-summary,
   .upgrade-summary,
@@ -1158,6 +1276,36 @@ h1 {
   .player-hud-panel {
     width: min(88vw, 34rem);
     max-height: 84vh;
+  }
+
+  .player-hud-panel--upgrades {
+    width: min(94vw, 50rem);
+  }
+
+  .upgrade-menu {
+    grid-template-columns: minmax(10rem, 0.8fr) minmax(16rem, 1.2fr);
+  }
+
+  .upgrade-ship-panel {
+    min-height: 12rem;
+  }
+
+  .upgrade-ship-image {
+    width: min(72%, 11rem);
+    max-height: 14rem;
+  }
+
+  .upgrade-card--menu {
+    min-height: 5.7rem;
+  }
+
+  .upgrade-card-preview {
+    min-height: 4.4rem;
+  }
+
+  .upgrade-card-blueprint {
+    width: 3.8rem;
+    height: 3.8rem;
   }
 
   .player-hud-tabs {

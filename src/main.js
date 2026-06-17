@@ -73,6 +73,15 @@ const planetAssetPaths = {
   food: "./assets/generated/planets/planet-food.png",
   goods: "./assets/generated/planets/planet-trade.png"
 };
+const upgradeMenuAssetPaths = {
+  mothership: "./assets/generated/ui/mothership.png",
+  blueprints: {
+    cannon: "./assets/generated/ui/blueprint-cannon.png",
+    cargo: "./assets/generated/ui/blueprint-cargo.png",
+    drive: "./assets/generated/ui/blueprint-drive.png"
+  }
+};
+const upgradeMenuOrder = ["cannon", "cargo", "drive"];
 
 const state = {
   language: loadLanguage(),
@@ -886,7 +895,7 @@ function renderPlayerHudModal() {
   overlay.addEventListener("click", closePlayerHud);
 
   const panel = document.createElement("section");
-  panel.className = "player-hud-panel";
+  panel.className = `player-hud-panel${state.hudTab === "upgrades" ? " player-hud-panel--upgrades" : ""}`;
   panel.addEventListener("click", (event) => event.stopPropagation());
 
   const header = document.createElement("header");
@@ -970,8 +979,7 @@ function renderPlayerHudTabContent(player) {
   if (state.hudTab === "resources") {
     content.append(renderPlayerTradeControls(player), renderBankTradeControls(player));
   } else if (state.hudTab === "upgrades") {
-    content.append(renderUpgradeSummary(player));
-    content.append(renderUpgradeControls(player));
+    content.append(renderUpgradeMenu(player));
   } else if (state.hudTab === "fleet") {
     content.append(renderFleetSummary(player));
     content.append(renderFriendshipSummary(player));
@@ -1065,6 +1073,24 @@ function renderUpgradeSummary(player = getActivePlayer()) {
   }
 
   wrapper.append(title, list);
+  return wrapper;
+}
+
+function renderUpgradeMenu(player = getActivePlayer()) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "upgrade-menu";
+
+  const shipPanel = document.createElement("section");
+  shipPanel.className = "upgrade-ship-panel";
+
+  const shipImage = document.createElement("img");
+  shipImage.className = "upgrade-ship-image";
+  shipImage.src = upgradeMenuAssetPaths.mothership;
+  shipImage.alt = "";
+  shipImage.loading = "lazy";
+
+  shipPanel.append(shipImage);
+  wrapper.append(shipPanel, renderUpgradeControls(player));
   return wrapper;
 }
 
@@ -2056,20 +2082,44 @@ function renderUpgradeControls(player = getActivePlayer()) {
   title.textContent = t("buildUpgrades");
   wrapper.append(title);
 
-  for (const upgrade of upgradeDefinitions) {
-    const card = document.createElement("article");
-    card.className = "upgrade-card";
+  const orderedUpgrades = upgradeMenuOrder
+    .map((upgradeId) => upgradeDefinitions.find((upgrade) => upgrade.id === upgradeId))
+    .filter(Boolean);
 
-    const label = document.createElement("span");
+  for (const upgrade of orderedUpgrades) {
+    const card = document.createElement("article");
+    card.className = "upgrade-card upgrade-card--menu";
+
+    const preview = document.createElement("div");
+    preview.className = "upgrade-card-preview";
+
+    const image = document.createElement("img");
+    image.className = "upgrade-card-blueprint";
+    image.src = upgradeMenuAssetPaths.blueprints[upgrade.id];
+    image.alt = "";
+    image.loading = "lazy";
+    preview.append(image);
+
+    const body = document.createElement("div");
+    body.className = "upgrade-card-body";
+
+    const label = document.createElement("strong");
+    label.className = "upgrade-card-title";
     label.textContent = `${getUpgradeLabel(upgrade.id)} ${player?.upgrades?.[upgrade.id] ?? 0}/${upgrade.limit}`;
 
     const cost = document.createElement("small");
+    cost.className = "upgrade-card-cost";
     cost.textContent = `${t("cost")}: ${formatCost(upgrade.cost)}`;
 
     const button = createButton(t("build"), () => buyActivePlayerUpgrade(upgrade.id), "small-button");
     button.disabled = !canTradeBuildActions(player) || !canPlayerBuyUpgrade(player, upgrade);
 
-    card.append(label, cost, button);
+    const actions = document.createElement("div");
+    actions.className = "upgrade-card-actions";
+    actions.append(button, cost);
+
+    body.append(label, actions);
+    card.append(preview, body);
     wrapper.append(card);
   }
 
