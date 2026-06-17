@@ -12,6 +12,7 @@ pdf-inspection/
 test-results/
 playwright-report/
 docs/*.pdf
+assets/source/ui/upgrades/reference/
 .DS_Store
 Thumbs.db
 .env

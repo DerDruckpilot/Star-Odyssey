@@ -7,6 +7,23 @@ from PIL import Image, ImageFilter
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_ROOT = ROOT / "assets" / "source" / "ui"
 OUTPUT_ROOT = ROOT / "assets" / "generated" / "ui"
+UPGRADE_SOURCE_ROOT = SOURCE_ROOT / "upgrades" / "raw"
+UPGRADE_OUTPUT_ROOT = OUTPUT_ROOT / "upgrades"
+
+UPGRADE_OVERLAY_EXPORTS = {
+    "cannon-left-source.jpg": "cannon-left.png",
+    "cannon-center-source.jpg": "cannon-center.png",
+    "cannon-right-source.jpg": "cannon-right.png",
+    "cargo-left-source.jpg": "cargo-left.png",
+    "cargo-center-source.jpg": "cargo-center.png",
+    "cargo-right-source.jpg": "cargo-right.png",
+    "cargo-left-rear-source.jpg": "cargo-left-rear.png",
+    "cargo-right-rear-source.jpg": "cargo-right-rear.png",
+    "drive-left-front-source.jpg": "drive-left-front.png",
+    "drive-left-rear-source.jpg": "drive-left-rear.png",
+    "drive-right-front-source.jpg": "drive-right-front.png",
+    "drive-right-rear-source.jpg": "drive-right-rear.png",
+}
 
 
 def rgba(pixel):
@@ -18,6 +35,12 @@ def rgba(pixel):
 def is_light_background(pixel):
     r, g, b, a = rgba(pixel)
     return a > 0 and r >= 235 and g >= 235 and b >= 235 and max(r, g, b) - min(r, g, b) <= 18
+
+
+def is_checker_background(pixel):
+    r, g, b, a = rgba(pixel)
+    color_spread = max(r, g, b) - min(r, g, b)
+    return a > 0 and r >= 218 and g >= 218 and b >= 218 and color_spread <= 28
 
 
 def flood_transparent(image, is_background):
@@ -80,6 +103,12 @@ def resize_inside_square(image, size):
     return canvas
 
 
+def resize_to_max_side(image, size):
+    image = image.convert("RGBA")
+    image.thumbnail((size, size), Image.Resampling.LANCZOS)
+    return image
+
+
 def create_mothership():
     source = SOURCE_ROOT / "ship" / "mothership-source.jpg"
     image = Image.open(source).convert("RGBA")
@@ -113,12 +142,28 @@ def create_blueprint(source_name, output_name):
     output.save(OUTPUT_ROOT / output_name)
 
 
+def create_upgrade_overlay(source_name, output_name):
+    source = UPGRADE_SOURCE_ROOT / source_name
+    image = Image.open(source).convert("RGBA")
+    image = flood_transparent(image, is_checker_background)
+    image = crop_to_alpha(image, padding=18)
+    image = resize_to_max_side(image, 512)
+    image.save(UPGRADE_OUTPUT_ROOT / output_name)
+
+
+def create_upgrade_overlays():
+    UPGRADE_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+    for source_name, output_name in UPGRADE_OVERLAY_EXPORTS.items():
+        create_upgrade_overlay(source_name, output_name)
+
+
 def main():
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     create_mothership()
     create_blueprint("blueprint-cannon-source.jpg", "blueprint-cannon.png")
     create_blueprint("blueprint-cargo-source.jpg", "blueprint-cargo.png")
     create_blueprint("blueprint-drive-source.jpg", "blueprint-drive.png")
+    create_upgrade_overlays()
 
 
 if __name__ == "__main__":
