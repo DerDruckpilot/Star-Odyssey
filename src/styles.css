@@ -755,19 +755,33 @@ h1 {
   outline: none;
 }
 
-.planet {
-  stroke: rgba(248, 250, 252, 0.65);
-  stroke-width: 4;
+.planet-image {
+  pointer-events: none;
 }
 
-.is-selected .planet,
-.planet.is-selected,
+.planet-fallback {
+  stroke: rgba(248, 250, 252, 0.35);
+  stroke-width: 3;
+}
+
+.planet-frame {
+  stroke: rgba(248, 250, 252, 0.68);
+  stroke-width: 2.6;
+}
+
+.is-selected .planet-frame,
+.planet.is-selected .planet-frame,
 .space-point.is-selected,
 .space-point.is-reachable,
 .outpost.is-selected .outpost-ring,
 .structure.is-selected .structure-shape {
   stroke: #fef08a;
   stroke-width: 7;
+  filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.7));
+}
+
+.planet.is-selected .planet-image,
+.is-selected .planet-image {
   filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.7));
 }
 

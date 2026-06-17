@@ -66,6 +66,13 @@ const svgNamespace = "http://www.w3.org/2000/svg";
 const showBoardDebugLabels = false;
 const showBoardNodeDebugLabels = false;
 const app = document.querySelector("#app");
+const planetAssetPaths = {
+  ore: "./assets/generated/planets/planet-ore.png",
+  fuel: "./assets/generated/planets/planet-fuel.png",
+  carbon: "./assets/generated/planets/planet-carbon.png",
+  food: "./assets/generated/planets/planet-food.png",
+  goods: "./assets/generated/planets/planet-trade.png"
+};
 
 const state = {
   language: loadLanguage(),
@@ -2474,6 +2481,10 @@ function getShipStatusLabel(status) {
   return status === "active" ? t("shipStatusActive") : t("shipStatusDocked");
 }
 
+function getPlanetAssetPath(resource) {
+  return planetAssetPaths[resource] ?? null;
+}
+
 function getSpecialMarkerLabel(token) {
   if (token?.type === "pirate") return t("pirateBase").replace("{value}", token.value);
   if (token?.type === "ice") return t("icePlanet").replace("{value}", token.value);
@@ -3042,14 +3053,38 @@ function renderPlanetSystem(system, className, explored) {
     const fallbackOffset = offsets[index] ?? { x: 0, y: 0 };
     const position = getPlanetRenderPosition(system, planet, fallbackOffset);
     const selectedClass = isSelectedElement("planet", planet.id) ? " is-selected" : "";
-    const planetElement = createSvgElement("circle", {
+    const radius = className === "start-system" ? 32 : 28;
+    const imageSize = className === "start-system" ? 82 : 72;
+    const planetElement = createSvgElement("g", {
       class: `planet planet--${planet.resource}${selectedClass}`,
       "data-planet-id": planet.id,
+    });
+    planetElement.append(createSvgElement("circle", {
+      class: "planet-fallback",
       cx: position.x,
       cy: position.y,
-      r: className === "start-system" ? 32 : 28,
+      r: radius,
       fill: resourceColors[planet.resource]
-    });
+    }));
+    const planetAssetPath = getPlanetAssetPath(planet.resource);
+    if (planetAssetPath) {
+      planetElement.append(createSvgElement("image", {
+        class: "planet-image",
+        href: planetAssetPath,
+        x: position.x - imageSize / 2,
+        y: position.y - imageSize / 2,
+        width: imageSize,
+        height: imageSize,
+        preserveAspectRatio: "xMidYMid meet"
+      }));
+    }
+    planetElement.append(createSvgElement("circle", {
+      class: "planet-frame",
+      cx: position.x,
+      cy: position.y,
+      r: radius,
+      fill: "transparent"
+    }));
     enableBoardElementSelection(planetElement, "planet", planet.id);
     group.append(planetElement);
 
