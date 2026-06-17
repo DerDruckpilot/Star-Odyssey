@@ -490,7 +490,7 @@ const encounterCards = [
           onFailure: [
             {
               type: "combat",
-              neighborOffset: 1,
+              neighborOffset: -2,
               onWin: [
                 { type: "gainResource", resource: "ore", amount: 2 },
                 { type: "gainHalfMedal", amount: 1 }
@@ -506,8 +506,7 @@ const encounterCards = [
     ],
     resultsDe: "Die Flucht oder der Kampf wird ausgewertet.",
     resultsEn: "The escape or combat is resolved.",
-    implemented: true,
-    notes: "Aus Fotoreferenz technisch angenaehert: zweiter linker Nachbar prueft die Flucht, der Kampf nutzt einen Nachbarwert."
+    implemented: true
   }),
   createEncounterCard({
     id: "pirate-flee-second-right",
@@ -526,7 +525,7 @@ const encounterCards = [
           onFailure: [
             {
               type: "combat",
-              neighborOffset: -1,
+              neighborOffset: 2,
               onWin: [
                 { type: "grantShip", shipType: "tradeShip" },
                 { type: "gainHalfMedal", amount: 1 }
@@ -542,38 +541,38 @@ const encounterCards = [
     ],
     resultsDe: "Die Flucht oder der Kampf wird ausgewertet.",
     resultsEn: "The escape or combat is resolved.",
-    implemented: true,
-    notes: "Aus Fotoreferenz technisch angenaehert."
+    implemented: true
   }),
   createEncounterCard({
-    id: "pirate-demand-second-left",
+    id: "pirate-demand-second-right",
     type: "pirate",
-    titleDe: "Piratenforderung zweiter Nachbar links",
-    titleEn: "Pirate Demand Second Left Neighbor",
-    promptDe: "Ein Pirat fordert 2 deiner Rohstoffe. Du kannst zahlen oder gegen den zweiten linken Nachbarn kaempfen.",
-    promptEn: "A pirate demands 2 of your resources. You may pay or fight using the second player on your left as pirate strength.",
+    titleDe: "Piratenforderung zweiter Nachbar rechts",
+    titleEn: "Pirate Demand Second Right Neighbor",
+    promptDe: "Ein Pirat fordert 2 deiner Rohstoffe. Wenn du zahlst, verlierst du Ansehen. Wenn nicht, kaempfst du gegen den zweiten rechten Nachbarn als Piraten.",
+    promptEn: "A pirate demands 2 of your resources. If you pay, you lose reputation. If not, you fight using the second player on your right as pirate strength.",
     choices: [
       createChoice("pay", "2 Rohstoffe abgeben", "Give up 2 resources", [
-        { type: "chooseResourceLoss", amount: 2 }
+        { type: "chooseResourceLoss", amount: 2 },
+        { type: "loseHalfMedal", amount: 1 }
       ]),
       createChoice("fight", "Widerstehen", "Resist", [
         {
           type: "combat",
-          neighborOffset: -2,
+          neighborOffset: 2,
           onWin: [
             { type: "gainResource", resource: "carbon", amount: 2 },
             { type: "gainHalfMedal", amount: 1 }
           ],
           onLose: [
-            { type: "chooseUpgradeLoss", amount: 1 }
+            { type: "blockFirstShip" },
+            { type: "gainHalfMedal", amount: 1 }
           ]
         }
       ])
     ],
     resultsDe: "Der Pirat wird bezahlt oder in den Kampf gezwungen.",
     resultsEn: "The pirate is paid off or forced into combat.",
-    implemented: true,
-    notes: "An die Piratenkarten mit Nachbarvergleich aus den Fotos angelehnt."
+    implemented: true
   }),
   createEncounterCard({
     id: "pirate-smuggling",
@@ -598,13 +597,14 @@ const encounterCards = [
             {
               range: [3, 3],
               effects: [
-                { type: "none" }
+                { type: "loseSelectedResources" },
+                { type: "loseHalfMedal", amount: 1 }
               ]
             },
             {
               range: [4, 5],
               effects: [
-                { type: "gainHalfMedal", amount: 1 }
+                { type: "none" }
               ]
             }
           ]
@@ -616,8 +616,7 @@ const encounterCards = [
     ],
     resultsDe: "Das Schmuggelgeschaeft wird ausgewertet.",
     resultsEn: "The smuggling deal is resolved.",
-    implemented: true,
-    notes: "Hehlerei-/Tauschkarte aus Fotoreferenz. Der Verlust der getauschten Waren ist hier als Reputationsstrafe angenaehert."
+    implemented: true
   }),
   createEncounterCard({
     id: "merchant-pity-goods",
@@ -641,15 +640,12 @@ const encounterCards = [
         { type: "gainHalfMedal", amount: 1 }
       ]),
       createChoice("gift-3", "3 Rohstoffe schenken", "Give 3 resources", [
-        { type: "chooseResourceLoss", amount: 3 },
-        { type: "gainResource", resource: "goods", amount: 1 },
-        { type: "gainHalfMedal", amount: 1 }
+        { type: "none" }
       ])
     ],
     resultsDe: "Der Haendler bewertet deine Gabe.",
     resultsEn: "The merchant judges your offering.",
-    implemented: true,
-    notes: "An die Haendlerkarte mit Handelsware als Trost aus den Fotos angelehnt."
+    implemented: true
   }),
   createEncounterCard({
     id: "merchant-shocked",
@@ -697,18 +693,17 @@ const encounterCards = [
       ]),
       createChoice("gift-2", "2 Rohstoffe schenken", "Give 2 resources", [
         { type: "chooseResourceLoss", amount: 2 },
-        { type: "gainResource", resource: "goods", amount: 1 },
         { type: "gainHalfMedal", amount: 1 }
       ]),
       createChoice("gift-3", "3 Rohstoffe schenken", "Give 3 resources", [
         { type: "chooseResourceLoss", amount: 3 },
+        { type: "gainResource", resource: "goods", amount: 1 },
         { type: "gainHalfMedal", amount: 1 }
       ])
     ],
     resultsDe: "Der Handelsfuerst verbreitet Geruechte oder laesst Gnade walten.",
     resultsEn: "The trade lord spreads rumors or shows mercy.",
-    implemented: true,
-    notes: "An mehrere Haendler-Varianten aus den Fotos angelehnt."
+    implemented: true
   }),
   createEncounterCard({
     id: "merchant-generous-rumor",
@@ -789,19 +784,16 @@ const encounterCards = [
       ]),
       createChoice("gift-2", "2 Rohstoffe spenden", "Donate 2 resources", [
         { type: "chooseResourceLoss", amount: 2 },
-        { type: "jumpFirstShip" },
-        { type: "gainHalfMedal", amount: 1 }
+        { type: "jumpFirstShip" }
       ]),
       createChoice("gift-3", "3 Rohstoffe spenden", "Donate 3 resources", [
         { type: "chooseResourceLoss", amount: 3 },
-        { type: "drawFromOpponents", amountPerOpponent: 1 },
-        { type: "gainHalfMedal", amount: 1 }
+        { type: "jumpFirstShip" }
       ])
     ],
     resultsDe: "Das Wandernde Volk beurteilt deine Spende.",
     resultsEn: "The Wandering People judge your donation.",
-    implemented: true,
-    notes: "An die Karten mit Spende und Segen aus den Fotoreferenzen angelehnt."
+    implemented: true
   }),
   createEncounterCard({
     id: "distress-merchant-convoy",
@@ -939,8 +931,8 @@ const encounterCards = [
     type: "distortion",
     titleDe: "Tiefe Raumzerrung",
     titleEn: "Deep Spatial Distortion",
-    promptDe: "Eine tiefe Raumzerrung erfordert Mut. Ist dein zweiter rechter Nachbar schneller, darf dein erstes Schiff springen und du erhältst eine halbe Medaille.",
-    promptEn: "A deep spatial distortion requires courage. If the second player on your right is faster, your first ship may jump and you gain a half medal.",
+    promptDe: "Du geraetst in die Naehe einer Raumzerrung. Versuchst du den Sprung nicht, zieht dein linker Nachbar sofort eine neue Begegnung fuer dich. Versuchst du ihn, vergleicht ihr die Geschwindigkeit.",
+    promptEn: "You drift close to a spatial distortion. If you refuse the jump, the player on your left draws a new encounter for you. If you try, both of you compare speed.",
     choices: [
       createChoice("attempt", "Sprung wagen", "Risk the jump", [
         {
@@ -948,19 +940,20 @@ const encounterCards = [
           metric: "speed",
           neighborOffset: 2,
           onSuccess: [
-            { type: "jumpFirstShip" },
-            { type: "gainHalfMedal", amount: 1 }
+            { type: "chooseUpgradeLoss", amount: 1 }
           ],
           onFailure: [
-            { type: "drawNextEncounter" }
+            { type: "jumpFirstShip" }
           ]
         }
+      ]),
+      createChoice("decline", "Nicht springen", "Do not jump", [
+        { type: "drawNextEncounter" }
       ])
     ],
     resultsDe: "Die tiefe Raumzerrung wird ausgewertet.",
     resultsEn: "The deep spatial distortion is resolved.",
-    implemented: true,
-    notes: "An die Raumzerrungs-Karten mit Folgebegegnung aus den Fotoreferenzen angelehnt."
+    implemented: true
   }),
   createEncounterCard({
     id: "tooth-of-time-upgrade-loss",
@@ -977,8 +970,7 @@ const encounterCards = [
     ],
     resultsDe: "Der Zahn der Zeit betrifft alle ueberausgeruesteten Mutterschiffe.",
     resultsEn: "The tooth of time affects every over-equipped mothership.",
-    implemented: true,
-    notes: "Nach der Fotoreferenz spielbar angenaehert."
+    implemented: true
   }),
   createEncounterCard({
     id: "tooth-of-time-cargo",

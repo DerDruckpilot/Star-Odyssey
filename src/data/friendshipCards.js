@@ -46,8 +46,7 @@ const friendshipCards = [
     effectType: "drawFromLeaders",
     effectValue: { maxTargets: 2 },
     timing: "action",
-    implemented: false,
-    notes: "Als spätere Mehrschritt-Aktion vorbereitet."
+    implemented: true
   }),
   createFriendshipCard({
     id: "diplomats-galactic-aid",
@@ -59,8 +58,7 @@ const friendshipCards = [
     effectType: "galacticAid",
     effectValue: { amount: 1 },
     timing: "passive",
-    implemented: false,
-    notes: "Als Auswahl nach erfolgloser Produktion vorbereitet."
+    implemented: true
   }),
   createFriendshipCard({
     id: "green-ore-bonus",

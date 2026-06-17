@@ -11,6 +11,7 @@ pdf-inspection/
 *.rendered.png
 test-results/
 playwright-report/
+docs/*.pdf
 .DS_Store
 Thumbs.db
 .env

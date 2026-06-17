@@ -41,6 +41,7 @@ import {
   placeInitialColonyShip,
   placeInitialSpaceport,
   respondToTradeOffer,
+  resolvePendingFriendshipAction,
   resolveEncounterChoice,
   submitEncounterPending,
   resolveSevenSteal,
@@ -55,6 +56,7 @@ import {
   updateSevenDiscardSelection,
   updateEncounterResourceSelection,
   useBoughtFame,
+  useRichHelpsPoor,
 } from "./game/gameState.js";
 import { defaultLanguage, getText, languages } from "./i18n.js";
 
@@ -406,6 +408,20 @@ function chooseFriendshipCard(cardId) {
 function useBoughtFameCard() {
   if (!state.gameState) return;
   state.gameState = useBoughtFame(state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function useRichHelpsPoorCard(targetPlayerIds) {
+  if (!state.gameState) return;
+  state.gameState = useRichHelpsPoor(state.gameState, targetPlayerIds);
+  saveCurrentGameState();
+  render();
+}
+
+function resolveGalacticAid(resource) {
+  if (!state.gameState) return;
+  state.gameState = resolvePendingFriendshipAction(state.gameState, { resource });
   saveCurrentGameState();
   render();
 }
@@ -1168,6 +1184,11 @@ function renderPhaseActions(player = getActivePlayer()) {
     return wrapper;
   }
 
+  if (state.gameState.pendingFriendshipAction) {
+    wrapper.append(renderPendingFriendshipAction(player));
+    return wrapper;
+  }
+
   if (state.gameState.phase === "flight" && state.gameState.activeEncounter) {
     wrapper.append(renderEncounterActions(player));
     return wrapper;
@@ -1467,6 +1488,41 @@ function renderSevenSupplyStep(player) {
     const waiting = document.createElement("p");
     waiting.textContent = t("sevenWaitingForActivePlayer");
     wrapper.append(waiting);
+  }
+
+  return wrapper;
+}
+
+function renderPendingFriendshipAction(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "friendship-card-selection";
+  const pending = state.gameState?.pendingFriendshipAction;
+  if (!pending) return wrapper;
+
+  if (pending.type === "galacticAid") {
+    const title = document.createElement("p");
+    title.textContent = getFriendshipCardTitle(getFriendshipCardById(pending.cardId), state.language) || t("friendship");
+    wrapper.append(title);
+
+    const hint = document.createElement("p");
+    hint.textContent = t("galacticAidPrompt");
+    wrapper.append(hint);
+
+    if (player?.id !== pending.ownerPlayerId) {
+      const wait = document.createElement("p");
+      wait.textContent = t("notYourTurn");
+      wrapper.append(wait);
+      return wrapper;
+    }
+
+    const buttonRow = document.createElement("div");
+    buttonRow.className = "trade-offer-actions";
+    for (const resource of resourceTypes) {
+      buttonRow.append(
+        createButton(getResourceLabel(resource), () => resolveGalacticAid(resource), "small-button")
+      );
+    }
+    wrapper.append(buttonRow);
   }
 
   return wrapper;
@@ -1809,6 +1865,9 @@ function renderPlayerTradeControls(player = getActivePlayer()) {
   const boughtFameCard = (player?.friendshipCards ?? [])
     .map((cardId) => getFriendshipCardById(cardId))
     .find((card) => card?.implemented && card.effectType === "buyHalfMedal");
+  const richHelpsPoorCard = (player?.friendshipCards ?? [])
+    .map((cardId) => getFriendshipCardById(cardId))
+    .find((card) => card?.implemented && card.effectType === "drawFromLeaders");
 
   if (boughtFameCard) {
     const fameHint = document.createElement("p");
@@ -1816,6 +1875,10 @@ function renderPlayerTradeControls(player = getActivePlayer()) {
     const fameButton = createButton(t("buyHalfMedal"), useBoughtFameCard, "small-button");
     fameButton.disabled = !canUseBoughtFame(player, boughtFameCard);
     wrapper.append(fameHint, fameButton);
+  }
+
+  if (richHelpsPoorCard) {
+    wrapper.append(renderRichHelpsPoorControls(player, richHelpsPoorCard));
   }
 
   if (activeTradeOffer) {
@@ -1835,6 +1898,57 @@ function renderPlayerTradeControls(player = getActivePlayer()) {
   const offerButton = createButton(t("offerTrade"), offerTradeToPlayer, "small-button");
   offerButton.disabled = !canCreatePlayerTradeOffer(activePlayer);
   wrapper.append(offerButton);
+  return wrapper;
+}
+
+function renderRichHelpsPoorControls(player, card) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "trade-resource-configurator";
+
+  const hint = document.createElement("p");
+  hint.textContent = getFriendshipCardSummary(card, state.language);
+  wrapper.append(hint);
+
+  const eligiblePlayers = getRichHelpsPoorEligiblePlayers(player);
+  if (eligiblePlayers.length === 0) {
+    const empty = document.createElement("p");
+    empty.textContent = t("noLeadingPlayers");
+    wrapper.append(empty);
+    return wrapper;
+  }
+
+  const choiceHint = document.createElement("p");
+  choiceHint.textContent = t("chooseLeadingPlayers");
+  wrapper.append(choiceHint);
+
+  const checkboxWrap = document.createElement("div");
+  checkboxWrap.className = "save-list";
+  for (const targetPlayer of eligiblePlayers) {
+    const label = document.createElement("label");
+    label.className = "resource-select";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = targetPlayer.id;
+    label.append(input, document.createTextNode(targetPlayer.name));
+    checkboxWrap.append(label);
+  }
+  wrapper.append(checkboxWrap);
+
+  const getSelectedTargets = () => [...checkboxWrap.querySelectorAll("input:checked")]
+    .map((input) => input.value)
+    .slice(0, card.effectValue?.maxTargets ?? 2);
+  const actionButton = createButton(t("drawFromLeaders"), () => {
+    useRichHelpsPoorCard(getSelectedTargets());
+  }, "small-button");
+  const updateActionState = () => {
+    actionButton.disabled = !canUseRichHelpsPoor(player, card) || getSelectedTargets().length === 0;
+  };
+  checkboxWrap.querySelectorAll("input").forEach((input) => {
+    input.addEventListener("change", updateActionState);
+  });
+  updateActionState();
+  wrapper.append(actionButton);
+
   return wrapper;
 }
 
@@ -2673,7 +2787,11 @@ function getBankTradeRate(player, resource) {
 }
 
 function canTradeBuildActions(player) {
-  return Boolean(player?.id === getActivePlayer()?.id && state.gameState?.phase === "tradeBuild");
+  return Boolean(
+    player?.id === getActivePlayer()?.id &&
+    state.gameState?.phase === "tradeBuild" &&
+    !state.gameState?.pendingFriendshipAction
+  );
 }
 
 function canCreatePlayerTradeOffer(player) {
@@ -2694,6 +2812,21 @@ function canUseBoughtFame(player, card) {
   const cost = card.effectValue?.cost ?? {};
   const alreadyUsed = card.effectValue?.oncePerTurn && state.gameState?.friendshipTurnState?.usedActionKeys?.includes(card.id);
   return !alreadyUsed && Object.entries(cost).every(([resource, amount]) => (player.resources?.[resource] ?? 0) >= amount);
+}
+
+function getRichHelpsPoorEligiblePlayers(player) {
+  const currentPoints = player?.victoryPoints ?? 0;
+  return (state.gameState?.players ?? []).filter((candidate) => (
+    candidate.id !== player?.id &&
+    (candidate.victoryPoints ?? 0) > currentPoints &&
+    getTotalResourceCount(candidate.resources) > 0
+  ));
+}
+
+function canUseRichHelpsPoor(player, card) {
+  if (!player || !card || !canTradeBuildActions(player)) return false;
+  if (state.gameState?.friendshipTurnState?.usedActionKeys?.includes(card.id)) return false;
+  return getRichHelpsPoorEligiblePlayers(player).length > 0;
 }
 
 function canPlayerBuyUpgrade(player, upgrade) {

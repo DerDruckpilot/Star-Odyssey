@@ -193,6 +193,7 @@ export function createGameState({ language, playerCount, boardLayout }) {
     supplyDiscard: [],
     hasDrawnSupplyThisTurn: false,
     supplyDrawTurnKey: null,
+    pendingFriendshipAction: null,
     startingSetupGranted: false,
     friendshipTurnState: createFriendshipTurnState(`1:${players[0]?.id ?? "player-1"}`),
     activeTradeOffer: null,
@@ -257,6 +258,22 @@ export function rollProduction(gameState, boardLayout, forcedRoll = null) {
       sevenResolution: null
     };
 
+  const activePlayerId = gameState.players?.[gameState.currentPlayerIndex]?.id ?? null;
+  const activePlayer = productionResult.players.find((player) => player.id === activePlayerId) ?? null;
+  const galacticAidCard = getFriendshipCardsForPlayer(activePlayer)
+    .find((card) => card.implemented && card.effectType === "galacticAid");
+  const activePlayerGains = activePlayerId
+    ? (productionResult.gainedByPlayerId?.[activePlayerId] ?? 0)
+    : 0;
+  const pendingFriendshipAction = !isSevenRoll && galacticAidCard && activePlayer && activePlayerGains === 0
+    ? {
+      type: "galacticAid",
+      ownerPlayerId: activePlayer.id,
+      amount: Math.max(1, galacticAidCard.effectValue?.amount ?? 1),
+      cardId: galacticAidCard.id
+    }
+    : null;
+
   return updateGameState(gameState, {
     players: productionResult.players,
     phase: productionResult.phase,
@@ -265,6 +282,7 @@ export function rollProduction(gameState, boardLayout, forcedRoll = null) {
       total
     },
     sevenResolution: productionResult.sevenResolution,
+    pendingFriendshipAction,
     logEntries: [
       {
         type: "turn",
@@ -1591,6 +1609,94 @@ export function useBoughtFame(gameState) {
   });
 }
 
+export function useRichHelpsPoor(gameState, targetPlayerIds = []) {
+  if (isGameOverState(gameState) || gameState.phase !== "tradeBuild") return gameState;
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const card = getFriendshipCardsForPlayer(activePlayer)
+    .find((entry) => entry.implemented && entry.effectType === "drawFromLeaders");
+  if (!activePlayer || !card) return gameState;
+  if (isFriendshipTurnActionUsed(gameState, card.id)) return gameState;
+
+  const activePoints = activePlayer.victoryPoints ?? calculateVictoryPoints(gameState, activePlayer.id);
+  const maxTargets = Math.max(1, card.effectValue?.maxTargets ?? 2);
+  const selectedTargets = [...new Set(Array.isArray(targetPlayerIds) ? targetPlayerIds : [])]
+    .slice(0, maxTargets)
+    .map((playerId) => getPlayerById(gameState, playerId))
+    .filter((player) => (
+      player &&
+      player.id !== activePlayer.id &&
+      (player.victoryPoints ?? calculateVictoryPoints(gameState, player.id)) > activePoints &&
+      countResources(player.resources) > 0
+    ));
+  if (selectedTargets.length === 0) return gameState;
+
+  let players = gameState.players;
+  let drawnCount = 0;
+
+  for (const targetPlayer of selectedTargets) {
+    const currentTarget = players.find((player) => player.id === targetPlayer.id);
+    const drawnResource = drawRandomResource(currentTarget?.resources);
+    if (!drawnResource) continue;
+
+    players = players.map((player) => {
+      if (player.id === activePlayer.id) {
+        return withResourceDelta(player, drawnResource, 1);
+      }
+      if (player.id === targetPlayer.id) {
+        return withResourceDelta(player, drawnResource, -1);
+      }
+      return player;
+    });
+    drawnCount += 1;
+  }
+
+  if (drawnCount === 0) return gameState;
+
+  return updateGameState(gameState, {
+    players,
+    friendshipTurnState: markFriendshipTurnAction(gameState, card.id),
+    logEntry: {
+      type: "friendship",
+      messageKey: "logRichHelpsPoorUsed",
+      messageParams: {
+        player: activePlayer.name,
+        count: drawnCount
+      }
+    }
+  });
+}
+
+export function resolvePendingFriendshipAction(gameState, payload = {}) {
+  if (isGameOverState(gameState)) return gameState;
+  const pendingAction = normalizePendingFriendshipAction(gameState.pendingFriendshipAction, gameState.players);
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  if (!pendingAction || !activePlayer || pendingAction.ownerPlayerId !== activePlayer.id) return gameState;
+
+  if (pendingAction.type === "galacticAid") {
+    const resource = supplyResourceTypes.includes(payload.resource) ? payload.resource : null;
+    if (!resource) return gameState;
+
+    const players = gameState.players.map((player) => player.id === activePlayer.id
+      ? withResourceDelta(player, resource, pendingAction.amount ?? 1)
+      : player);
+
+    return updateGameState(gameState, {
+      players,
+      pendingFriendshipAction: null,
+      logEntry: {
+        type: "friendship",
+        messageKey: "logGalacticAidUsed",
+        messageParams: {
+          player: activePlayer.name,
+          resource
+        }
+      }
+    });
+  }
+
+  return gameState;
+}
+
 export function createTradeOffer(gameState, { fromPlayerId, toPlayerId, offeredResources, requestedResources }) {
   if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "tradeBuild") return gameState;
@@ -2001,6 +2107,7 @@ export function endCurrentTurn(gameState) {
     hasRolledFlightSpeed: false,
     hasDrawnSupplyThisTurn: false,
     supplyDrawTurnKey: null,
+    pendingFriendshipAction: null,
     friendshipTurnState: createFriendshipTurnState(`${nextTurnNumber}:${gameState.players[nextPlayerIndex]?.id ?? "unknown"}`),
     activeTradeOffer: null,
     sevenResolution: null,
@@ -2090,6 +2197,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     supplyDiscard: Array.isArray(gameState.supplyDiscard) ? gameState.supplyDiscard.filter((resource) => supplyResourceTypes.includes(resource)) : [],
     hasDrawnSupplyThisTurn: Boolean(gameState.hasDrawnSupplyThisTurn),
     supplyDrawTurnKey: typeof gameState.supplyDrawTurnKey === "string" ? gameState.supplyDrawTurnKey : null,
+    pendingFriendshipAction: normalizePendingFriendshipAction(gameState.pendingFriendshipAction, normalizedPlayers),
     startingSetupGranted: typeof gameState.startingSetupGranted === "boolean"
       ? gameState.startingSetupGranted
       : normalizedPhase !== "placement",
@@ -2798,6 +2906,31 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         }
       };
     }
+    case "loseSelectedResources": {
+      const selectedResources = normalizeResources(payload.lastSelectedResources);
+      if (countResources(selectedResources) === 0) {
+        return { state };
+      }
+
+      let nextState = state;
+      for (const resource of supplyResourceTypes) {
+        const amount = selectedResources[resource] ?? 0;
+        if (amount <= 0) continue;
+        nextState = updateEncounterWorkingPlayer(
+          nextState,
+          activePlayerId,
+          (player) => withResourceDelta(player, resource, -amount)
+        );
+      }
+
+      return {
+        state: nextState,
+        logEntries: [createEncounterLog("logEncounterResourceSelectionLoss", {
+          player: activePlayer.name,
+          resources: formatResourceSelectionForLog(selectedResources)
+        })]
+      };
+    }
     case "gainHalfMedal": {
       const nextState = updateEncounterWorkingPlayer(state, activePlayerId, (player) => withHalfMedalDelta(player, effect.amount ?? 1));
       return {
@@ -3163,7 +3296,19 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
       player: activePlayer.name,
       resources: formatResourceSelectionForLog(selectedResources)
     });
-    const followUp = runEncounterEffectSequence(gameState, nextState, activePlayer.id, remainingEffects, card, payload, {});
+    const followUp = runEncounterEffectSequence(
+      gameState,
+      nextState,
+      activePlayer.id,
+      remainingEffects,
+      card,
+      {
+        ...payload,
+        lastSelectedResources: selectedResources,
+        lastSelectionMode: pendingStep.mode
+      },
+      {}
+    );
     if (!followUp) return null;
 
     return {
@@ -4058,6 +4203,23 @@ function normalizePendingFriendshipCardSelection(pendingFriendshipCardSelection,
   };
 }
 
+function normalizePendingFriendshipAction(pendingFriendshipAction, players = []) {
+  if (!pendingFriendshipAction || typeof pendingFriendshipAction !== "object") return null;
+  const playerIds = new Set((players ?? []).map((player) => player.id));
+  if (!playerIds.has(pendingFriendshipAction.ownerPlayerId)) return null;
+
+  if (pendingFriendshipAction.type === "galacticAid") {
+    return {
+      type: "galacticAid",
+      ownerPlayerId: pendingFriendshipAction.ownerPlayerId,
+      amount: Number.isInteger(pendingFriendshipAction.amount) ? Math.max(1, pendingFriendshipAction.amount) : 1,
+      cardId: typeof pendingFriendshipAction.cardId === "string" ? pendingFriendshipAction.cardId : null
+    };
+  }
+
+  return null;
+}
+
 function normalizePendingTradeStationPlacement(pendingTradeStationPlacement, players = []) {
   if (!pendingTradeStationPlacement || typeof pendingTradeStationPlacement !== "object") return null;
   const playerIds = new Set((players ?? []).map((player) => player.id));
@@ -4577,6 +4739,10 @@ function distributeProduction(gameState, boardLayout, rollTotal) {
 
   return {
     players,
+    gainedByPlayerId: Object.fromEntries(
+      [...producedResourcesByPlayerId.entries()]
+        .map(([playerId, resources]) => [playerId, countResources(resources)])
+    ),
     logEntries: gains.length > 0
       ? gains.map((gain) => ({
         type: "production",

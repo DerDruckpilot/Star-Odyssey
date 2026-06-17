@@ -23,6 +23,7 @@ import {
   placeInitialColonyShip,
   placeInitialSpaceport,
   resolveEncounterChoice,
+  resolvePendingFriendshipAction,
   respondToTradeOffer,
   resolveSevenSteal,
   rollPlacementStart,
@@ -36,6 +37,7 @@ import {
   submitEncounterPending,
   tradeWithSupply,
   useBoughtFame,
+  useRichHelpsPoor,
   normalizeGameState,
   submitSevenDiscard,
   updateEncounterResourceSelection,
@@ -547,6 +549,64 @@ friendshipEffectGame = determineFlightSpeed({
   }
 }, { balls: ["yellow", "blue"] });
 assert(friendshipEffectGame.flightSpeedTotal === 5, "Wise people drive bonus should increase flight speed.");
+
+let richHelpsPoorGame = createGameState({
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+richHelpsPoorGame = {
+  ...richHelpsPoorGame,
+  phase: "tradeBuild",
+  currentPlayerIndex: 0,
+  players: richHelpsPoorGame.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      victoryPoints: 4,
+      resources: { ore: 0, fuel: 0, carbon: 0, food: 0, goods: 0 },
+      friendshipCards: ["diplomats-rich-helps-poor"]
+    }
+    : {
+      ...player,
+      victoryPoints: 6,
+      resources: { ore: 1, fuel: 1, carbon: 0, food: 0, goods: 0 }
+    })
+};
+const poorPlayerResourcesBefore = getResourceTotal(richHelpsPoorGame.players[0]);
+const richPlayerResourcesBefore = getResourceTotal(richHelpsPoorGame.players[1]);
+richHelpsPoorGame = useRichHelpsPoor(richHelpsPoorGame, ["player-2"]);
+assert(getResourceTotal(richHelpsPoorGame.players[0]) === poorPlayerResourcesBefore + 1, "Rich helps poor should give the active player one random resource from a higher-scoring player.");
+assert(getResourceTotal(richHelpsPoorGame.players[1]) === richPlayerResourcesBefore - 1, "Rich helps poor should remove one random resource from the chosen higher-scoring player.");
+const afterRichHelpsPoor = getResourceTotal(richHelpsPoorGame.players[0]);
+richHelpsPoorGame = useRichHelpsPoor(richHelpsPoorGame, ["player-2"]);
+assert(getResourceTotal(richHelpsPoorGame.players[0]) === afterRichHelpsPoor, "Rich helps poor should only be usable once per turn.");
+
+let galacticAidGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+galacticAidGame = {
+  ...galacticAidGame,
+  phase: "production",
+  currentPlayerIndex: 0,
+  players: galacticAidGame.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      friendshipCards: ["diplomats-galactic-aid"]
+    }
+    : player),
+  board: {
+    ...galacticAidGame.board,
+    structures: galacticAidGame.board.structures.filter((structure) => structure.ownerPlayerId !== "player-1")
+  }
+};
+galacticAidGame = rollProduction(galacticAidGame, boardLayout, { dice: [1, 5] });
+assert(galacticAidGame.pendingFriendshipAction?.type === "galacticAid", "Galactic aid should wait for a resource choice after a production roll with no resources.");
+const galacticAidResourcesBefore = galacticAidGame.players[0].resources.food;
+galacticAidGame = resolvePendingFriendshipAction(galacticAidGame, { resource: "food" });
+assert(galacticAidGame.pendingFriendshipAction === null, "Galactic aid should clear after choosing a resource.");
+assert(galacticAidGame.players[0].resources.food === galacticAidResourcesBefore + 1, "Galactic aid should grant the chosen resource.");
 
 let encounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
