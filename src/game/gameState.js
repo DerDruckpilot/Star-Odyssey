@@ -2721,7 +2721,7 @@ function applyEncounterResolution(gameState, encounter, resolution, metadata = {
         : [...(gameState.encounterDiscard ?? []), encounter.cardId]
     });
     const encounterDeck = resolution.nextEncounter.reshuffleAll
-      ? createEncounterDeck()
+      ? createEncounterDeck().filter((cardId) => cardId !== encounter.cardId)
       : intermediateState.encounterDeck;
     const encounterStart = startEncounter(
       {
