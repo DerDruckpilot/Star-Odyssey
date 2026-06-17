@@ -9,6 +9,11 @@ if not cel then
   error("No active cel found.")
 end
 
+if cel.layer.isBackground then
+  app.command.LayerFromBackground()
+  cel = app.activeCel or sprite.cels[1]
+end
+
 local image = cel.image
 local width = image.width
 local height = image.height
@@ -121,4 +126,3 @@ app.transaction(function()
     end
   end
 end)
-

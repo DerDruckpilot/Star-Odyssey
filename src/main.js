@@ -1,4 +1,4 @@
-import { boardLayout, resourceColors } from "./data/boardLayout.js";
+import { boardLayout } from "./data/boardLayout.js";
 import { buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
 import { getEncounterCardById } from "./data/encounterCards.js";
 import { getFriendshipCardById, getFriendshipCardSummary, getFriendshipCardTitle } from "./data/friendshipCards.js";
@@ -3053,19 +3053,11 @@ function renderPlanetSystem(system, className, explored) {
     const fallbackOffset = offsets[index] ?? { x: 0, y: 0 };
     const position = getPlanetRenderPosition(system, planet, fallbackOffset);
     const selectedClass = isSelectedElement("planet", planet.id) ? " is-selected" : "";
-    const radius = className === "start-system" ? 32 : 28;
     const imageSize = className === "start-system" ? 82 : 72;
     const planetElement = createSvgElement("g", {
       class: `planet planet--${planet.resource}${selectedClass}`,
       "data-planet-id": planet.id,
     });
-    planetElement.append(createSvgElement("circle", {
-      class: "planet-fallback",
-      cx: position.x,
-      cy: position.y,
-      r: radius,
-      fill: resourceColors[planet.resource]
-    }));
     const planetAssetPath = getPlanetAssetPath(planet.resource);
     if (planetAssetPath) {
       planetElement.append(createSvgElement("image", {
@@ -3079,19 +3071,17 @@ function renderPlanetSystem(system, className, explored) {
       }));
     }
     planetElement.append(createSvgElement("circle", {
-      class: "planet-frame",
+      class: "planet-hit-area",
       cx: position.x,
       cy: position.y,
-      r: radius,
+      r: imageSize / 2,
       fill: "transparent"
     }));
     enableBoardElementSelection(planetElement, "planet", planet.id);
     group.append(planetElement);
 
     const token = getPlanetToken(state.gameState?.board?.numberTokens, planet.id);
-    const tokenLabel = explored
-      ? formatTokenLabel(token)
-      : getTokenGroupLabel(planet.tokenGroup);
+    const tokenLabel = explored ? formatTokenLabel(token) : "";
     if (tokenLabel) {
       const marker = createSvgElement("text", {
         class: `number-marker${isActiveSpecialToken(token) ? " number-marker--special" : ""}`,
@@ -3103,15 +3093,6 @@ function renderPlanetSystem(system, className, explored) {
       group.append(marker);
     }
   });
-
-  if (!explored) {
-    group.append(createSvgElement("circle", {
-      class: "hidden-marker",
-      cx: system.x,
-      cy: system.y,
-      r: 18
-    }));
-  }
 
   return group;
 }
