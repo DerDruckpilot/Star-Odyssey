@@ -104,8 +104,8 @@ def create_blueprint(source_name, output_name):
             blue_bias = b - min(r, g)
 
             if brightness >= 125 and color_spread <= 70 and blue_bias <= 38:
-                alpha = min(245, max(0, int((brightness - 100) * 1.9)))
-                output_pixels[x, y] = (226, 238, 255, alpha)
+                alpha = min(255, max(190, int((brightness - 58) * 3.2)))
+                output_pixels[x, y] = (255, 255, 255, alpha)
 
     output = output.filter(ImageFilter.GaussianBlur(radius=0.15))
     output = crop_to_alpha(output, padding=18)
@@ -123,4 +123,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

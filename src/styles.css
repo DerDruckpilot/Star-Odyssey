@@ -670,7 +670,7 @@ h1 {
 
 .upgrade-ship-panel {
   display: grid;
-  place-items: end center;
+  place-items: center;
   min-height: 22rem;
   border: 1px solid rgba(148, 163, 184, 0.38);
   background:
@@ -680,10 +680,10 @@ h1 {
 }
 
 .upgrade-ship-image {
-  width: min(88%, 21rem);
-  max-height: 30rem;
+  width: min(96%, 25rem);
+  max-height: 32rem;
   object-fit: contain;
-  object-position: center bottom;
+  object-position: center center;
   filter: drop-shadow(0 1.1rem 1.8rem rgba(0, 0, 0, 0.6));
 }
 
@@ -713,10 +713,10 @@ h1 {
 }
 
 .upgrade-card--menu {
-  grid-template-columns: 6.6rem minmax(0, 1fr);
-  gap: 0.7rem;
+  grid-template-columns: 5.6rem minmax(0, 1fr);
+  gap: 0.95rem;
   min-height: 7rem;
-  padding: 0.55rem 0.65rem;
+  padding: 0.6rem 0.75rem;
   border: 1px solid rgba(148, 163, 184, 0.34);
   background:
     linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.58));
@@ -726,15 +726,17 @@ h1 {
   display: grid;
   place-items: center;
   min-height: 5.8rem;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(30, 41, 59, 0.56);
 }
 
 .upgrade-card-blueprint {
-  width: 5rem;
-  height: 5rem;
+  width: 5.2rem;
+  height: 5.2rem;
   object-fit: contain;
-  opacity: 0.9;
+  opacity: 1;
+  filter:
+    brightness(1.65)
+    contrast(1.45)
+    drop-shadow(0 0 0.35rem rgba(219, 234, 254, 0.36));
 }
 
 .upgrade-card-body {
@@ -1235,12 +1237,13 @@ h1 {
   }
 
   .upgrade-ship-image {
-    width: min(68%, 14rem);
+    width: min(84%, 17rem);
     max-height: 18rem;
   }
 
   .upgrade-card--menu {
     grid-template-columns: 4.8rem minmax(0, 1fr);
+    gap: 0.75rem;
   }
 
   .upgrade-card-preview {
@@ -1248,8 +1251,8 @@ h1 {
   }
 
   .upgrade-card-blueprint {
-    width: 3.8rem;
-    height: 3.8rem;
+    width: 4.25rem;
+    height: 4.25rem;
   }
 
   .turn-summary,
@@ -1291,7 +1294,7 @@ h1 {
   }
 
   .upgrade-ship-image {
-    width: min(72%, 11rem);
+    width: min(86%, 13rem);
     max-height: 14rem;
   }
 
@@ -1304,8 +1307,8 @@ h1 {
   }
 
   .upgrade-card-blueprint {
-    width: 3.8rem;
-    height: 3.8rem;
+    width: 4.1rem;
+    height: 4.1rem;
   }
 
   .player-hud-tabs {
