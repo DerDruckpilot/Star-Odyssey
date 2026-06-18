@@ -36,6 +36,8 @@ jobs:
           cp debug-friendship-cards.html _site/
           cp debug-encounter-cards.html _site/
           cp debug-outposts.html _site/
+          cp debug-colonies.html _site/
+          cp debug-spaceports.html _site/
           cp -R src _site/
           cp -R assets _site/
 
