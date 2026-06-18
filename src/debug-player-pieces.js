@@ -1,6 +1,5 @@
 import {
   playerColonyAssetPaths,
-  playerPieceColors,
   playerSpaceportAssetPaths
 } from "./data/playerPieceVisuals.js";
 
@@ -8,37 +7,19 @@ const pageKind = document.body.dataset.pieceKind === "spaceport" ? "spaceport" :
 const configs = {
   colony: {
     label: "Kolonie",
+    type: "colony-layout",
     source: "debug-colonies.html",
-    storageKey: "star-odyssey-colony-debug-layout",
+    storageKey: "star-odyssey-colony-position-debug-layout",
     downloadName: "colony-layout.json",
-    assetPaths: playerColonyAssetPaths,
-    defaultPiece: {
-      id: "colony",
-      kind: "colony",
-      assetId: "red",
-      x: 50,
-      y: 58,
-      scale: 1,
-      rotation: 0,
-      layer: 30
-    }
+    assetPath: playerColonyAssetPaths.red
   },
   spaceport: {
     label: "Raumhafen",
+    type: "spaceport-layout",
     source: "debug-spaceports.html",
-    storageKey: "star-odyssey-spaceport-debug-layout",
+    storageKey: "star-odyssey-spaceport-position-debug-layout",
     downloadName: "spaceport-layout.json",
-    assetPaths: playerSpaceportAssetPaths,
-    defaultPiece: {
-      id: "spaceport",
-      kind: "spaceport",
-      assetId: "red",
-      x: 50,
-      y: 55,
-      scale: 1,
-      rotation: 0,
-      layer: 30
-    }
+    assetPath: playerSpaceportAssetPaths.red
   }
 };
 
@@ -50,7 +31,6 @@ const dummyPlanets = document.querySelector("#dummy-planets");
 const spaceLines = document.querySelector("#space-lines");
 const spacePoints = document.querySelector("#space-points");
 const layoutVariantSelect = document.querySelector("#layout-variant");
-const assetSelect = document.querySelector("#piece-asset");
 const controls = {
   x: document.querySelector("#control-x"),
   y: document.querySelector("#control-y"),
@@ -60,33 +40,60 @@ const controls = {
 };
 
 const layoutVariants = {
-  twoTop: {
-    id: "twoTop",
+  layoutA: {
+    id: "layoutA",
     label: "Layout A - 2 oben / 1 unten",
     centers: [
       [282, 160],
       [438, 160],
       [360, 295]
+    ],
+    defaults: [
+      [50, 31],
+      [44.6, 43.8],
+      [55.4, 43.8]
     ]
   },
-  oneTop: {
-    id: "oneTop",
+  layoutB: {
+    id: "layoutB",
     label: "Layout B - 1 oben / 2 unten",
     centers: [
       [360, 150],
       [282, 285],
       [438, 285]
+    ],
+    defaults: [
+      [44.6, 41.8],
+      [55.4, 41.8],
+      [50, 54.8]
     ]
   }
 };
 
 const defaultLayout = {
-  layoutVariant: "twoTop",
-  piece: config.defaultPiece
+  activeLayout: "layoutA",
+  layoutA: {
+    positions: createDefaultPositions("layoutA")
+  },
+  layoutB: {
+    positions: createDefaultPositions("layoutB")
+  }
 };
 
 let layout = loadLayout();
+let selectedId = `${pageKind}-site-1`;
 let dragState = null;
+
+function createDefaultPositions(layoutId) {
+  return layoutVariants[layoutId].defaults.map(([x, y], index) => ({
+    id: `${pageKind}-site-${index + 1}`,
+    x,
+    y,
+    scale: 1,
+    rotation: 0,
+    layer: 30 + index
+  }));
+}
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -104,28 +111,29 @@ function loadLayout() {
 
 function normalizeLayout(value) {
   const next = clone(defaultLayout);
-  next.layoutVariant = layoutVariants[value.layoutVariant] ? value.layoutVariant : next.layoutVariant;
-  next.piece = { ...next.piece, ...(value.piece ?? {}) };
-  next.piece.assetId = config.assetPaths[next.piece.assetId] ? next.piece.assetId : "red";
+  next.activeLayout = layoutVariants[value.activeLayout] ? value.activeLayout : next.activeLayout;
+
+  for (const layoutId of Object.keys(layoutVariants)) {
+    next[layoutId].positions = next[layoutId].positions.map((position, index) => ({
+      ...position,
+      ...(value[layoutId]?.positions?.[index] ?? {}),
+      id: `${pageKind}-site-${index + 1}`
+    }));
+  }
+
   return next;
 }
 
-function getAssetPath() {
-  return config.assetPaths[layout.piece.assetId] ?? config.assetPaths.red;
+function getActivePositions() {
+  return layout[layout.activeLayout].positions;
 }
 
-function populateAssetSelect() {
-  assetSelect.replaceChildren();
-  for (const color of playerPieceColors) {
-    const option = document.createElement("option");
-    option.value = color;
-    option.textContent = `${color} (${config.assetPaths[color].split("/").pop()})`;
-    assetSelect.append(option);
-  }
+function getPositionById(id) {
+  return getActivePositions().find((position) => position.id === id) ?? getActivePositions()[0];
 }
 
 function renderHexLayout() {
-  const variant = layoutVariants[layout.layoutVariant] ?? layoutVariants.twoTop;
+  const variant = layoutVariants[layout.activeLayout] ?? layoutVariants.layoutA;
   const hexes = variant.centers.map(([cx, cy]) => getHexPoints(cx, cy));
   hexPolygons.replaceChildren();
   dummyPlanets.replaceChildren();
@@ -191,59 +199,81 @@ function render() {
   renderHexLayout();
   objectLayer.replaceChildren();
 
-  const wrapper = document.createElement("button");
-  wrapper.type = "button";
-  wrapper.className = `debug-object debug-object--${layout.piece.kind} is-selected`;
-  wrapper.dataset.id = layout.piece.id;
-  applyObjectStyle(wrapper);
+  for (const position of getActivePositions()) {
+    const wrapper = document.createElement("button");
+    wrapper.type = "button";
+    wrapper.className = `debug-object debug-object--${pageKind}${position.id === selectedId ? " is-selected" : ""}`;
+    wrapper.dataset.id = position.id;
+    applyObjectStyle(wrapper, position);
 
-  const image = document.createElement("img");
-  image.src = getAssetPath();
-  image.alt = config.label;
-  wrapper.append(image);
+    const image = document.createElement("img");
+    image.src = config.assetPath;
+    image.alt = `${config.label} Position ${getPositionNumber(position.id)}`;
+    wrapper.append(image);
 
-  const label = document.createElement("span");
-  label.textContent = config.label.slice(0, 1);
-  wrapper.append(label);
+    const label = document.createElement("span");
+    label.textContent = String(getPositionNumber(position.id));
+    wrapper.append(label);
 
-  wrapper.addEventListener("pointerdown", startDrag);
-  objectLayer.append(wrapper);
+    wrapper.addEventListener("pointerdown", startDrag);
+    wrapper.addEventListener("click", () => {
+      selectedId = position.id;
+      updateSelectionClass();
+      syncControls();
+    });
+    objectLayer.append(wrapper);
+  }
 }
 
-function applyObjectStyle(element) {
-  element.style.left = `${layout.piece.x}%`;
-  element.style.top = `${layout.piece.y}%`;
-  element.style.zIndex = String(layout.piece.layer);
-  element.style.transform = `translate(-50%, -50%) rotate(${layout.piece.rotation}deg) scale(${layout.piece.scale})`;
+function getPositionNumber(id) {
+  return Number(id.match(/-(\d+)$/)?.[1] ?? 1);
 }
 
-function updateRenderedObject() {
-  const element = objectLayer.querySelector("[data-id]");
-  if (element) applyObjectStyle(element);
+function applyObjectStyle(element, position) {
+  element.style.left = `${position.x}%`;
+  element.style.top = `${position.y}%`;
+  element.style.zIndex = String(position.layer);
+  element.style.transform = `translate(-50%, -50%) rotate(${position.rotation}deg) scale(${position.scale})`;
+}
+
+function updateRenderedObject(id) {
+  const position = getPositionById(id);
+  const element = objectLayer.querySelector(`[data-id="${id}"]`);
+  if (position && element) applyObjectStyle(element, position);
+}
+
+function updateSelectionClass() {
+  for (const element of objectLayer.querySelectorAll(".debug-object")) {
+    element.classList.toggle("is-selected", element.dataset.id === selectedId);
+  }
 }
 
 function startDrag(event) {
   const target = event.currentTarget;
+  selectedId = target.dataset.id;
   target.setPointerCapture(event.pointerId);
   const rect = stage.getBoundingClientRect();
+  const position = getPositionById(selectedId);
   dragState = {
     pointerId: event.pointerId,
-    offsetX: event.clientX - rect.left - (layout.piece.x / 100) * rect.width,
-    offsetY: event.clientY - rect.top - (layout.piece.y / 100) * rect.height
+    offsetX: event.clientX - rect.left - (position.x / 100) * rect.width,
+    offsetY: event.clientY - rect.top - (position.y / 100) * rect.height
   };
   target.addEventListener("pointermove", onDrag);
   target.addEventListener("pointerup", stopDrag);
   target.addEventListener("pointercancel", stopDrag);
+  updateSelectionClass();
   syncControls();
 }
 
 function onDrag(event) {
   if (!dragState) return;
+  const position = getPositionById(selectedId);
   const rect = stage.getBoundingClientRect();
-  layout.piece.x = clamp(((event.clientX - rect.left - dragState.offsetX) / rect.width) * 100, 0, 100);
-  layout.piece.y = clamp(((event.clientY - rect.top - dragState.offsetY) / rect.height) * 100, 0, 100);
+  position.x = clamp(((event.clientX - rect.left - dragState.offsetX) / rect.width) * 100, 0, 100);
+  position.y = clamp(((event.clientY - rect.top - dragState.offsetY) / rect.height) * 100, 0, 100);
   saveToLocalStorage();
-  updateRenderedObject();
+  updateRenderedObject(selectedId);
   syncControls();
 }
 
@@ -260,23 +290,24 @@ function clamp(value, min, max) {
 }
 
 function syncControls() {
-  document.querySelector("#selected-title").textContent = `${config.label} (${layout.piece.assetId})`;
+  const position = getPositionById(selectedId);
+  document.querySelector("#selected-title").textContent = `${config.label} Position ${getPositionNumber(position.id)}`;
   for (const [key, input] of Object.entries(controls)) {
-    input.value = layout.piece[key];
+    input.value = position[key];
   }
 }
 
 function syncSelects() {
-  layoutVariantSelect.value = layout.layoutVariant;
-  assetSelect.value = layout.piece.assetId;
+  layoutVariantSelect.value = layout.activeLayout;
 }
 
 function updateSelectedFromControls() {
-  layout.piece.x = Number(controls.x.value);
-  layout.piece.y = Number(controls.y.value);
-  layout.piece.scale = Number(controls.scale.value);
-  layout.piece.rotation = Number(controls.rotation.value);
-  layout.piece.layer = Number(controls.layer.value);
+  const position = getPositionById(selectedId);
+  position.x = Number(controls.x.value);
+  position.y = Number(controls.y.value);
+  position.scale = Number(controls.scale.value);
+  position.rotation = Number(controls.rotation.value);
+  position.layer = Number(controls.layer.value);
   saveToLocalStorage();
   render();
 }
@@ -285,23 +316,36 @@ function saveToLocalStorage() {
   localStorage.setItem(config.storageKey, JSON.stringify(layout));
 }
 
+function toExportPosition(position) {
+  return {
+    id: position.id,
+    x: position.x,
+    y: position.y,
+    scale: position.scale,
+    rotation: position.rotation,
+    z: position.layer
+  };
+}
+
 function exportLayout() {
   const output = {
+    type: config.type,
     generatedAt: new Date().toISOString(),
     source: config.source,
-    pieceKind: pageKind,
-    layoutVariant: layout.layoutVariant,
     coordinateSystem: {
       origin: "debug-stage top-left",
       x: "percent of stage width",
       y: "percent of stage height",
       scale: "CSS transform scale",
       rotation: "degrees",
-      layer: "CSS z-index"
+      z: "CSS z-index"
     },
-    piece: {
-      ...layout.piece,
-      asset: getAssetPath()
+    referenceAsset: config.assetPath,
+    layoutA: {
+      positions: layout.layoutA.positions.map(toExportPosition)
+    },
+    layoutB: {
+      positions: layout.layoutB.positions.map(toExportPosition)
     }
   };
   const json = JSON.stringify(output, null, 2);
@@ -315,17 +359,9 @@ function exportLayout() {
   URL.revokeObjectURL(url);
 }
 
-populateAssetSelect();
-syncSelects();
-
 layoutVariantSelect.addEventListener("change", (event) => {
-  layout.layoutVariant = event.target.value;
-  saveToLocalStorage();
-  render();
-});
-
-assetSelect.addEventListener("change", (event) => {
-  layout.piece.assetId = event.target.value;
+  layout.activeLayout = event.target.value;
+  selectedId = getActivePositions()[0].id;
   saveToLocalStorage();
   render();
   syncControls();
@@ -337,6 +373,7 @@ for (const input of Object.values(controls)) {
 
 document.querySelector("#reset-layout").addEventListener("click", () => {
   layout = clone(defaultLayout);
+  selectedId = getActivePositions()[0].id;
   saveToLocalStorage();
   syncSelects();
   render();
@@ -345,5 +382,6 @@ document.querySelector("#reset-layout").addEventListener("click", () => {
 
 document.querySelector("#save-layout").addEventListener("click", exportLayout);
 
+syncSelects();
 render();
 syncControls();

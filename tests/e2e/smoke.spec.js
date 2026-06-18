@@ -101,18 +101,21 @@ test("player colony and spaceport debug pages load and export layouts", async ({
     await expect(page.getByRole("heading", { name: debugPage.heading })).toBeVisible();
     await expect(page.locator("#debug-stage")).toBeVisible();
     await expect(page.locator(".debug-dummy-planet")).toHaveCount(3);
-    await expect(page.locator(debugPage.objectClass)).toBeVisible();
+    await expect(page.locator(debugPage.objectClass)).toHaveCount(3);
     await expect(page.locator('nav a[href="./debug-colonies.html"]')).toBeVisible();
     await expect(page.locator('nav a[href="./debug-spaceports.html"]')).toBeVisible();
 
-    await page.locator("#layout-variant").selectOption("oneTop");
-    await expect(page.locator("#layout-variant")).toHaveValue("oneTop");
-    await page.locator("#piece-asset").selectOption("green");
-    await expect(page.locator("#piece-asset")).toHaveValue("green");
+    await page.locator("#layout-variant").selectOption("layoutB");
+    await expect(page.locator("#layout-variant")).toHaveValue("layoutB");
+    await expect(page.locator(debugPage.objectClass)).toHaveCount(3);
+    await page.locator(debugPage.objectClass).nth(1).click();
+    await expect(page.locator("#selected-title")).toContainText("Position 2");
     await page.locator("#control-scale").fill("1.1");
     await page.locator("#save-layout").click();
     await expect(page.locator("#export-output")).toHaveValue(new RegExp(`"source": "${debugPage.source.replace(".", "\\.")}"`));
-    await expect(page.locator("#export-output")).toHaveValue(/"layoutVariant": "oneTop"/);
-    await expect(page.locator("#export-output")).toHaveValue(/"assetId": "green"/);
+    await expect(page.locator("#export-output")).toHaveValue(/"layoutA": \{\s+"positions": \[/);
+    await expect(page.locator("#export-output")).toHaveValue(/"layoutB": \{\s+"positions": \[/);
+    await expect(page.locator("#export-output")).toHaveValue(/"id": ".*-site-3"/);
+    await expect(page.locator("#export-output")).toHaveValue(/"z": 32/);
   }
 });
