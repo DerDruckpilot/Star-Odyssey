@@ -19,6 +19,7 @@ test("main menu, new game flow, board, HUD, and settings menu work", async ({ pa
   await page.getByRole("button", { name: "Start game now" }).click();
 
   await expect(page.locator(".board-placeholder")).toBeVisible();
+  await expect(page.locator(".board-event-log")).toBeVisible();
   await expect(page.getByRole("button", { name: "Player 1" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Player 2" })).toBeVisible();
 
@@ -27,6 +28,7 @@ test("main menu, new game flow, board, HUD, and settings menu work", async ({ pa
   await page.getByRole("button", { name: "Player 1" }).click();
   await expect(page.locator(".player-hud-panel")).toBeVisible();
   await expect(page.getByRole("button", { name: "Turn" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log" })).toHaveCount(0);
   await page.getByRole("button", { name: "Close" }).click();
   await expect(page.locator(".player-hud-panel")).toHaveCount(0);
 

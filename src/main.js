@@ -821,6 +821,7 @@ function renderBoardShell() {
     board,
     renderCompactBoardStatus(),
     renderVictoryPointList(),
+    renderBoardEventLog(),
     renderPlayerHudButtons(),
     renderPlayerHudModal(),
     renderGameOverOverlay(),
@@ -948,8 +949,7 @@ function renderPlayerHudTabs() {
     ["turn", t("tabTurn")],
     ["resources", t("tabTrade")],
     ["upgrades", t("tabUpgrades")],
-    ["fleet", t("tabFleet")],
-    ["log", t("tabLog")]
+    ["fleet", t("tabFleet")]
   ];
 
   for (const [tabId, label] of tabDefinitions) {
@@ -976,8 +976,6 @@ function renderPlayerHudTabContent(player) {
     content.append(renderFleetSummary(player));
     content.append(renderFriendshipSummary(player));
     content.append(renderBuildControls(player));
-  } else if (state.hudTab === "log") {
-    content.append(renderEventLog(), renderSelectionPanel());
   } else {
     content.append(renderTurnSummary(player), renderPhaseActions(player));
   }
@@ -2163,15 +2161,23 @@ function renderResourceSelect(labelText, selectedResource, onChange) {
   return label;
 }
 
-function renderEventLog() {
+function renderBoardEventLog() {
+  return renderEventLog({
+    className: "board-event-log event-log",
+    limit: 10,
+    titleKey: "tabLog"
+  });
+}
+
+function renderEventLog({ className = "event-log", limit = 5, titleKey = "eventLog" } = {}) {
   const wrapper = document.createElement("div");
-  wrapper.className = "event-log";
+  wrapper.className = className;
 
   const title = document.createElement("strong");
-  title.textContent = t("eventLog");
+  title.textContent = t(titleKey);
 
   const list = document.createElement("ol");
-  const entries = (state.gameState?.log ?? []).slice(-5).reverse();
+  const entries = (state.gameState?.log ?? []).slice(-limit).reverse();
 
   if (entries.length === 0) {
     const item = document.createElement("li");

@@ -344,6 +344,34 @@ h1 {
   font-weight: 800;
 }
 
+.board-event-log {
+  position: fixed;
+  left: 0.75rem;
+  top: 9.2rem;
+  z-index: 5;
+  width: min(32vw, 15rem);
+  max-height: min(38vh, 18rem);
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.74);
+  border-color: rgba(148, 163, 184, 0.42);
+  backdrop-filter: blur(10px);
+}
+
+.board-event-log strong {
+  font-size: clamp(0.72rem, 1vw, 0.86rem);
+}
+
+.board-event-log ol {
+  max-height: min(30vh, 14rem);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.board-event-log li {
+  font-size: clamp(0.64rem, 0.95vw, 0.78rem);
+  line-height: 1.25;
+}
+
 .player-hud-launcher {
   position: fixed;
   left: 0.5rem;
@@ -453,7 +481,7 @@ h1 {
 .player-hud-tabs {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.25rem;
 }
 
@@ -1347,7 +1375,7 @@ h1 {
   }
 
   .player-hud-tabs {
-    grid-template-columns: repeat(5, minmax(4rem, 1fr));
+    grid-template-columns: repeat(4, minmax(4rem, 1fr));
     overflow-x: auto;
   }
 }
