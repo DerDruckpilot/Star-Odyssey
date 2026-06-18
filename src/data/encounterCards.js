@@ -992,6 +992,10 @@ const encounterCards = [
   })
 ];
 
+export function getAllEncounterCards() {
+  return encounterCards;
+}
+
 export function getEncounterDeckIds() {
   return encounterCards
     .filter((card) => card.implemented && card.inDeck !== false)

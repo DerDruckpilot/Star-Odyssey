@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Star Odyssey Encounter Cards Debug</title>
+    <link rel="stylesheet" href="./src/debug-card-review.css" />
+  </head>
+  <body class="debug-card-page">
+    <main class="debug-card-shell debug-card-shell--encounters">
+      <header class="debug-card-header">
+        <p>Star Odyssey Debug</p>
+        <h1>Begegnungskarten</h1>
+        <nav class="debug-card-nav" aria-label="Debug navigation">
+          <a href="./index.html">Hauptseite</a>
+          <a href="./debug-upgrades.html">Upgrade Debug</a>
+          <a href="./debug-friendship-cards.html">Freundschaftskarten</a>
+          <a href="./debug-encounter-cards.html" aria-current="page">Begegnungskarten</a>
+        </nav>
+      </header>
+
+      <section class="debug-card-controls" aria-label="Filter">
+        <label>
+          Suche
+          <input id="card-search" type="search" placeholder="ID, Titel, Text, Effekt ..." />
+        </label>
+        <label>
+          Typ / Kategorie
+          <select id="type-filter"></select>
+        </label>
+        <label>
+          Implementierung
+          <select id="implemented-filter">
+            <option value="all">Alle</option>
+            <option value="implemented">Implementiert</option>
+            <option value="pending">Nicht implementiert</option>
+          </select>
+        </label>
+        <div class="debug-card-actions">
+          <button id="expand-all" type="button">Alle aufklappen</button>
+          <button id="collapse-all" type="button">Alle einklappen</button>
+        </div>
+      </section>
+
+      <section id="card-stats" class="debug-card-stats" aria-label="Zählung"></section>
+      <section class="debug-encounter-layout">
+        <section id="card-list" class="debug-card-list" aria-label="Begegnungskarten"></section>
+        <aside id="encounter-simulator" class="debug-simulator" aria-label="Begegnungssimulation"></aside>
+      </section>
+    </main>
+
+    <script type="module" src="./src/debug-encounter-cards.js"></script>
+  </body>
+</html>

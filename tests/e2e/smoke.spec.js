@@ -36,3 +36,18 @@ test("main menu, new game flow, board, HUD, and settings menu work", async ({ pa
   await expect(page.getByRole("heading", { name: "Menu" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
 });
+
+test("card debug review pages load and filter cards", async ({ page }) => {
+  await page.goto("/debug-friendship-cards.html");
+  await expect(page.getByRole("heading", { name: "Freundschaftskarten" })).toBeVisible();
+  await expect(page.locator("#card-list details").first()).toBeVisible();
+  await page.locator("#card-search").fill("diplomats");
+  await expect(page.locator("#card-list details").first()).toBeVisible();
+
+  await page.goto("/debug-encounter-cards.html");
+  await expect(page.getByRole("heading", { name: "Begegnungskarten" })).toBeVisible();
+  await expect(page.locator("#card-list details").first()).toBeVisible();
+  await expect(page.locator("#encounter-simulator")).toBeVisible();
+  await page.locator("#card-search").fill("pirate");
+  await expect(page.locator("#card-list details").first()).toBeVisible();
+});

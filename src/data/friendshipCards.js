@@ -242,6 +242,10 @@ const friendshipCards = [
   })
 ];
 
+export function getAllFriendshipCards() {
+  return friendshipCards;
+}
+
 export function getFriendshipCardsByOutpostType(outpostType) {
   return friendshipCards.filter((card) => card.outpostType === outpostType);
 }
