@@ -14,7 +14,7 @@ import {
   revealSystemsById
 } from "../data/numberTokens.js";
 
-const playerColorKeys = ["red", "blue", "yellow", "white"];
+const playerColorKeys = ["red", "blue", "yellow", "green"];
 const supplyResourceTypes = ["ore", "fuel", "carbon", "food", "goods"];
 const supplyCardsPerResource = 8;
 const mothershipBallValues = {

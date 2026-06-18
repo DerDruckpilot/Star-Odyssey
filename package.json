@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "serve . --listen 4173",
-    "check": "node --check src/main.js && node --check src/debug-upgrades.js && node --check src/debug-friendship-cards.js && node --check src/debug-encounter-cards.js && node --check src/debug-outposts.js && node --check src/i18n.js && node --check src/data/boardLayout.js && node --check src/data/buildCosts.js && node --check src/data/numberTokens.js && node --check src/data/friendshipCards.js && node --check src/data/encounterCards.js && node --check src/data/upgradeVisuals.js && node --check src/data/outpostVisuals.js && node --check src/game/gameState.js && node --check scripts/check-structure.js && node --check scripts/check-game-state.js",
+    "check": "node --check src/main.js && node --check src/debug-upgrades.js && node --check src/debug-friendship-cards.js && node --check src/debug-encounter-cards.js && node --check src/debug-outposts.js && node --check src/debug-player-pieces.js && node --check src/i18n.js && node --check src/data/boardLayout.js && node --check src/data/buildCosts.js && node --check src/data/numberTokens.js && node --check src/data/friendshipCards.js && node --check src/data/encounterCards.js && node --check src/data/upgradeVisuals.js && node --check src/data/outpostVisuals.js && node --check src/data/playerPieceVisuals.js && node --check src/game/gameState.js && node --check scripts/check-structure.js && node --check scripts/check-game-state.js",
     "test": "node scripts/check-structure.js && node scripts/check-game-state.js",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",

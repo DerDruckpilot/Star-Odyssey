@@ -3,20 +3,21 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Star Odyssey - Outpost Debug</title>
+    <title>Star Odyssey - Kolonien Debug</title>
     <link rel="stylesheet" href="./src/debug-outposts.css">
+    <link rel="stylesheet" href="./src/debug-player-pieces.css">
   </head>
-  <body>
+  <body data-piece-kind="colony">
     <header class="debug-header">
       <div>
         <p class="eyebrow">Star Odyssey Debug</p>
-        <h1>Außenposten Debug</h1>
-        <p class="debug-subtitle">Außenposten & Handelsstationen ausrichten</p>
+        <h1>Kolonien Debug</h1>
+        <p class="debug-subtitle">Kolonien auf 3-Planeten-Feldern ausrichten</p>
       </div>
       <nav>
         <a href="./debug-upgrades.html">Upgrade Debug</a>
-        <a href="./debug-outposts.html" aria-current="page">Outpost Debug</a>
-        <a href="./debug-colonies.html">Kolonien Debug</a>
+        <a href="./debug-outposts.html">Outpost Debug</a>
+        <a href="./debug-colonies.html" aria-current="page">Kolonien Debug</a>
         <a href="./debug-spaceports.html">Raumhäfen Debug</a>
         <a href="./debug-friendship-cards.html">Freundschaftskarten Debug</a>
         <a href="./debug-encounter-cards.html">Begegnungskarten Debug</a>
@@ -25,8 +26,9 @@
 
     <main class="debug-shell">
       <section class="debug-stage-card">
-        <div id="debug-stage" class="debug-stage" aria-label="Outpost layout debug stage">
+        <div id="debug-stage" class="debug-stage" aria-label="Kolonie layout debug stage">
           <svg id="hex-layout" class="hex-grid" viewBox="0 0 720 520" aria-hidden="true">
+            <g id="dummy-planets"></g>
             <g id="hex-polygons" class="hexes"></g>
             <g id="space-lines" class="space-lines"></g>
             <g id="space-points" class="space-points"></g>
@@ -45,46 +47,15 @@
           </select>
         </label>
         <label>
-          Außenposten
-          <select id="outpost-asset"></select>
-        </label>
-        <label>
-          Handelsstation 1
-          <select id="station-asset-1"></select>
-        </label>
-        <label>
-          Handelsstation 2
-          <select id="station-asset-2"></select>
-        </label>
-        <label>
-          Handelsstation 3
-          <select id="station-asset-3"></select>
-        </label>
-        <label>
-          Handelsstation 4
-          <select id="station-asset-4"></select>
-        </label>
-        <label>
-          Handelsstation 5
-          <select id="station-asset-5"></select>
-        </label>
-        <label>
-          Sichtbare Handelsstationen
-          <select id="station-count">
-            <option value="0">0</option>
-            <option value="1">1</option>
-            <option value="2" selected>2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-          </select>
+          Kolonie
+          <select id="piece-asset"></select>
         </label>
 
         <div class="selection-box">
-          <h3 id="selected-title">Nichts ausgewählt</h3>
+          <h3 id="selected-title">Kolonie</h3>
           <label>X <input id="control-x" type="number" step="0.1"></label>
           <label>Y <input id="control-y" type="number" step="0.1"></label>
-          <label>Scale <input id="control-scale" type="number" step="0.01" min="0.1" max="3"></label>
+          <label>Größe / Scale <input id="control-scale" type="number" step="0.01" min="0.1" max="3"></label>
           <label>Rotation <input id="control-rotation" type="number" step="1"></label>
           <label>Layer <input id="control-layer" type="number" step="1"></label>
         </div>
@@ -98,6 +69,6 @@
       </aside>
     </main>
 
-    <script type="module" src="./src/debug-outposts.js"></script>
+    <script type="module" src="./src/debug-player-pieces.js"></script>
   </body>
 </html>

@@ -1,0 +1,31 @@
+.debug-dummy-planet {
+  fill: rgba(71, 85, 105, 0.84);
+  stroke: rgba(226, 242, 255, 0.42);
+  stroke-width: 2;
+}
+
+.debug-dummy-planet--2 {
+  fill: rgba(75, 85, 99, 0.84);
+}
+
+.debug-dummy-planet--3 {
+  fill: rgba(55, 65, 81, 0.84);
+}
+
+.debug-object--colony {
+  width: 6.3rem;
+}
+
+.debug-object--spaceport {
+  width: 7.7rem;
+}
+
+@media (max-width: 980px) {
+  .debug-object--colony {
+    width: 5.2rem;
+  }
+
+  .debug-object--spaceport {
+    width: 6.4rem;
+  }
+}

@@ -13,6 +13,12 @@ import {
   getTradeStationAssetPath,
   outpostVisualDefaults
 } from "./data/outpostVisuals.js";
+import {
+  getPlayerColonyAssetPath,
+  getPlayerShipAssetPath,
+  getPlayerSpaceportAssetPath,
+  playerPieceVisualDefaults
+} from "./data/playerPieceVisuals.js";
 import { mothershipUpgradeSlots, upgradeMenuAssetPaths, upgradeMenuOrder } from "./data/upgradeVisuals.js";
 import {
   advanceToFlightPhase,
@@ -3291,13 +3297,13 @@ function renderStructuresLayer() {
     const selectedClass = isSelectedElement("structure", structure.id) ? " is-selected" : "";
     const pendingSpaceportClass = isValidPendingSpaceportTarget(structure.id) ? " is-spaceport-build-target" : "";
     const ownerIndex = Number.parseInt(structure.ownerPlayerId.replace("player-", ""), 10);
+    const owner = state.gameState?.players?.find((player) => player.id === structure.ownerPlayerId);
     const structureGroup = createSvgElement("g", {
       class: `structure structure--${structure.type}${selectedClass}${pendingSpaceportClass}`
     });
     enableBoardElementSelection(structureGroup, "structure", structure.id);
 
     if (structure.type === "tradeStation") {
-      const owner = state.gameState?.players?.find((player) => player.id === structure.ownerPlayerId);
       const visual = outpostVisualDefaults.tradeStation;
       structureGroup.append(createSvgElement("circle", {
         class: "trade-station-hit-area",
@@ -3315,33 +3321,41 @@ function renderStructuresLayer() {
         preserveAspectRatio: "xMidYMid meet"
       }));
     } else if (structure.type === "spaceport") {
-      structureGroup.append(createSvgElement("rect", {
-        class: `structure-shape player-color-${ownerIndex}`,
-        x: site.x - 16,
-        y: site.y - 16,
-        width: 32,
-        height: 32,
-        rx: 5
-      }));
-    } else {
+      const visual = playerPieceVisualDefaults.spaceport;
       structureGroup.append(createSvgElement("circle", {
-        class: `structure-shape player-color-${ownerIndex}`,
+        class: "structure-hit-area",
         cx: site.x,
         cy: site.y,
-        r: 15
+        r: visual.hitRadius
+      }));
+      structureGroup.append(createSvgElement("image", {
+        class: `spaceport-image player-color-${ownerIndex}`,
+        href: getPlayerSpaceportAssetPath(owner?.color),
+        x: site.x - visual.width / 2,
+        y: site.y - visual.height / 2,
+        width: visual.width,
+        height: visual.height,
+        preserveAspectRatio: "xMidYMid meet"
+      }));
+    } else {
+      const visual = playerPieceVisualDefaults.colony;
+      structureGroup.append(createSvgElement("circle", {
+        class: "structure-hit-area",
+        cx: site.x,
+        cy: site.y,
+        r: visual.hitRadius
+      }));
+      structureGroup.append(createSvgElement("image", {
+        class: `colony-image player-color-${ownerIndex}`,
+        href: getPlayerColonyAssetPath(owner?.color),
+        x: site.x - visual.width / 2,
+        y: site.y - visual.height / 2,
+        width: visual.width,
+        height: visual.height,
+        preserveAspectRatio: "xMidYMid meet"
       }));
     }
 
-    if (structure.type !== "tradeStation") {
-      const label = createSvgElement("text", {
-        class: "structure-label",
-        x: site.x,
-        y: site.y + 6,
-        "text-anchor": "middle"
-      });
-      label.textContent = structure.ownerPlayerId.replace("player-", "");
-      structureGroup.append(label);
-    }
     group.append(structureGroup);
   }
 
@@ -3361,12 +3375,23 @@ function renderShipsLayer() {
     });
     enableBoardElementSelection(shipGroup, "ship", ship.id);
 
-    const ownerIndex = Number.parseInt(ship.ownerPlayerId.replace("player-", ""), 10) - 1;
-    shipGroup.append(createSvgElement("path", {
-      class: `ship-shape player-color-${ownerIndex + 1}`,
-      d: ship.type === "tradeShip"
-        ? `M ${point.x - 14} ${point.y + 13} L ${point.x} ${point.y - 15} L ${point.x + 14} ${point.y + 13} Z`
-        : `M ${point.x - 14} ${point.y} L ${point.x} ${point.y - 16} L ${point.x + 14} ${point.y} L ${point.x} ${point.y + 16} Z`
+    const ownerIndex = Number.parseInt(ship.ownerPlayerId.replace("player-", ""), 10);
+    const owner = state.gameState?.players?.find((player) => player.id === ship.ownerPlayerId);
+    const visual = playerPieceVisualDefaults.ship;
+    shipGroup.append(createSvgElement("circle", {
+      class: "ship-hit-area",
+      cx: point.x,
+      cy: point.y,
+      r: visual.hitRadius
+    }));
+    shipGroup.append(createSvgElement("image", {
+      class: `ship-image player-color-${ownerIndex}`,
+      href: getPlayerShipAssetPath(owner?.color, ship.id),
+      x: point.x - visual.width / 2,
+      y: point.y - visual.height / 2,
+      width: visual.width,
+      height: visual.height,
+      preserveAspectRatio: "xMidYMid meet"
     }));
     group.append(shipGroup);
   }

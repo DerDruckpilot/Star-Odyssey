@@ -60,6 +60,8 @@ test("outpost debug page loads and exports layout", async ({ page }) => {
   await expect(page.locator(".debug-object--outpost")).toBeVisible();
   await expect(page.locator('nav a[href="./debug-upgrades.html"]')).toBeVisible();
   await expect(page.locator('nav a[href="./debug-outposts.html"]')).toHaveAttribute("aria-current", "page");
+  await expect(page.locator('nav a[href="./debug-colonies.html"]')).toBeVisible();
+  await expect(page.locator('nav a[href="./debug-spaceports.html"]')).toBeVisible();
   await expect(page.locator('nav a[href="./debug-friendship-cards.html"]')).toBeVisible();
   await expect(page.locator('nav a[href="./debug-encounter-cards.html"]')).toBeVisible();
 
@@ -76,4 +78,41 @@ test("outpost debug page loads and exports layout", async ({ page }) => {
   await expect(page.locator("#export-output")).toHaveValue(/"source": "debug-outposts\.html"/);
   await expect(page.locator("#export-output")).toHaveValue(/"layoutVariant": "oneTop"/);
   await expect(page.locator("#export-output")).toHaveValue(/"stationCount": 5/);
+});
+
+test("player colony and spaceport debug pages load and export layouts", async ({ page }) => {
+  const pages = [
+    {
+      path: "/debug-colonies.html",
+      heading: "Kolonien Debug",
+      objectClass: ".debug-object--colony",
+      source: "debug-colonies.html"
+    },
+    {
+      path: "/debug-spaceports.html",
+      heading: "Raumhäfen Debug",
+      objectClass: ".debug-object--spaceport",
+      source: "debug-spaceports.html"
+    }
+  ];
+
+  for (const debugPage of pages) {
+    await page.goto(debugPage.path);
+    await expect(page.getByRole("heading", { name: debugPage.heading })).toBeVisible();
+    await expect(page.locator("#debug-stage")).toBeVisible();
+    await expect(page.locator(".debug-dummy-planet")).toHaveCount(3);
+    await expect(page.locator(debugPage.objectClass)).toBeVisible();
+    await expect(page.locator('nav a[href="./debug-colonies.html"]')).toBeVisible();
+    await expect(page.locator('nav a[href="./debug-spaceports.html"]')).toBeVisible();
+
+    await page.locator("#layout-variant").selectOption("oneTop");
+    await expect(page.locator("#layout-variant")).toHaveValue("oneTop");
+    await page.locator("#piece-asset").selectOption("green");
+    await expect(page.locator("#piece-asset")).toHaveValue("green");
+    await page.locator("#control-scale").fill("1.1");
+    await page.locator("#save-layout").click();
+    await expect(page.locator("#export-output")).toHaveValue(new RegExp(`"source": "${debugPage.source.replace(".", "\\.")}"`));
+    await expect(page.locator("#export-output")).toHaveValue(/"layoutVariant": "oneTop"/);
+    await expect(page.locator("#export-output")).toHaveValue(/"assetId": "green"/);
+  }
 });

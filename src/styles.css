@@ -939,13 +939,13 @@ h1 {
 .planet.is-selected .planet-image,
 .is-selected .planet-image,
 .outpost.is-selected .outpost-image,
-.structure.is-selected .trade-station-image {
+.structure.is-selected .trade-station-image,
+.structure.is-selected .colony-image,
+.structure.is-selected .spaceport-image {
   filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.7));
 }
 
-.ship.is-selected .ship-shape {
-  stroke: #fef08a;
-  stroke-width: 6;
+.ship.is-selected .ship-image {
   filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.72));
 }
 
@@ -981,14 +981,19 @@ h1 {
 }
 
 .outpost-hit-area,
-.trade-station-hit-area {
+.trade-station-hit-area,
+.structure-hit-area,
+.ship-hit-area {
   fill: transparent;
   pointer-events: all;
   stroke: none;
 }
 
 .outpost-image,
-.trade-station-image {
+.trade-station-image,
+.colony-image,
+.spaceport-image,
+.ship-image {
   pointer-events: none;
   filter: drop-shadow(0 4px 7px rgba(2, 6, 23, 0.62));
 }
@@ -1086,6 +1091,11 @@ h1 {
   filter: drop-shadow(0 0 10px rgba(103, 232, 249, 0.72));
 }
 
+.structure.is-spaceport-build-target .colony-image,
+.structure.is-spaceport-build-target .spaceport-image {
+  filter: drop-shadow(0 0 10px rgba(103, 232, 249, 0.72));
+}
+
 .structure--spaceport .structure-shape {
   stroke-width: 5;
 }
@@ -1120,7 +1130,7 @@ h1 {
 }
 
 .player-color-4 {
-  fill: #f8fafc;
+  fill: #22c55e;
 }
 
 .structure-label {
