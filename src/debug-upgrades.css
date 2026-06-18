@@ -20,6 +20,33 @@
   margin-bottom: 1rem;
 }
 
+.debug-upgrade-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+}
+
+.debug-upgrade-nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.35rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  color: #dbeafe;
+  background: rgba(15, 23, 42, 0.72);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.debug-upgrade-nav a:hover,
+.debug-upgrade-nav a[aria-current="page"] {
+  border-color: rgba(250, 204, 21, 0.8);
+  color: #fef3c7;
+  background: rgba(250, 204, 21, 0.08);
+}
+
 .debug-upgrade-header p,
 .debug-upgrade-header h1,
 .debug-upgrade-header span {

@@ -125,6 +125,11 @@ body.debug-card-page {
   padding: 0.5rem 0.65rem;
 }
 
+.debug-card-controls select option {
+  color: #f8fafc;
+  background: #020617;
+}
+
 .debug-card-actions {
   display: flex;
   gap: 0.5rem;

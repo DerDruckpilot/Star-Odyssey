@@ -58,12 +58,22 @@ test("outpost debug page loads and exports layout", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Außenposten Debug" })).toBeVisible();
   await expect(page.locator("#debug-stage")).toBeVisible();
   await expect(page.locator(".debug-object--outpost")).toBeVisible();
+  await expect(page.locator('nav a[href="./debug-upgrades.html"]')).toBeVisible();
+  await expect(page.locator('nav a[href="./debug-outposts.html"]')).toHaveAttribute("aria-current", "page");
+  await expect(page.locator('nav a[href="./debug-friendship-cards.html"]')).toBeVisible();
+  await expect(page.locator('nav a[href="./debug-encounter-cards.html"]')).toBeVisible();
 
-  await page.locator("#station-count").selectOption("2");
-  await expect(page.locator(".debug-object--tradeStation")).toHaveCount(2);
+  await page.locator("#layout-variant").selectOption("oneTop");
+  await expect(page.locator("#layout-variant")).toHaveValue("oneTop");
+
+  await page.locator("#station-count").selectOption("5");
+  await expect(page.locator(".debug-object--tradeStation")).toHaveCount(5);
+  await expect(page.locator("#station-asset-5")).toBeVisible();
 
   await page.locator(".debug-object--outpost").click();
   await page.locator("#control-scale").fill("1.1");
   await page.locator("#save-layout").click();
   await expect(page.locator("#export-output")).toHaveValue(/"source": "debug-outposts\.html"/);
+  await expect(page.locator("#export-output")).toHaveValue(/"layoutVariant": "oneTop"/);
+  await expect(page.locator("#export-output")).toHaveValue(/"stationCount": 5/);
 });

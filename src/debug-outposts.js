@@ -3,6 +3,15 @@ import { outpostAssetPaths, tradeStationAssetPaths } from "./data/outpostVisuals
 const storageKey = "star-odyssey-outpost-debug-layout";
 const objectLayer = document.querySelector("#object-layer");
 const stage = document.querySelector("#debug-stage");
+const hexPolygons = document.querySelector("#hex-polygons");
+const spaceLines = document.querySelector("#space-lines");
+const spacePoints = document.querySelector("#space-points");
+const layoutVariantSelect = document.querySelector("#layout-variant");
+const outpostAssetSelect = document.querySelector("#outpost-asset");
+const stationCountSelect = document.querySelector("#station-count");
+const stationAssetSelects = Array.from({ length: 5 }, (_, index) =>
+  document.querySelector(`#station-asset-${index + 1}`)
+);
 const controls = {
   x: document.querySelector("#control-x"),
   y: document.querySelector("#control-y"),
@@ -11,7 +20,82 @@ const controls = {
   layer: document.querySelector("#control-layer")
 };
 
+const layoutVariants = {
+  twoTop: {
+    id: "twoTop",
+    label: "Layout A - 2 oben / 1 unten",
+    centers: [
+      [282, 160],
+      [438, 160],
+      [360, 295]
+    ]
+  },
+  oneTop: {
+    id: "oneTop",
+    label: "Layout B - 1 oben / 2 unten",
+    centers: [
+      [360, 150],
+      [282, 285],
+      [438, 285]
+    ]
+  }
+};
+
+const defaultStations = [
+  {
+    id: "station-1",
+    kind: "tradeStation",
+    assetId: "red",
+    x: 39,
+    y: 66,
+    scale: 0.54,
+    rotation: 0,
+    layer: 30
+  },
+  {
+    id: "station-2",
+    kind: "tradeStation",
+    assetId: "blue",
+    x: 61,
+    y: 66,
+    scale: 0.54,
+    rotation: 0,
+    layer: 31
+  },
+  {
+    id: "station-3",
+    kind: "tradeStation",
+    assetId: "yellow",
+    x: 50,
+    y: 77,
+    scale: 0.54,
+    rotation: 0,
+    layer: 32
+  },
+  {
+    id: "station-4",
+    kind: "tradeStation",
+    assetId: "white",
+    x: 37,
+    y: 50,
+    scale: 0.54,
+    rotation: 0,
+    layer: 33
+  },
+  {
+    id: "station-5",
+    kind: "tradeStation",
+    assetId: "green",
+    x: 63,
+    y: 50,
+    scale: 0.54,
+    rotation: 0,
+    layer: 34
+  }
+];
+
 const defaultLayout = {
+  layoutVariant: "twoTop",
   outpost: {
     id: "outpost",
     kind: "outpost",
@@ -22,28 +106,7 @@ const defaultLayout = {
     rotation: 0,
     layer: 20
   },
-  stations: [
-    {
-      id: "station-1",
-      kind: "tradeStation",
-      assetId: "red",
-      x: 43,
-      y: 68,
-      scale: 0.54,
-      rotation: 0,
-      layer: 30
-    },
-    {
-      id: "station-2",
-      kind: "tradeStation",
-      assetId: "blue",
-      x: 57,
-      y: 68,
-      scale: 0.54,
-      rotation: 0,
-      layer: 31
-    }
-  ],
+  stations: defaultStations,
   stationCount: 2
 };
 
@@ -59,10 +122,22 @@ function loadLayout() {
   const saved = localStorage.getItem(storageKey);
   if (!saved) return clone(defaultLayout);
   try {
-    return { ...clone(defaultLayout), ...JSON.parse(saved) };
+    return normalizeLayout(JSON.parse(saved));
   } catch {
     return clone(defaultLayout);
   }
+}
+
+function normalizeLayout(value) {
+  const next = clone(defaultLayout);
+  next.layoutVariant = layoutVariants[value.layoutVariant] ? value.layoutVariant : next.layoutVariant;
+  next.outpost = { ...next.outpost, ...(value.outpost ?? {}) };
+  next.stations = next.stations.map((station, index) => ({
+    ...station,
+    ...(value.stations?.[index] ?? {})
+  }));
+  next.stationCount = clamp(Number(value.stationCount ?? next.stationCount), 0, 5);
+  return next;
 }
 
 function getObjects() {
@@ -80,7 +155,17 @@ function getAssetPath(item) {
 
 function populateSelect(select, options, selectedValue) {
   select.replaceChildren();
-  for (const [id, path] of Object.entries(options)) {
+  const entries = Object.entries(options);
+  if (entries.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Keine Assets gefunden";
+    select.append(option);
+    select.disabled = true;
+    return;
+  }
+  select.disabled = false;
+  for (const [id, path] of entries) {
     const option = document.createElement("option");
     option.value = id;
     option.textContent = `${id} (${path.split("/").pop()})`;
@@ -89,7 +174,61 @@ function populateSelect(select, options, selectedValue) {
   select.value = selectedValue;
 }
 
+function renderHexLayout() {
+  const variant = layoutVariants[layout.layoutVariant] ?? layoutVariants.twoTop;
+  const hexes = variant.centers.map(([cx, cy]) => getHexPoints(cx, cy));
+  hexPolygons.replaceChildren();
+  spaceLines.replaceChildren();
+  spacePoints.replaceChildren();
+
+  for (const points of hexes) {
+    const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    polygon.setAttribute("points", points.map(([x, y]) => `${x},${y}`).join(" "));
+    hexPolygons.append(polygon);
+
+    for (let index = 0; index < points.length; index += 1) {
+      const [x1, y1] = points[index];
+      const [x2, y2] = points[(index + 1) % points.length];
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", String(x1));
+      line.setAttribute("y1", String(y1));
+      line.setAttribute("x2", String(x2));
+      line.setAttribute("y2", String(y2));
+      spaceLines.append(line);
+    }
+  }
+
+  for (const [x, y] of uniquePoints(hexes.flat())) {
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", String(x));
+    circle.setAttribute("cy", String(y));
+    circle.setAttribute("r", "10");
+    spacePoints.append(circle);
+  }
+}
+
+function getHexPoints(cx, cy) {
+  const radius = 90;
+  return [
+    [cx, cy - radius],
+    [cx + 78, cy - 45],
+    [cx + 78, cy + 45],
+    [cx, cy + radius],
+    [cx - 78, cy + 45],
+    [cx - 78, cy - 45]
+  ];
+}
+
+function uniquePoints(points) {
+  const seen = new Map();
+  for (const [x, y] of points) {
+    seen.set(`${Math.round(x)}:${Math.round(y)}`, [x, y]);
+  }
+  return Array.from(seen.values());
+}
+
 function render() {
+  renderHexLayout();
   objectLayer.replaceChildren();
 
   for (const item of getObjects()) {
@@ -189,6 +328,15 @@ function syncControls() {
   }
 }
 
+function syncSelects() {
+  layoutVariantSelect.value = layout.layoutVariant;
+  outpostAssetSelect.value = layout.outpost.assetId;
+  stationCountSelect.value = String(layout.stationCount);
+  stationAssetSelects.forEach((select, index) => {
+    select.value = layout.stations[index].assetId;
+  });
+}
+
 function updateSelectedFromControls() {
   const item = getObjectById(selectedId);
   if (!item) return;
@@ -209,6 +357,8 @@ function exportLayout() {
   const output = {
     generatedAt: new Date().toISOString(),
     source: "debug-outposts.html",
+    layoutVariant: layout.layoutVariant,
+    stationCount: layout.stationCount,
     coordinateSystem: {
       origin: "debug-stage top-left",
       x: "percent of stage width",
@@ -237,30 +387,41 @@ function exportLayout() {
   URL.revokeObjectURL(url);
 }
 
-populateSelect(document.querySelector("#outpost-asset"), outpostAssetPaths, layout.outpost.assetId);
-populateSelect(document.querySelector("#station-asset-1"), tradeStationAssetPaths, layout.stations[0].assetId);
-populateSelect(document.querySelector("#station-asset-2"), tradeStationAssetPaths, layout.stations[1].assetId);
-document.querySelector("#station-count").value = String(layout.stationCount);
+function setupSelects() {
+  populateSelect(outpostAssetSelect, outpostAssetPaths, layout.outpost.assetId);
+  stationAssetSelects.forEach((select, index) => {
+    populateSelect(select, tradeStationAssetPaths, layout.stations[index].assetId);
+  });
+  syncSelects();
+}
 
-document.querySelector("#outpost-asset").addEventListener("change", (event) => {
+setupSelects();
+
+layoutVariantSelect.addEventListener("change", (event) => {
+  layout.layoutVariant = event.target.value;
+  saveToLocalStorage();
+  render();
+});
+outpostAssetSelect.addEventListener("change", (event) => {
   layout.outpost.assetId = event.target.value;
   saveToLocalStorage();
   render();
 });
-document.querySelector("#station-asset-1").addEventListener("change", (event) => {
-  layout.stations[0].assetId = event.target.value;
-  saveToLocalStorage();
-  render();
+stationAssetSelects.forEach((select, index) => {
+  select.addEventListener("change", (event) => {
+    layout.stations[index].assetId = event.target.value;
+    saveToLocalStorage();
+    render();
+  });
 });
-document.querySelector("#station-asset-2").addEventListener("change", (event) => {
-  layout.stations[1].assetId = event.target.value;
-  saveToLocalStorage();
-  render();
-});
-document.querySelector("#station-count").addEventListener("change", (event) => {
+stationCountSelect.addEventListener("change", (event) => {
   layout.stationCount = Number(event.target.value);
+  if (selectedId.startsWith("station-") && !getObjects().some((item) => item.id === selectedId)) {
+    selectedId = "outpost";
+  }
   saveToLocalStorage();
   render();
+  syncControls();
 });
 for (const input of Object.values(controls)) {
   input.addEventListener("input", updateSelectedFromControls);
@@ -269,6 +430,7 @@ document.querySelector("#reset-layout").addEventListener("click", () => {
   layout = clone(defaultLayout);
   selectedId = "outpost";
   saveToLocalStorage();
+  syncSelects();
   render();
   syncControls();
 });
