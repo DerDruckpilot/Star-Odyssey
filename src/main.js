@@ -1083,22 +1083,13 @@ function renderMothershipUpgradeVisual(player = getActivePlayer()) {
   const visual = document.createElement("div");
   visual.className = "mothership-visual";
 
-  const backLayer = document.createElement("div");
-  backLayer.className = "mothership-layer mothership-layer--back";
-
   const shipImage = document.createElement("img");
   shipImage.className = "mothership-base";
   shipImage.src = upgradeMenuAssetPaths.mothership;
   shipImage.alt = "";
   shipImage.loading = "lazy";
-
-  const frontLayer = document.createElement("div");
-  frontLayer.className = "mothership-layer mothership-layer--front";
-
-  const layers = {
-    back: backLayer,
-    front: frontLayer
-  };
+  shipImage.style.zIndex = "100";
+  visual.append(shipImage);
 
   for (const slot of mothershipUpgradeSlots) {
     const upgradeValue = player?.upgrades?.[slot.upgradeId] ?? 0;
@@ -1110,10 +1101,12 @@ function renderMothershipUpgradeVisual(player = getActivePlayer()) {
     overlay.src = assetPath;
     overlay.alt = "";
     overlay.loading = "lazy";
-    layers[slot.layer].append(overlay);
+    overlay.style.width = `${slot.widthPercent}%`;
+    overlay.style.transform = `translate(${slot.x}%, ${slot.y}%) scale(${slot.scale ?? 1})`;
+    overlay.style.zIndex = String(slot.z ?? (slot.layer === "back" ? 50 : 150));
+    visual.append(overlay);
   }
 
-  visual.append(backLayer, shipImage, frontLayer);
   return visual;
 }
 

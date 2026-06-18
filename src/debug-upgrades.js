@@ -43,7 +43,7 @@ updateExportPreview();
 function initializeSlotState() {
   for (const view of debugViews) {
     getSlotsForView(view.upgradeId).forEach((slot, index) => {
-      const defaults = getDefaultSlotLayout(slot.id);
+      const defaults = getDefaultSlotLayout(slot);
       slotState.set(slot.id, {
         id: slot.id,
         label: `${view.labelPrefix}${index + 1}`,
@@ -56,8 +56,8 @@ function initializeSlotState() {
         widthPercent: defaults.widthPercent,
         xPercent: defaults.xPercent,
         yPercent: defaults.yPercent,
-        scale: 1,
-        z: slot.layer === "back" ? 50 + slot.minValue : 150 + slot.minValue
+        scale: defaults.scale,
+        z: defaults.z
       });
     });
   }
@@ -463,15 +463,31 @@ function getSlotsForView(upgradeId) {
     .sort((first, second) => first.minValue - second.minValue);
 }
 
-function getDefaultSlotLayout(slotId) {
-  const style = getSlotCssText(slotId);
+function getDefaultSlotLayout(slot) {
+  if (
+    Number.isFinite(slot.widthPercent) &&
+    Number.isFinite(slot.x) &&
+    Number.isFinite(slot.y)
+  ) {
+    return {
+      widthPercent: slot.widthPercent,
+      xPercent: slot.x,
+      yPercent: slot.y,
+      scale: Number.isFinite(slot.scale) ? slot.scale : 1,
+      z: Number.isFinite(slot.z) ? slot.z : slot.layer === "back" ? 50 + slot.minValue : 150 + slot.minValue
+    };
+  }
+
+  const style = getSlotCssText(slot.id);
   const widthMatch = style.match(/width:\s*([\d.]+)%/);
   const translateMatch = style.match(/translate\(\s*(-?[\d.]+)%\s*,\s*(-?[\d.]+)%\s*\)/);
 
   return {
     widthPercent: widthMatch ? Number.parseFloat(widthMatch[1]) : 14,
     xPercent: translateMatch ? Number.parseFloat(translateMatch[1]) : -50,
-    yPercent: translateMatch ? Number.parseFloat(translateMatch[2]) : -50
+    yPercent: translateMatch ? Number.parseFloat(translateMatch[2]) : -50,
+    scale: 1,
+    z: slot.layer === "back" ? 50 + slot.minValue : 150 + slot.minValue
   };
 }
 
