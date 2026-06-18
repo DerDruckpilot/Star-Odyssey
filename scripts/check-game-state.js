@@ -15,6 +15,8 @@ import {
   drawSupply,
   endCurrentTurn,
   finishEncounter,
+  getEffectiveUpgradeValue,
+  getFriendshipUpgradeBonus,
   foundColony,
   getTradeRatesForPlayer,
   moveShip,
@@ -34,6 +36,7 @@ import {
   foundTradeStation,
   getShipDestinationState,
   getPlayerInventory,
+  getRealUpgradeValue,
   submitEncounterPending,
   tradeWithSupply,
   useBoughtFame,
@@ -550,6 +553,46 @@ friendshipEffectGame = determineFlightSpeed({
 }, { balls: ["yellow", "blue"] });
 assert(friendshipEffectGame.flightSpeedTotal === 5, "Wise people drive bonus should increase flight speed.");
 
+let friendshipUpgradeBonusGame = createGameState({
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+friendshipUpgradeBonusGame = {
+  ...friendshipUpgradeBonusGame,
+  phase: "tradeBuild",
+  currentPlayerIndex: 0,
+  players: friendshipUpgradeBonusGame.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      resources: { ore: 0, fuel: 6, carbon: 0, food: 0, goods: 0 },
+      upgrades: { drive: 6, cargo: 0, cannon: 6 },
+      friendshipCards: ["wise-drive-boost", "wise-cannon-boost"]
+    }
+    : player)
+};
+assert(getRealUpgradeValue(friendshipUpgradeBonusGame.players[0], "drive") === 6, "Real drives should stay capped at the mothership upgrade value.");
+assert(getFriendshipUpgradeBonus(friendshipUpgradeBonusGame, "player-1", "drive") === 2, "Wise people drive cards should be tracked as friendship bonus.");
+assert(getEffectiveUpgradeValue(friendshipUpgradeBonusGame, "player-1", "drive") === 8, "Effective drives should combine real upgrades and friendship bonuses.");
+assert(getEffectiveUpgradeValue(friendshipUpgradeBonusGame, "player-1", "cannon") === 8, "Effective cannons should combine real upgrades and friendship bonuses.");
+
+let upgradeLimitGame = {
+  ...friendshipUpgradeBonusGame,
+  players: friendshipUpgradeBonusGame.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      resources: { ore: 0, fuel: 6, carbon: 0, food: 0, goods: 0 },
+      upgrades: { drive: 4, cargo: 0, cannon: 0 },
+      friendshipCards: ["wise-drive-boost"]
+    }
+    : player)
+};
+upgradeLimitGame = buyUpgrade(upgradeLimitGame, "drive");
+upgradeLimitGame = buyUpgrade(upgradeLimitGame, "drive");
+upgradeLimitGame = buyUpgrade(upgradeLimitGame, "drive");
+assert(getRealUpgradeValue(upgradeLimitGame.players[0], "drive") === 6, "Friendship drive bonuses should not count against the real drive purchase limit.");
+assert(getEffectiveUpgradeValue(upgradeLimitGame, "player-1", "drive") === 8, "Buying real drives should keep friendship drive bonuses separate.");
+
 let richHelpsPoorGame = createGameState({
   language: "de",
   playerCount: 2,
@@ -857,9 +900,9 @@ toothEncounterGame = {
   players: toothEncounterGame.players.map((player, index) => ({
     ...player,
     upgrades: index === 0
-      ? { drive: 4, cargo: 3, cannon: 2 }
+      ? { drive: 6, cargo: 3, cannon: 2 }
       : { drive: 3, cargo: 3, cannon: 1 },
-    friendshipCards: [],
+    friendshipCards: index === 0 ? ["wise-drive-boost"] : [],
     halfMedals: 0
   }))
 };
@@ -870,6 +913,9 @@ toothEncounterGame = determineFlightSpeed(toothEncounterGame, {
 toothEncounterGame = resolveEncounterChoice(toothEncounterGame, { choiceId: "continue" });
 assert(toothEncounterGame.activeEncounter?.pendingStep?.type === "globalUpgradeLossSelection", "Global encounter cards should enter a multi-player upgrade loss step.");
 toothEncounterGame = submitEncounterPending(toothEncounterGame, { upgrade: "drive" });
+assert(getRealUpgradeValue(toothEncounterGame.players[0], "drive") === 5, "Global upgrade loss should remove only real mothership upgrades.");
+assert(getFriendshipUpgradeBonus(toothEncounterGame, "player-1", "drive") === 2, "Global upgrade loss should not remove friendship drive bonuses.");
+assert(getEffectiveUpgradeValue(toothEncounterGame, "player-1", "drive") === 7, "Effective drives should keep remaining real upgrades plus friendship bonuses after global loss.");
 toothEncounterGame = submitEncounterPending(toothEncounterGame, { upgrade: "drive" });
 assert(Boolean(toothEncounterGame.activeEncounter?.cardId), "Global follow-up cards should draw a new encounter immediately.");
 assert(toothEncounterGame.activeEncounter?.cardId !== "tooth-of-time-cargo", "Global cards should transition into a new encounter after resolving.");

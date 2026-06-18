@@ -111,6 +111,8 @@ const translations = {
     upgrade_drive: "Antrieb",
     upgrade_cargo: "Frachtmodul",
     upgrade_cannon: "Bordkanone",
+    friendshipUpgradeBonus: "Freundschaftsbonus",
+    effectiveUpgradeValue: "Effektiv",
     bankTrade: "Vorratstausch",
     give: "Abgabe",
     receive: "Ziel",
@@ -344,9 +346,9 @@ const translations = {
     friendshipCardSummary_tradersCarbonSummary: "Carbon kann im Vorrat 2:1 getauscht werden.",
     friendshipCardSummary_tradersFoodSummary: "Nahrung kann im Vorrat 2:1 getauscht werden.",
     friendshipCardSummary_tradersGoodsSummary: "Handelsware kann 1:1 gegen einen anderen Rohstoff getauscht werden.",
-    friendshipCardSummary_wiseSpeedCombatSummary: "Zählt wie zusätzlicher Antrieb und zusätzliche Bordkanone.",
-    friendshipCardSummary_wiseCannonBoostSummary: "Erhöht die Kampfkraft der Raumschiffe um 2.",
-    friendshipCardSummary_wiseDriveBoostSummary: "Erhöht die Geschwindigkeit der Raumschiffe um 2."
+    friendshipCardSummary_wiseSpeedCombatSummary: "Gibt +1 Antrieb und +1 Bordkanone als Kartenbonus, nicht als echte Anbauten.",
+    friendshipCardSummary_wiseCannonBoostSummary: "Gibt +2 Bordkanonen als Kartenbonus, nicht als echte Anbauten.",
+    friendshipCardSummary_wiseDriveBoostSummary: "Gibt +2 Antriebe als Kartenbonus, nicht als echte Anbauten."
   },
   en: {
     subtitle: "A digital space board game",
@@ -456,6 +458,8 @@ const translations = {
     upgrade_drive: "Drive",
     upgrade_cargo: "Cargo module",
     upgrade_cannon: "Cannon",
+    friendshipUpgradeBonus: "Friendship bonus",
+    effectiveUpgradeValue: "Effective",
     bankTrade: "Bank trade",
     give: "Give",
     receive: "Receive",
@@ -689,9 +693,9 @@ const translations = {
     friendshipCardSummary_tradersCarbonSummary: "Carbon can be traded with the supply at 2:1.",
     friendshipCardSummary_tradersFoodSummary: "Food can be traded with the supply at 2:1.",
     friendshipCardSummary_tradersGoodsSummary: "Goods can be traded once per turn at 1:1.",
-    friendshipCardSummary_wiseSpeedCombatSummary: "Counts like one extra drive and one extra cannon.",
-    friendshipCardSummary_wiseCannonBoostSummary: "Increase ship combat strength by 2.",
-    friendshipCardSummary_wiseDriveBoostSummary: "Increase ship speed by 2."
+    friendshipCardSummary_wiseSpeedCombatSummary: "Grants +1 drive and +1 cannon as card bonuses, not real upgrades.",
+    friendshipCardSummary_wiseCannonBoostSummary: "Grants +2 cannons as a card bonus, not real upgrades.",
+    friendshipCardSummary_wiseDriveBoostSummary: "Grants +2 drives as a card bonus, not real upgrades."
   }
 };
 

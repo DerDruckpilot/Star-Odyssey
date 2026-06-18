@@ -36,7 +36,9 @@ import {
   foundColony,
   foundTradeStation,
   getCargoValueForPlayer,
-  getMovementBonusForPlayer,
+  getEffectiveUpgradeValue,
+  getFriendshipUpgradeBonus,
+  getRealUpgradeValue,
   getReachableNodes,
   getShipDestinationState,
   getTradeRatesForPlayer,
@@ -1063,7 +1065,7 @@ function renderUpgradeSummary(player = getActivePlayer()) {
     const label = document.createElement("dt");
     label.textContent = getUpgradeLabel(upgrade.id);
     const value = document.createElement("dd");
-    value.textContent = `${player?.upgrades?.[upgrade.id] ?? 0}/${upgrade.limit}`;
+    value.textContent = formatUpgradeValue(player, upgrade);
     list.append(label, value);
   }
 
@@ -2124,7 +2126,14 @@ function renderUpgradeControls(player = getActivePlayer()) {
 
     const label = document.createElement("strong");
     label.className = "upgrade-card-title";
-    label.textContent = `${getUpgradeLabel(upgrade.id)} ${player?.upgrades?.[upgrade.id] ?? 0}/${upgrade.limit}`;
+    label.textContent = `${getUpgradeLabel(upgrade.id)} ${formatUpgradeValue(player, upgrade)}`;
+
+    const bonus = player ? getFriendshipUpgradeBonus(state.gameState, player.id, upgrade.id) : 0;
+    const bonusText = document.createElement("small");
+    bonusText.className = "upgrade-card-bonus";
+    bonusText.textContent = bonus > 0
+      ? `${t("friendshipUpgradeBonus")} +${bonus} · ${t("effectiveUpgradeValue")}: ${getEffectiveUpgradeValue(state.gameState, player.id, upgrade.id)}`
+      : "";
 
     const cost = document.createElement("small");
     cost.className = "upgrade-card-cost";
@@ -2137,12 +2146,22 @@ function renderUpgradeControls(player = getActivePlayer()) {
     actions.className = "upgrade-card-actions";
     actions.append(button, cost);
 
-    body.append(label, actions);
+    body.append(label);
+    if (bonus > 0) body.append(bonusText);
+    body.append(actions);
     card.append(preview, body);
     wrapper.append(card);
   }
 
   return wrapper;
+}
+
+function formatUpgradeValue(player, upgrade) {
+  const realValue = getRealUpgradeValue(player, upgrade.id);
+  const bonus = player ? getFriendshipUpgradeBonus(state.gameState, player.id, upgrade.id) : 0;
+  return bonus > 0
+    ? `${realValue}/${upgrade.limit} (+${bonus}, ${t("effectiveUpgradeValue")}: ${realValue + bonus})`
+    : `${realValue}/${upgrade.limit}`;
 }
 
 function renderResourceSelect(labelText, selectedResource, onChange) {
@@ -2286,7 +2305,7 @@ function formatFlightSpeed(gameState) {
 
 function getDisplayedFlightBonus(player) {
   if (!player) return 0;
-  return (player.upgrades?.drive ?? 0) + getMovementBonusForPlayer(state.gameState, player.id);
+  return getEffectiveUpgradeValue(state.gameState, player.id, "drive");
 }
 
 function formatLogEntry(entry) {

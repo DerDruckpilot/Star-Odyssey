@@ -816,6 +816,10 @@ h1 {
   line-height: 1.15;
 }
 
+.upgrade-card-bonus {
+  color: #bfdbfe;
+}
+
 .upgrade-card-actions {
   display: flex;
   flex-wrap: wrap;

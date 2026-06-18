@@ -120,6 +120,7 @@ function renderCard(card) {
       ["Beschreibung DE", card.summaryDe],
       ["Beschreibung EN", card.summaryEn],
       ["Effekt-Typ", card.effectType],
+      ["Regelhinweis", getUpgradeBoostRuleNote(card)],
       ["Timing", card.timing],
       ["Implementiert", String(card.implemented)],
       ["Notes / TODO", card.notes || "-"]
@@ -130,6 +131,11 @@ function renderCard(card) {
 
   details.append(summary, body);
   return details;
+}
+
+function getUpgradeBoostRuleNote(card) {
+  if (card.effectType !== "upgradeBoost") return "-";
+  return "Bonus ist kein echter Mutterschiff-Anbau, zählt nicht gegen Anbau-Limits und wird bei Zahn-der-Zeit-/Anbauverlust-Effekten nicht entfernt.";
 }
 
 function renderFieldGrid(fields) {

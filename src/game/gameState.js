@@ -130,31 +130,32 @@ export function getTradeRatesForPlayer(gameState, playerId) {
   return rates;
 }
 
-export function getMovementBonusForPlayer(gameState, playerId) {
+export function getRealUpgradeValue(player, type) {
+  return normalizeUpgrades(player?.upgrades)[type] ?? 0;
+}
+
+export function getFriendshipUpgradeBonus(gameState, playerId, type) {
   return getFriendshipCardsForPlayer(getPlayerById(gameState, playerId))
     .reduce((sum, card) => sum + (card.implemented && card.effectType === "upgradeBoost"
-      ? (card.effectValue?.drive ?? 0)
+      ? (card.effectValue?.[type] ?? 0)
       : 0), 0);
+}
+
+export function getEffectiveUpgradeValue(gameState, playerId, type) {
+  return getRealUpgradeValue(getPlayerById(gameState, playerId), type)
+    + getFriendshipUpgradeBonus(gameState, playerId, type);
+}
+
+export function getMovementBonusForPlayer(gameState, playerId) {
+  return getFriendshipUpgradeBonus(gameState, playerId, "drive");
 }
 
 export function getCargoValueForPlayer(gameState, playerId) {
-  const player = getPlayerById(gameState, playerId);
-  const baseCargo = player?.upgrades?.cargo ?? 0;
-  const friendshipCargo = getFriendshipCardsForPlayer(player)
-    .reduce((sum, card) => sum + (card.implemented && card.effectType === "upgradeBoost"
-      ? (card.effectValue?.cargo ?? 0)
-      : 0), 0);
-  return baseCargo + friendshipCargo;
+  return getEffectiveUpgradeValue(gameState, playerId, "cargo");
 }
 
 export function getCannonValueForPlayer(gameState, playerId) {
-  const player = getPlayerById(gameState, playerId);
-  const baseCannons = player?.upgrades?.cannon ?? 0;
-  const friendshipCannons = getFriendshipCardsForPlayer(player)
-    .reduce((sum, card) => sum + (card.implemented && card.effectType === "upgradeBoost"
-      ? (card.effectValue?.cannon ?? 0)
-      : 0), 0);
-  return baseCannons + friendshipCannons;
+  return getEffectiveUpgradeValue(gameState, playerId, "cannon");
 }
 
 export function createGameState({ language, playerCount, boardLayout }) {
@@ -3697,13 +3698,13 @@ function getShipById(gameState, shipId) {
 }
 
 function getPlayerUpgradeTotal(player) {
-  return Object.values(normalizeUpgrades(player?.upgrades))
-    .reduce((sum, value) => sum + value, 0);
+  return ["drive", "cargo", "cannon"]
+    .reduce((sum, type) => sum + getRealUpgradeValue(player, type), 0);
 }
 
 function hasAnyUpgrades(player) {
-  return Object.values(normalizeUpgrades(player?.upgrades))
-    .some((value) => value > 0);
+  return ["drive", "cargo", "cannon"]
+    .some((type) => getRealUpgradeValue(player, type) > 0);
 }
 
 function getNeighborPlayer(gameState, playerId, offset) {
@@ -3879,12 +3880,11 @@ function isValidUpgradeId(upgrade) {
 }
 
 function getPlayerFlightBonus(gameState, playerId) {
-  const player = getPlayerById(gameState, playerId);
-  return (player?.upgrades?.drive ?? 0) + getMovementBonusForPlayer(gameState, playerId);
+  return getEffectiveUpgradeValue(gameState, playerId, "drive");
 }
 
 function getPlayerCombatBonus(gameState, playerId) {
-  return getCannonValueForPlayer(gameState, playerId);
+  return getEffectiveUpgradeValue(gameState, playerId, "cannon");
 }
 
 function createDefaultUpgrades() {

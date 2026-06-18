@@ -185,60 +185,65 @@ const friendshipCards = [
     peopleId: "wisePeople",
     titleKey: "upgradeBoost",
     summaryKey: "wiseSpeedCombatSummary",
-    summaryDe: "Zählt wie +1 Antrieb und +1 Bordkanone.",
-    summaryEn: "Counts as +1 drive and +1 cannon.",
+    summaryDe: "Gibt +1 Antrieb und +1 Bordkanone als Kartenbonus, nicht als echte Anbauten.",
+    summaryEn: "Grants +1 drive and +1 cannon as card bonuses, not real upgrades.",
     effectType: "upgradeBoost",
     effectValue: { drive: 1, cannon: 1 },
     timing: "passive",
-    implemented: true
+    implemented: true,
+    notes: "UpgradeBoost bonuses are effective values only; they do not count against build limits and are not removed by real-upgrade loss effects."
   }),
   createFriendshipCard({
     id: "wise-speed-combat-2",
     peopleId: "wisePeople",
     titleKey: "upgradeBoost",
     summaryKey: "wiseSpeedCombatSummary",
-    summaryDe: "Zählt wie +1 Antrieb und +1 Bordkanone.",
-    summaryEn: "Counts as +1 drive and +1 cannon.",
+    summaryDe: "Gibt +1 Antrieb und +1 Bordkanone als Kartenbonus, nicht als echte Anbauten.",
+    summaryEn: "Grants +1 drive and +1 cannon as card bonuses, not real upgrades.",
     effectType: "upgradeBoost",
     effectValue: { drive: 1, cannon: 1 },
     timing: "passive",
-    implemented: true
+    implemented: true,
+    notes: "UpgradeBoost bonuses are effective values only; they do not count against build limits and are not removed by real-upgrade loss effects."
   }),
   createFriendshipCard({
     id: "wise-speed-combat-3",
     peopleId: "wisePeople",
     titleKey: "upgradeBoost",
     summaryKey: "wiseSpeedCombatSummary",
-    summaryDe: "Zählt wie +1 Antrieb und +1 Bordkanone.",
-    summaryEn: "Counts as +1 drive and +1 cannon.",
+    summaryDe: "Gibt +1 Antrieb und +1 Bordkanone als Kartenbonus, nicht als echte Anbauten.",
+    summaryEn: "Grants +1 drive and +1 cannon as card bonuses, not real upgrades.",
     effectType: "upgradeBoost",
     effectValue: { drive: 1, cannon: 1 },
     timing: "passive",
-    implemented: true
+    implemented: true,
+    notes: "UpgradeBoost bonuses are effective values only; they do not count against build limits and are not removed by real-upgrade loss effects."
   }),
   createFriendshipCard({
     id: "wise-cannon-boost",
     peopleId: "wisePeople",
     titleKey: "upgradeBoost",
     summaryKey: "wiseCannonBoostSummary",
-    summaryDe: "Erhöht die Kampfkraft der Raumschiffe um 2.",
-    summaryEn: "Increase ship combat strength by 2.",
+    summaryDe: "Gibt +2 Bordkanonen als Kartenbonus, nicht als echte Anbauten.",
+    summaryEn: "Grants +2 cannons as a card bonus, not real upgrades.",
     effectType: "upgradeBoost",
     effectValue: { cannon: 2 },
     timing: "passive",
-    implemented: true
+    implemented: true,
+    notes: "UpgradeBoost bonuses are effective values only; they do not count against build limits and are not removed by real-upgrade loss effects."
   }),
   createFriendshipCard({
     id: "wise-drive-boost",
     peopleId: "wisePeople",
     titleKey: "upgradeBoost",
     summaryKey: "wiseDriveBoostSummary",
-    summaryDe: "Erhöht die Geschwindigkeit der Raumschiffe um 2.",
-    summaryEn: "Increase ship speed by 2.",
+    summaryDe: "Gibt +2 Antriebe als Kartenbonus, nicht als echte Anbauten.",
+    summaryEn: "Grants +2 drives as a card bonus, not real upgrades.",
     effectType: "upgradeBoost",
     effectValue: { drive: 2 },
     timing: "passive",
-    implemented: true
+    implemented: true,
+    notes: "UpgradeBoost bonuses are effective values only; they do not count against build limits and are not removed by real-upgrade loss effects."
   })
 ];
 
