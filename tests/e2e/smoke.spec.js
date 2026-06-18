@@ -51,3 +51,19 @@ test("card debug review pages load and filter cards", async ({ page }) => {
   await page.locator("#card-search").fill("pirate");
   await expect(page.locator("#card-list details").first()).toBeVisible();
 });
+
+test("outpost debug page loads and exports layout", async ({ page }) => {
+  await page.goto("/debug-outposts.html");
+
+  await expect(page.getByRole("heading", { name: "Außenposten Debug" })).toBeVisible();
+  await expect(page.locator("#debug-stage")).toBeVisible();
+  await expect(page.locator(".debug-object--outpost")).toBeVisible();
+
+  await page.locator("#station-count").selectOption("2");
+  await expect(page.locator(".debug-object--tradeStation")).toHaveCount(2);
+
+  await page.locator(".debug-object--outpost").click();
+  await page.locator("#control-scale").fill("1.1");
+  await page.locator("#save-layout").click();
+  await expect(page.locator("#export-output")).toHaveValue(/"source": "debug-outposts\.html"/);
+});

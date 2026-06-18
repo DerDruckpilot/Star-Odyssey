@@ -8,6 +8,11 @@ import {
   getTokenGroupLabel,
   isActiveSpecialToken
 } from "./data/numberTokens.js";
+import {
+  getOutpostAssetPath,
+  getTradeStationAssetPath,
+  outpostVisualDefaults
+} from "./data/outpostVisuals.js";
 import { mothershipUpgradeSlots, upgradeMenuAssetPaths, upgradeMenuOrder } from "./data/upgradeVisuals.js";
 import {
   advanceToFlightPhase,
@@ -3182,28 +3187,31 @@ function getPlanetRenderPosition(system, planet, fallbackOffset) {
 function renderOutpost(outpost) {
   const selectedClass = isSelectedElement("outpost", outpost.id) ? " is-selected" : "";
   const group = createSvgElement("g", { class: `outpost${selectedClass}` });
+  const visual = outpostVisualDefaults.outpost;
+  const imageWidth = visual.width;
+  const imageHeight = visual.height;
   enableBoardElementSelection(group, "outpost", outpost.id);
+  group.append(createSvgElement("circle", {
+    class: "outpost-hit-area",
+    cx: outpost.x,
+    cy: outpost.y,
+    r: visual.hitRadius
+  }));
+  group.append(createSvgElement("image", {
+    class: "outpost-image",
+    href: getOutpostAssetPath(outpost.outpostType),
+    x: outpost.x - imageWidth / 2,
+    y: outpost.y - imageHeight / 2,
+    width: imageWidth,
+    height: imageHeight,
+    preserveAspectRatio: "xMidYMid meet"
+  }));
   group.append(createSvgElement("circle", {
     class: "outpost-ring",
     cx: outpost.x,
     cy: outpost.y,
-    r: 52
+    r: visual.hitRadius
   }));
-  group.append(createSvgElement("rect", {
-    class: "outpost-core",
-    x: outpost.x - 28,
-    y: outpost.y - 28,
-    width: 56,
-    height: 56,
-    rx: 8
-  }));
-  group.append(createSvgElement("text", {
-    class: "outpost-label",
-    x: outpost.x,
-    y: outpost.y + 8,
-    "text-anchor": "middle"
-  }));
-  group.lastChild.textContent = outpost.name;
   return group;
 }
 
@@ -3270,9 +3278,22 @@ function renderStructuresLayer() {
     enableBoardElementSelection(structureGroup, "structure", structure.id);
 
     if (structure.type === "tradeStation") {
-      structureGroup.append(createSvgElement("polygon", {
-        class: `structure-shape player-color-${ownerIndex}`,
-        points: `${site.x},${site.y - 18} ${site.x + 18},${site.y} ${site.x},${site.y + 18} ${site.x - 18},${site.y}`
+      const owner = state.gameState?.players?.find((player) => player.id === structure.ownerPlayerId);
+      const visual = outpostVisualDefaults.tradeStation;
+      structureGroup.append(createSvgElement("circle", {
+        class: "trade-station-hit-area",
+        cx: site.x,
+        cy: site.y,
+        r: visual.hitRadius
+      }));
+      structureGroup.append(createSvgElement("image", {
+        class: `trade-station-image player-color-${ownerIndex}`,
+        href: getTradeStationAssetPath(owner?.color),
+        x: site.x - visual.width / 2,
+        y: site.y - visual.height / 2,
+        width: visual.width,
+        height: visual.height,
+        preserveAspectRatio: "xMidYMid meet"
       }));
     } else if (structure.type === "spaceport") {
       structureGroup.append(createSvgElement("rect", {
@@ -3292,14 +3313,16 @@ function renderStructuresLayer() {
       }));
     }
 
-    const label = createSvgElement("text", {
-      class: "structure-label",
-      x: site.x,
-      y: site.y + 6,
-      "text-anchor": "middle"
-    });
-    label.textContent = structure.ownerPlayerId.replace("player-", "");
-    structureGroup.append(label);
+    if (structure.type !== "tradeStation") {
+      const label = createSvgElement("text", {
+        class: "structure-label",
+        x: site.x,
+        y: site.y + 6,
+        "text-anchor": "middle"
+      });
+      label.textContent = structure.ownerPlayerId.replace("player-", "");
+      structureGroup.append(label);
+    }
     group.append(structureGroup);
   }
 

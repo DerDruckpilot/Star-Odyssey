@@ -933,7 +933,9 @@ h1 {
 }
 
 .planet.is-selected .planet-image,
-.is-selected .planet-image {
+.is-selected .planet-image,
+.outpost.is-selected .outpost-image,
+.structure.is-selected .trade-station-image {
   filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.7));
 }
 
@@ -969,21 +971,22 @@ h1 {
 }
 
 .outpost-ring {
-  fill: rgba(250, 204, 21, 0.08);
-  stroke: rgba(250, 204, 21, 0.72);
+  fill: transparent;
+  stroke: transparent;
   stroke-width: 4;
 }
 
-.outpost-core {
-  fill: rgba(161, 98, 7, 0.88);
-  stroke: rgba(254, 240, 138, 0.8);
-  stroke-width: 3;
+.outpost-hit-area,
+.trade-station-hit-area {
+  fill: transparent;
+  pointer-events: all;
+  stroke: none;
 }
 
-.outpost-label {
-  fill: #fef9c3;
-  font-size: 28px;
-  font-weight: 800;
+.outpost-image,
+.trade-station-image {
+  pointer-events: none;
+  filter: drop-shadow(0 4px 7px rgba(2, 6, 23, 0.62));
 }
 
 .space-point {

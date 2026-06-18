@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Star Odyssey - Outpost Debug</title>
+    <link rel="stylesheet" href="./src/debug-outposts.css">
+  </head>
+  <body>
+    <header class="debug-header">
+      <div>
+        <p class="eyebrow">Star Odyssey Debug</p>
+        <h1>Außenposten Debug</h1>
+        <p class="debug-subtitle">Außenposten & Handelsstationen ausrichten</p>
+      </div>
+      <nav>
+        <a href="./index.html">Spiel</a>
+        <a href="./debug-upgrades.html">Upgrade Debug</a>
+      </nav>
+    </header>
+
+    <main class="debug-shell">
+      <section class="debug-stage-card">
+        <div id="debug-stage" class="debug-stage" aria-label="Outpost layout debug stage">
+          <svg class="hex-grid" viewBox="0 0 720 420" aria-hidden="true">
+            <g class="hexes">
+              <polygon points="174,80 270,135 270,245 174,300 78,245 78,135"></polygon>
+              <polygon points="366,80 462,135 462,245 366,300 270,245 270,135"></polygon>
+              <polygon points="558,80 654,135 654,245 558,300 462,245 462,135"></polygon>
+            </g>
+            <g class="space-lines">
+              <line x1="174" y1="80" x2="270" y2="135"></line>
+              <line x1="270" y1="135" x2="366" y2="80"></line>
+              <line x1="366" y1="80" x2="462" y2="135"></line>
+              <line x1="462" y1="135" x2="558" y2="80"></line>
+              <line x1="270" y1="245" x2="366" y2="300"></line>
+              <line x1="366" y1="300" x2="462" y2="245"></line>
+            </g>
+            <g class="space-points">
+              <circle cx="174" cy="80" r="10"></circle>
+              <circle cx="270" cy="135" r="10"></circle>
+              <circle cx="270" cy="245" r="10"></circle>
+              <circle cx="174" cy="300" r="10"></circle>
+              <circle cx="78" cy="245" r="10"></circle>
+              <circle cx="78" cy="135" r="10"></circle>
+              <circle cx="366" cy="80" r="10"></circle>
+              <circle cx="462" cy="135" r="10"></circle>
+              <circle cx="462" cy="245" r="10"></circle>
+              <circle cx="366" cy="300" r="10"></circle>
+              <circle cx="558" cy="80" r="10"></circle>
+              <circle cx="654" cy="135" r="10"></circle>
+              <circle cx="654" cy="245" r="10"></circle>
+              <circle cx="558" cy="300" r="10"></circle>
+            </g>
+          </svg>
+          <div id="object-layer" class="object-layer"></div>
+        </div>
+      </section>
+
+      <aside class="debug-panel">
+        <h2>Layout</h2>
+        <label>
+          Außenposten
+          <select id="outpost-asset"></select>
+        </label>
+        <label>
+          Handelsstation 1
+          <select id="station-asset-1"></select>
+        </label>
+        <label>
+          Handelsstation 2
+          <select id="station-asset-2"></select>
+        </label>
+        <label>
+          Sichtbare Handelsstationen
+          <select id="station-count">
+            <option value="0">0</option>
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+          </select>
+        </label>
+
+        <div class="selection-box">
+          <h3 id="selected-title">Nichts ausgewählt</h3>
+          <label>X <input id="control-x" type="number" step="0.1"></label>
+          <label>Y <input id="control-y" type="number" step="0.1"></label>
+          <label>Scale <input id="control-scale" type="number" step="0.01" min="0.1" max="3"></label>
+          <label>Rotation <input id="control-rotation" type="number" step="1"></label>
+          <label>Layer <input id="control-layer" type="number" step="1"></label>
+        </div>
+
+        <div class="button-row">
+          <button id="reset-layout" type="button">Reset</button>
+          <button id="save-layout" type="button">Save/Export</button>
+        </div>
+
+        <textarea id="export-output" readonly aria-label="Export JSON"></textarea>
+      </aside>
+    </main>
+
+    <script type="module" src="./src/debug-outposts.js"></script>
+  </body>
+</html>
