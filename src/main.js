@@ -14,6 +14,10 @@ import {
   outpostVisualDefaults
 } from "./data/outpostVisuals.js";
 import {
+  getOutpostTradeStationSlot,
+  getOutpostVisualLayout
+} from "./data/outpostVisualLayouts.js";
+import {
   getPlayerColonyAssetPath,
   getPlayerShipAssetPath,
   getPlayerSpaceportAssetPath,
@@ -2625,12 +2629,77 @@ function getStructureVisualPlacement(structure, site, defaults) {
   };
 }
 
+function getOutpostVisualPlacement(outpost, defaults) {
+  const layoutType = getOutpostVisualLayoutType(outpost);
+  const visualPosition = getOutpostVisualLayout(outpost.outpostType, layoutType)?.outpost;
+  const transform = visualPosition
+    ? applyDebugLayoutTransform({
+      referenceLayout: structureVisualReferenceLayouts[layoutType],
+      actualCenters: getCanonicalOutpostHexCenters(outpost, layoutType),
+      visualPosition,
+      baseWidth: defaults.width,
+      baseHeight: defaults.height,
+      baseHitRadius: defaults.hitRadius
+    })
+    : null;
+
+  return transform ?? {
+    x: outpost.x,
+    y: outpost.y,
+    width: defaults.width,
+    height: defaults.height,
+    hitRadius: defaults.hitRadius,
+    rotation: 0,
+    z: 0
+  };
+}
+
+function getTradeStationVisualPlacement(structure, site, defaults) {
+  const outpost = getOutpostById(structure.outpostId);
+  const layoutType = getOutpostVisualLayoutType(outpost);
+  const slotIndex = getTradeStationSlotIndex(structure, outpost);
+  const visualPosition = outpost
+    ? getOutpostTradeStationSlot(outpost.outpostType, layoutType, slotIndex)
+    : null;
+  const transform = visualPosition && outpost
+    ? applyDebugLayoutTransform({
+      referenceLayout: structureVisualReferenceLayouts[layoutType],
+      actualCenters: getCanonicalOutpostHexCenters(outpost, layoutType),
+      visualPosition,
+      baseWidth: defaults.width,
+      baseHeight: defaults.height,
+      baseHitRadius: defaults.hitRadius
+    })
+    : null;
+
+  return transform ?? {
+    x: site.x,
+    y: site.y,
+    width: defaults.width,
+    height: defaults.height,
+    hitRadius: defaults.hitRadius,
+    rotation: 0,
+    z: 0
+  };
+}
+
 function getStructureRenderZ(structure) {
+  if (structure.type === "tradeStation") {
+    const outpost = getOutpostById(structure.outpostId);
+    const layoutType = getOutpostVisualLayoutType(outpost);
+    const slotIndex = getTradeStationSlotIndex(structure, outpost);
+    return getOutpostTradeStationSlot(outpost?.outpostType, layoutType, slotIndex)?.z ?? 0;
+  }
   if (!["colony", "spaceport"].includes(structure.type)) return 0;
   const site = getStructureRenderSite(structure);
   if (!site) return 0;
   const visualPosition = getStructureVisualPosition(structure.type, site.visualLayoutType, site.siteIndex);
   return visualPosition?.z ?? 0;
+}
+
+function getOutpostRenderZ(outpost) {
+  const layoutType = getOutpostVisualLayoutType(outpost);
+  return getOutpostVisualLayout(outpost.outpostType, layoutType)?.outpost?.z ?? 0;
 }
 
 function getPlanetSystemForSite(site) {
@@ -2658,6 +2727,43 @@ function getCanonicalSystemPlanetCenters(system, layoutType) {
     return [topPlanets[0], bottomPlanets[0], bottomPlanets[1]];
   }
   return planets;
+}
+
+function getOutpostVisualLayoutType(outpost) {
+  const centers = getOutpostHexCenters(outpost).sort((left, right) => left.y - right.y || left.x - right.x);
+  const topY = centers[0]?.y ?? 0;
+  const topCount = centers.filter((center) => Math.abs(center.y - topY) < 1).length;
+  return topCount === 1 ? "oneTopTwoBottom" : "twoTopOneBottom";
+}
+
+function getCanonicalOutpostHexCenters(outpost, layoutType) {
+  const centers = getOutpostHexCenters(outpost).sort((left, right) => left.y - right.y || left.x - right.x);
+  const topY = centers[0]?.y ?? 0;
+  const topCenters = centers.filter((center) => Math.abs(center.y - topY) < 1).sort((left, right) => left.x - right.x);
+  const bottomCenters = centers.filter((center) => Math.abs(center.y - topY) >= 1).sort((left, right) => left.x - right.x);
+
+  if (layoutType === "twoTopOneBottom" && topCenters.length === 2 && bottomCenters.length === 1) {
+    return [topCenters[0], topCenters[1], bottomCenters[0]];
+  }
+  if (layoutType === "oneTopTwoBottom" && topCenters.length === 1 && bottomCenters.length === 2) {
+    return [topCenters[0], bottomCenters[0], bottomCenters[1]];
+  }
+  return centers;
+}
+
+function getOutpostHexCenters(outpost) {
+  return (outpost?.slotHexIds ?? [])
+    .map((hexId) => (boardLayout.hexes ?? []).find((hex) => hex.id === hexId))
+    .filter(Boolean)
+    .map((hex) => ({ x: hex.x, y: hex.y }));
+}
+
+function getTradeStationSlotIndex(structure, outpost = getOutpostById(structure.outpostId)) {
+  const dockMatch = /-dock-(\d+)$/.exec(structure.dockId ?? "");
+  const dockIndex = Number(dockMatch?.[1]);
+  if (dockIndex >= 1 && dockIndex <= 5) return dockIndex;
+  const outpostIndex = (outpost?.tradeStationIds ?? []).indexOf(structure.id);
+  return outpostIndex >= 0 ? outpostIndex + 1 : 1;
 }
 
 function queuePlacementVfxForStateChange(previousGameState, nextGameState) {
@@ -3686,7 +3792,7 @@ function renderSystemsLayer() {
     group.append(renderPlanetSystem(system, explored ? "planet-system" : "hidden-system", explored));
   }
 
-  for (const outpost of getVisibleOutposts()) {
+  for (const outpost of [...getVisibleOutposts()].sort((left, right) => getOutpostRenderZ(left) - getOutpostRenderZ(right))) {
     group.append(renderOutpost(outpost));
   }
 
@@ -3770,29 +3876,29 @@ function renderOutpost(outpost) {
   const selectedClass = isSelectedElement("outpost", outpost.id) ? " is-selected" : "";
   const group = createSvgElement("g", { class: `outpost${selectedClass}` });
   const visual = outpostVisualDefaults.outpost;
-  const imageWidth = visual.width;
-  const imageHeight = visual.height;
+  const placement = getOutpostVisualPlacement(outpost, visual);
   enableBoardElementSelection(group, "outpost", outpost.id);
   group.append(createSvgElement("circle", {
     class: "outpost-hit-area",
-    cx: outpost.x,
-    cy: outpost.y,
-    r: visual.hitRadius
+    cx: placement.x,
+    cy: placement.y,
+    r: placement.hitRadius
   }));
   group.append(createSvgElement("image", {
     class: "outpost-image",
     href: getOutpostAssetPath(outpost.outpostType),
-    x: outpost.x - imageWidth / 2,
-    y: outpost.y - imageHeight / 2,
-    width: imageWidth,
-    height: imageHeight,
+    x: placement.x - placement.width / 2,
+    y: placement.y - placement.height / 2,
+    width: placement.width,
+    height: placement.height,
+    transform: createPlacementTransform(placement.x, placement.y, placement.rotation, { opacity: 1, scale: 1, wobbleX: 0, wobbleY: 0 }),
     preserveAspectRatio: "xMidYMid meet"
   }));
   group.append(createSvgElement("circle", {
     class: "outpost-ring",
-    cx: outpost.x,
-    cy: outpost.y,
-    r: visual.hitRadius
+    cx: placement.x,
+    cy: placement.y,
+    r: placement.hitRadius
   }));
   return group;
 }
@@ -3864,19 +3970,21 @@ function renderStructuresLayer() {
 
     if (structure.type === "tradeStation") {
       const visual = outpostVisualDefaults.tradeStation;
+      const placement = getTradeStationVisualPlacement(structure, site, visual);
       structureGroup.append(createSvgElement("circle", {
         class: "trade-station-hit-area",
-        cx: site.x,
-        cy: site.y,
-        r: visual.hitRadius
+        cx: placement.x,
+        cy: placement.y,
+        r: placement.hitRadius
       }));
       structureGroup.append(createSvgElement("image", {
         class: `trade-station-image player-color-${ownerIndex}`,
         href: getTradeStationAssetPath(owner?.color),
-        x: site.x - visual.width / 2,
-        y: site.y - visual.height / 2,
-        width: visual.width,
-        height: visual.height,
+        x: placement.x - placement.width / 2,
+        y: placement.y - placement.height / 2,
+        width: placement.width,
+        height: placement.height,
+        transform: createPlacementTransform(placement.x, placement.y, placement.rotation, { opacity: 1, scale: 1, wobbleX: 0, wobbleY: 0 }),
         preserveAspectRatio: "xMidYMid meet"
       }));
     } else if (structure.type === "spaceport") {
