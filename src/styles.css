@@ -998,6 +998,45 @@ h1 {
   filter: drop-shadow(0 4px 7px rgba(2, 6, 23, 0.62));
 }
 
+.placement-vfx-layer {
+  pointer-events: none;
+}
+
+.placement-vfx-glow,
+.placement-vfx-core,
+.placement-vfx-flash {
+  filter: url("#placement-vfx-glow");
+}
+
+.placement-vfx-glow {
+  fill: rgba(125, 211, 252, 0.62);
+}
+
+.placement-vfx-core,
+.placement-vfx-flash {
+  fill: rgba(240, 249, 255, 0.95);
+}
+
+.placement-vfx-flash-ring {
+  fill: none;
+  stroke: rgba(186, 230, 253, 0.92);
+  stroke-width: 5;
+}
+
+.placement-vfx-lightning {
+  fill: none;
+  stroke: rgba(224, 242, 254, 0.96);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.1;
+  filter: url("#placement-vfx-glow");
+}
+
+.placement-vfx-spark {
+  fill: rgba(251, 191, 36, 0.94);
+  filter: url("#placement-vfx-glow");
+}
+
 .space-point {
   fill: rgba(8, 47, 73, 0.72);
   stroke: rgba(240, 249, 255, 0.94);

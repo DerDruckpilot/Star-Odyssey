@@ -108,6 +108,20 @@ const state = {
   notice: ""
 };
 
+const placementVfxDuration = 1650;
+const placementVfx = {
+  items: [],
+  frameRequestId: null,
+  currentTime: 0,
+  nextId: 1
+};
+const shipFlightAnimation = {
+  items: [],
+  frameRequestId: null,
+  currentTime: 0
+};
+const shipVisualAngles = new Map();
+
 function loadLanguage() {
   try {
     const storedLanguage = localStorage.getItem(languageStorageKey);
@@ -302,6 +316,7 @@ function selectBoardElement(type, id) {
 function handlePlacementPointSelection(nodeId) {
   if (state.gameState?.phase !== "placement") return false;
 
+  const previousGameState = state.gameState;
   const step = state.gameState.placement?.step;
   if (step === "placeSpaceport") {
     const site = getStartColonySiteAtNode(nodeId);
@@ -318,6 +333,7 @@ function handlePlacementPointSelection(nodeId) {
     return false;
   }
 
+  queuePlacementVfxForStateChange(previousGameState, state.gameState);
   saveCurrentGameState();
   render();
   return true;
@@ -380,6 +396,7 @@ function finishActiveEncounter() {
 function moveSelectedShipTo(targetNodeId) {
   const selectedShip = getSelectedShip();
   if (!selectedShip) return false;
+  if (isShipFlightAnimating(selectedShip.id)) return false;
   if (!canMoveSelectedShipTo(targetNodeId)) {
     const destination = getSelectedShipDestinationState(targetNodeId);
     if (destination?.reason === "occupied") {
@@ -393,7 +410,10 @@ function moveSelectedShipTo(targetNodeId) {
   }
 
   state.notice = "";
+  const fromPoint = getBoardPointById(selectedShip.locationId);
+  const toPoint = getBoardPointById(targetNodeId);
   state.gameState = moveShip(state.gameState, boardLayout, selectedShip.id, targetNodeId);
+  queueShipFlightAnimation(selectedShip, fromPoint, toPoint);
   saveCurrentGameState();
   render();
   return true;
@@ -575,7 +595,9 @@ function placePendingShipAt(nodeId) {
   if (!state.gameState || state.gameState.phase !== "tradeBuild") return false;
   if (!state.gameState.board?.pendingShipPlacement || !isValidPendingShipLaunchNode(nodeId)) return false;
 
+  const previousGameState = state.gameState;
   state.gameState = placePendingShip(state.gameState, boardLayout, nodeId);
+  queuePlacementVfxForStateChange(previousGameState, state.gameState);
   saveCurrentGameState();
   render();
   return true;
@@ -601,7 +623,9 @@ function confirmPendingSpaceportAt(structureId) {
   if (!state.gameState || state.gameState.phase !== "tradeBuild") return false;
   if (!state.gameState.board?.pendingSpaceportUpgrade || !isValidPendingSpaceportTarget(structureId)) return false;
 
+  const previousGameState = state.gameState;
   state.gameState = confirmPendingSpaceportUpgrade(state.gameState, structureId);
+  queuePlacementVfxForStateChange(previousGameState, state.gameState);
   saveCurrentGameState();
   render();
   return true;
@@ -618,8 +642,11 @@ function cancelActiveSpaceportBuild() {
 function foundColonyWithSelectedShip() {
   const selectedShip = getSelectedShip();
   if (!state.gameState || !selectedShip) return;
+  if (isShipFlightAnimating(selectedShip.id)) return;
 
+  const previousGameState = state.gameState;
   state.gameState = foundColony(state.gameState, boardLayout, selectedShip.id);
+  queuePlacementVfxForStateChange(previousGameState, state.gameState);
   saveCurrentGameState();
   render();
 }
@@ -627,6 +654,7 @@ function foundColonyWithSelectedShip() {
 function foundTradeStationWithSelectedShip() {
   const selectedShip = getSelectedShip();
   if (!state.gameState || !selectedShip) return;
+  if (isShipFlightAnimating(selectedShip.id)) return;
 
   state.gameState = foundTradeStation(state.gameState, boardLayout, selectedShip.id);
   saveCurrentGameState();
@@ -2668,6 +2696,290 @@ function getRenderBounds(points) {
   };
 }
 
+function queuePlacementVfxForStateChange(previousGameState, nextGameState) {
+  if (!previousGameState || previousGameState === nextGameState) return;
+
+  const previousStructuresById = new Map((previousGameState.board?.structures ?? []).map((structure) => [structure.id, structure]));
+  for (const structure of nextGameState.board?.structures ?? []) {
+    const previousStructure = previousStructuresById.get(structure.id);
+    if (!previousStructure && ["colony", "spaceport"].includes(structure.type)) {
+      queuePlacementVfx("structure", structure);
+    } else if (previousStructure?.type === "colony" && structure.type === "spaceport") {
+      queuePlacementVfx("structure", structure);
+    }
+  }
+
+  const previousShipIds = new Set((previousGameState.board?.ships ?? []).map((ship) => ship.id));
+  for (const ship of nextGameState.board?.ships ?? []) {
+    if (!previousShipIds.has(ship.id)) queuePlacementVfx("ship", ship);
+  }
+}
+
+function queuePlacementVfx(targetType, target) {
+  const position = targetType === "ship"
+    ? getPlacementVfxShipPosition(target)
+    : getPlacementVfxStructurePosition(target);
+  if (!position) return;
+
+  const now = getAnimationNow();
+  placementVfx.items.push({
+    id: `placement-vfx-${placementVfx.nextId++}`,
+    targetType,
+    targetId: target.id,
+    objectType: target.type,
+    x: position.x,
+    y: position.y,
+    startTime: now,
+    seed: createPlacementVfxSeed(target.id, now)
+  });
+  startPlacementVfxLoop();
+}
+
+function getPlacementVfxShipPosition(ship) {
+  const point = (boardLayout.points ?? []).find((candidate) => candidate.id === ship.locationId);
+  return point ? { x: point.x, y: point.y } : null;
+}
+
+function getPlacementVfxStructurePosition(structure) {
+  const site = getStructureRenderPoint(structure);
+  if (!site) return null;
+  const defaults = structure.type === "spaceport"
+    ? playerPieceVisualDefaults.spaceport
+    : playerPieceVisualDefaults.colony;
+  const placement = getStructureVisualPlacement(structure, site, defaults);
+  return { x: placement.x, y: placement.y };
+}
+
+function createPlacementVfxSeed(id, now) {
+  let seed = Math.floor(now);
+  for (const character of String(id)) {
+    seed = (seed * 33 + character.charCodeAt(0)) >>> 0;
+  }
+  return seed || 1;
+}
+
+function startPlacementVfxLoop() {
+  if (placementVfx.frameRequestId || placementVfx.items.length === 0) return;
+  placementVfx.frameRequestId = requestAnimationFrame(updatePlacementVfx);
+}
+
+function updatePlacementVfx(now) {
+  placementVfx.currentTime = now;
+  placementVfx.items = placementVfx.items.filter((item) => now - item.startTime < placementVfxDuration);
+  placementVfx.frameRequestId = null;
+  render();
+  if (placementVfx.items.length > 0) {
+    placementVfx.frameRequestId = requestAnimationFrame(updatePlacementVfx);
+  }
+}
+
+function getAnimationNow() {
+  return typeof performance === "undefined" ? Date.now() : performance.now();
+}
+
+function getPlacementVfxTime() {
+  return placementVfx.currentTime || getAnimationNow();
+}
+
+function getActivePlacementVfx(targetType, targetId) {
+  const now = getPlacementVfxTime();
+  return placementVfx.items
+    .filter((item) => item.targetType === targetType && item.targetId === targetId && now - item.startTime < placementVfxDuration)
+    .at(-1) ?? null;
+}
+
+function getPlacementAssetPop(targetType, targetId) {
+  const item = getActivePlacementVfx(targetType, targetId);
+  if (!item) return { opacity: 1, scale: 1, wobbleX: 0, wobbleY: 0 };
+
+  const progress = clamp01((getPlacementVfxTime() - item.startTime) / placementVfxDuration);
+  const revealStart = 0.72;
+  if (progress < revealStart) return { opacity: 0, scale: 0.25, wobbleX: 0, wobbleY: 0 };
+
+  const localProgress = clamp01((progress - revealStart) / (1 - revealStart));
+  const popScale = localProgress < 0.45
+    ? 0.25 + easeOutCubic(localProgress / 0.45) * 0.9
+    : 1.15 - easeOutCubic((localProgress - 0.45) / 0.55) * 0.15;
+  const wobble = Math.sin(localProgress * Math.PI * 6) * (1 - localProgress) * 2;
+  return {
+    opacity: clamp01(localProgress * 8),
+    scale: popScale,
+    wobbleX: wobble,
+    wobbleY: -wobble * 0.45
+  };
+}
+
+function createPlacementTransform(centerX, centerY, rotation, pop) {
+  const transforms = [];
+  if (pop.wobbleX || pop.wobbleY) transforms.push(`translate(${pop.wobbleX} ${pop.wobbleY})`);
+  if (rotation) transforms.push(`rotate(${rotation} ${centerX} ${centerY})`);
+  if (pop.scale !== 1) transforms.push(`translate(${centerX} ${centerY}) scale(${pop.scale}) translate(${-centerX} ${-centerY})`);
+  return transforms.join(" ");
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function easeOutCubic(value) {
+  const progress = clamp01(value);
+  return 1 - ((1 - progress) ** 3);
+}
+
+function seededRandom(seed, index) {
+  const value = Math.sin(seed * 12.9898 + index * 78.233) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function queueShipFlightAnimation(ship, fromPoint, toPoint) {
+  if (!ship || !fromPoint || !toPoint || fromPoint.id === toPoint.id) return;
+
+  const distance = getDistance(fromPoint, toPoint);
+  const startAngle = getShipVisualAngle(ship.id);
+  const targetAngle = Math.atan2(toPoint.y - fromPoint.y, toPoint.x - fromPoint.x);
+  const duration = Math.max(600, Math.min(2200, 460 + distance * 6.4));
+  const noseDistance = Math.max(56, Math.min(170, distance * 0.42));
+  const controlDistance = Math.max(48, Math.min(150, distance * 0.34));
+  const controlPoint1 = {
+    x: fromPoint.x + Math.cos(startAngle) * noseDistance,
+    y: fromPoint.y + Math.sin(startAngle) * noseDistance
+  };
+  const controlPoint2 = {
+    x: toPoint.x - Math.cos(targetAngle) * controlDistance,
+    y: toPoint.y - Math.sin(targetAngle) * controlDistance
+  };
+
+  shipFlightAnimation.items = shipFlightAnimation.items.filter((item) => item.shipId !== ship.id);
+  shipFlightAnimation.items.push({
+    shipId: ship.id,
+    from: { x: fromPoint.x, y: fromPoint.y },
+    to: { x: toPoint.x, y: toPoint.y },
+    controlPoint1,
+    controlPoint2,
+    startAngle,
+    startTime: getAnimationNow(),
+    duration
+  });
+  startShipFlightLoop();
+}
+
+function startShipFlightLoop() {
+  if (shipFlightAnimation.frameRequestId || shipFlightAnimation.items.length === 0) return;
+  shipFlightAnimation.frameRequestId = requestAnimationFrame(updateShipFlightAnimations);
+}
+
+function updateShipFlightAnimations(now) {
+  shipFlightAnimation.currentTime = now;
+  const activeAnimations = [];
+  for (const item of shipFlightAnimation.items) {
+    if (now - item.startTime >= item.duration) {
+      shipVisualAngles.set(item.shipId, getShipFlightPose(item, 1).angle);
+    } else {
+      activeAnimations.push(item);
+    }
+  }
+  shipFlightAnimation.items = activeAnimations;
+  shipFlightAnimation.frameRequestId = null;
+  render();
+  if (shipFlightAnimation.items.length > 0) {
+    shipFlightAnimation.frameRequestId = requestAnimationFrame(updateShipFlightAnimations);
+  }
+}
+
+function getShipFlightPose(animation, progress) {
+  const easedProgress = easeInOutCubic(clamp01(progress));
+  const point = getCubicBezierPoint(
+    animation.from,
+    animation.controlPoint1,
+    animation.controlPoint2,
+    animation.to,
+    easedProgress
+  );
+  const tangent = getCubicBezierTangent(
+    animation.from,
+    animation.controlPoint1,
+    animation.controlPoint2,
+    animation.to,
+    easedProgress
+  );
+  const tangentAngle = Math.atan2(tangent.y, tangent.x);
+  const rotationBlend = easeOutCubic(Math.min(1, progress * 1.4));
+
+  return {
+    x: point.x,
+    y: point.y,
+    angle: lerpAngle(animation.startAngle, tangentAngle, rotationBlend)
+  };
+}
+
+function getShipRenderPose(ship, fallbackPoint) {
+  const animation = getShipFlightAnimation(ship.id);
+  if (!animation) {
+    return {
+      x: fallbackPoint.x,
+      y: fallbackPoint.y,
+      angle: getShipVisualAngle(ship.id)
+    };
+  }
+
+  const progress = clamp01((getShipFlightTime() - animation.startTime) / animation.duration);
+  return getShipFlightPose(animation, progress);
+}
+
+function getShipFlightAnimation(shipId) {
+  return shipFlightAnimation.items.find((item) => item.shipId === shipId) ?? null;
+}
+
+function isShipFlightAnimating(shipId) {
+  return Boolean(getShipFlightAnimation(shipId));
+}
+
+function getShipFlightTime() {
+  return shipFlightAnimation.currentTime || getAnimationNow();
+}
+
+function getShipVisualAngle(shipId) {
+  return shipVisualAngles.get(shipId) ?? 0;
+}
+
+function getBoardPointById(pointId) {
+  return (boardLayout.points ?? []).find((point) => point.id === pointId) ?? null;
+}
+
+function getDistance(fromPoint, toPoint) {
+  return Math.hypot(toPoint.x - fromPoint.x, toPoint.y - fromPoint.y);
+}
+
+function getCubicBezierPoint(p0, p1, p2, p3, progress) {
+  const inverse = 1 - progress;
+  const inverse2 = inverse * inverse;
+  const progress2 = progress * progress;
+  return {
+    x: inverse2 * inverse * p0.x + 3 * inverse2 * progress * p1.x + 3 * inverse * progress2 * p2.x + progress2 * progress * p3.x,
+    y: inverse2 * inverse * p0.y + 3 * inverse2 * progress * p1.y + 3 * inverse * progress2 * p2.y + progress2 * progress * p3.y
+  };
+}
+
+function getCubicBezierTangent(p0, p1, p2, p3, progress) {
+  const inverse = 1 - progress;
+  return {
+    x: 3 * inverse * inverse * (p1.x - p0.x) + 6 * inverse * progress * (p2.x - p1.x) + 3 * progress * progress * (p3.x - p2.x),
+    y: 3 * inverse * inverse * (p1.y - p0.y) + 6 * inverse * progress * (p2.y - p1.y) + 3 * progress * progress * (p3.y - p2.y)
+  };
+}
+
+function lerpAngle(fromAngle, toAngle, progress) {
+  const delta = Math.atan2(Math.sin(toAngle - fromAngle), Math.cos(toAngle - fromAngle));
+  return fromAngle + delta * clamp01(progress);
+}
+
+function easeInOutCubic(value) {
+  const progress = clamp01(value);
+  return progress < 0.5
+    ? 4 * progress * progress * progress
+    : 1 - ((-2 * progress + 2) ** 3) / 2;
+}
+
 function getOwnerName(ownerPlayerId) {
   return state.gameState?.players?.find((player) => player.id === ownerPlayerId)?.name ?? ownerPlayerId;
 }
@@ -2785,6 +3097,7 @@ function isShipAtDock(ship) {
 function canFoundColonyWithShip(ship) {
   const colonySite = getColonySiteAtNode(ship.locationId);
   return Boolean(
+    !isShipFlightAnimating(ship.id) &&
     state.gameState?.phase === "flight" &&
     ship.type === "colonyShip" &&
     colonySite &&
@@ -2797,6 +3110,7 @@ function canFoundColonyWithShip(ship) {
 function canFoundTradeStationWithShip(ship) {
   const outpost = getDockingOutpostForNode(ship.locationId);
   return Boolean(
+    !isShipFlightAnimating(ship.id) &&
     state.gameState?.phase === "flight" &&
     ship.type === "tradeShip" &&
     outpost &&
@@ -2827,6 +3141,7 @@ function getDockingOutpostForNode(nodeId) {
 function getSelectedShipDestinationState(targetNodeId) {
   const selectedShip = getSelectedShip();
   if (!selectedShip || !state.gameState) return null;
+  if (isShipFlightAnimating(selectedShip.id)) return null;
   return getShipDestinationState(state.gameState, boardLayout, selectedShip.id, targetNodeId);
 }
 
@@ -2862,7 +3177,15 @@ function getReachableNodeMap() {
   }
 
   const selectedShip = getSelectedShip();
-  if (!selectedShip || state.gameState?.phase !== "flight" || !state.gameState.hasRolledFlightSpeed || state.gameState?.activeEncounter) return new Map();
+  if (
+    !selectedShip ||
+    isShipFlightAnimating(selectedShip.id) ||
+    state.gameState?.phase !== "flight" ||
+    !state.gameState.hasRolledFlightSpeed ||
+    state.gameState?.activeEncounter
+  ) {
+    return new Map();
+  }
 
   return new Map(getReachableNodes(
     boardLayout,
@@ -3172,14 +3495,165 @@ function renderBoardSvg() {
   });
 
   svg.append(
+    renderPlacementVfxDefs(),
     renderGridLayer(),
     renderLinksLayer(),
     renderSystemsLayer(),
     renderPointsLayer(),
+    renderPlacementVfxLayer(),
     renderStructuresLayer(),
     renderShipsLayer()
   );
   return svg;
+}
+
+function renderPlacementVfxDefs() {
+  const defs = createSvgElement("defs");
+  const filter = createSvgElement("filter", {
+    id: "placement-vfx-glow",
+    x: "-120%",
+    y: "-120%",
+    width: "340%",
+    height: "340%"
+  });
+  filter.append(
+    createSvgElement("feGaussianBlur", {
+      in: "SourceGraphic",
+      stdDeviation: 5,
+      result: "blur"
+    }),
+    createSvgElement("feColorMatrix", {
+      in: "blur",
+      type: "matrix",
+      values: "0 0 0 0 0.45 0 0 0 0 0.86 0 0 0 0 1 0 0 0 1 0",
+      result: "glow"
+    }),
+    createSvgElement("feMerge")
+  );
+  filter.querySelector("feMerge").append(
+    createSvgElement("feMergeNode", { in: "glow" }),
+    createSvgElement("feMergeNode", { in: "SourceGraphic" })
+  );
+  defs.append(filter);
+  return defs;
+}
+
+function renderPlacementVfxLayer() {
+  const group = createSvgElement("g", {
+    class: "placement-vfx-layer",
+    "aria-hidden": "true"
+  });
+  const now = getPlacementVfxTime();
+
+  for (const item of placementVfx.items) {
+    const progress = clamp01((now - item.startTime) / placementVfxDuration);
+    if (progress >= 1) continue;
+    group.append(renderPlacementVfxItem(item, progress));
+  }
+
+  return group;
+}
+
+function renderPlacementVfxItem(item, progress) {
+  const group = createSvgElement("g", {
+    class: `placement-vfx placement-vfx--${item.objectType}`,
+    "data-placement-vfx-id": item.id
+  });
+  const pulse = 1 + Math.sin(progress * Math.PI * 12) * 0.1;
+  const coreOpacity = progress < 0.78 ? 1 - progress * 0.45 : Math.max(0, 1 - (progress - 0.78) / 0.12);
+  const coreRadius = progress < 0.7
+    ? 3 + easeOutCubic(progress / 0.7) * 19 * pulse
+    : 18 + easeOutCubic((progress - 0.7) / 0.3) * 40;
+
+  group.append(createSvgElement("circle", {
+    class: "placement-vfx-glow",
+    cx: item.x,
+    cy: item.y,
+    r: coreRadius * 1.7,
+    opacity: coreOpacity * 0.42
+  }));
+  group.append(createSvgElement("circle", {
+    class: "placement-vfx-core",
+    cx: item.x,
+    cy: item.y,
+    r: coreRadius,
+    opacity: coreOpacity
+  }));
+
+  if (progress >= 0.34 && progress <= 0.74) {
+    renderPlacementLightning(group, item, progress);
+    renderPlacementSparks(group, item, progress);
+  }
+
+  if (progress >= 0.68 && progress <= 0.9) {
+    const flashProgress = clamp01((progress - 0.68) / 0.22);
+    const flashOpacity = 1 - flashProgress;
+    group.append(createSvgElement("circle", {
+      class: "placement-vfx-flash",
+      cx: item.x,
+      cy: item.y,
+      r: 16 + flashProgress * 66,
+      opacity: flashOpacity
+    }));
+    group.append(createSvgElement("circle", {
+      class: "placement-vfx-flash-ring",
+      cx: item.x,
+      cy: item.y,
+      r: 10 + flashProgress * 76,
+      opacity: flashOpacity
+    }));
+  }
+
+  return group;
+}
+
+function renderPlacementLightning(group, item, progress) {
+  const lightningProgress = clamp01((progress - 0.34) / 0.4);
+  const fade = Math.sin(lightningProgress * Math.PI);
+  const flicker = 0.55 + seededRandom(item.seed, Math.floor(progress * 46)) * 0.45;
+  const armCount = 5 + Math.floor(seededRandom(item.seed, 1) * 3);
+
+  for (let armIndex = 0; armIndex < armCount; armIndex += 1) {
+    const angle = seededRandom(item.seed, armIndex + 3) * Math.PI * 2;
+    const length = 20 + seededRandom(item.seed, armIndex + 11) * 42;
+    const segmentCount = 3 + Math.floor(seededRandom(item.seed, armIndex + 21) * 3);
+    const points = [[item.x, item.y]];
+
+    for (let segmentIndex = 1; segmentIndex <= segmentCount; segmentIndex += 1) {
+      const distance = (length * segmentIndex) / segmentCount;
+      const jitter = (seededRandom(item.seed, armIndex * 17 + segmentIndex) - 0.5) * 18;
+      const segmentAngle = angle + jitter * 0.02;
+      points.push([
+        item.x + Math.cos(segmentAngle) * distance,
+        item.y + Math.sin(segmentAngle) * distance
+      ]);
+    }
+
+    group.append(createSvgElement("polyline", {
+      class: "placement-vfx-lightning",
+      points: points.map(([x, y]) => `${x},${y}`).join(" "),
+      opacity: fade * flicker
+    }));
+  }
+}
+
+function renderPlacementSparks(group, item, progress) {
+  const sparkProgress = clamp01((progress - 0.34) / 0.4);
+  const sparkCount = 14;
+
+  for (let sparkIndex = 0; sparkIndex < sparkCount; sparkIndex += 1) {
+    const angle = seededRandom(item.seed, sparkIndex + 40) * Math.PI * 2;
+    const speed = 18 + seededRandom(item.seed, sparkIndex + 60) * 42;
+    const distance = speed * sparkProgress;
+    const radius = 1.2 + seededRandom(item.seed, sparkIndex + 80) * 1.8;
+    group.append(createSvgElement("circle", {
+      class: "placement-vfx-spark",
+      cx: item.x + Math.cos(angle) * distance,
+      cy: item.y + Math.sin(angle) * distance,
+      r: radius,
+      opacity: (1 - sparkProgress) * 0.85
+    }));
+  }
 }
 
 function renderGridLayer() {
@@ -3444,6 +3918,7 @@ function renderStructuresLayer() {
     } else if (structure.type === "spaceport") {
       const visual = playerPieceVisualDefaults.spaceport;
       const placement = getStructureVisualPlacement(structure, site, visual);
+      const pop = getPlacementAssetPop("structure", structure.id);
       structureGroup.append(createSvgElement("circle", {
         class: "structure-hit-area",
         cx: placement.x,
@@ -3457,12 +3932,14 @@ function renderStructuresLayer() {
         y: placement.y - placement.height / 2,
         width: placement.width,
         height: placement.height,
-        transform: `rotate(${placement.rotation} ${placement.x} ${placement.y})`,
+        opacity: pop.opacity,
+        transform: createPlacementTransform(placement.x, placement.y, placement.rotation, pop),
         preserveAspectRatio: "xMidYMid meet"
       }));
     } else {
       const visual = playerPieceVisualDefaults.colony;
       const placement = getStructureVisualPlacement(structure, site, visual);
+      const pop = getPlacementAssetPop("structure", structure.id);
       structureGroup.append(createSvgElement("circle", {
         class: "structure-hit-area",
         cx: placement.x,
@@ -3476,7 +3953,8 @@ function renderStructuresLayer() {
         y: placement.y - placement.height / 2,
         width: placement.width,
         height: placement.height,
-        transform: `rotate(${placement.rotation} ${placement.x} ${placement.y})`,
+        opacity: pop.opacity,
+        transform: createPlacementTransform(placement.x, placement.y, placement.rotation, pop),
         preserveAspectRatio: "xMidYMid meet"
       }));
     }
@@ -3503,19 +3981,27 @@ function renderShipsLayer() {
     const ownerIndex = Number.parseInt(ship.ownerPlayerId.replace("player-", ""), 10);
     const owner = state.gameState?.players?.find((player) => player.id === ship.ownerPlayerId);
     const visual = playerPieceVisualDefaults.ship;
+    const pop = getPlacementAssetPop("ship", ship.id);
+    const pose = getShipRenderPose(ship, point);
+    const transform = [
+      createPlacementTransform(pose.x, pose.y, 0, pop),
+      `rotate(${(pose.angle * 180) / Math.PI} ${pose.x} ${pose.y})`
+    ].filter(Boolean).join(" ");
     shipGroup.append(createSvgElement("circle", {
       class: "ship-hit-area",
-      cx: point.x,
-      cy: point.y,
+      cx: pose.x,
+      cy: pose.y,
       r: visual.hitRadius
     }));
     shipGroup.append(createSvgElement("image", {
       class: `ship-image player-color-${ownerIndex}`,
       href: getPlayerShipAssetPath(owner?.color, ship.id),
-      x: point.x - visual.width / 2,
-      y: point.y - visual.height / 2,
+      x: pose.x - visual.width / 2,
+      y: pose.y - visual.height / 2,
       width: visual.width,
       height: visual.height,
+      opacity: pop.opacity,
+      transform,
       preserveAspectRatio: "xMidYMid meet"
     }));
     group.append(shipGroup);
