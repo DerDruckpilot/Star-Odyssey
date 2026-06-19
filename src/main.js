@@ -20,6 +20,7 @@ import {
   playerPieceVisualDefaults
 } from "./data/playerPieceVisuals.js";
 import {
+  applyDebugLayoutTransform,
   getStructureVisualPosition,
   structureVisualReferenceLayouts
 } from "./data/structureVisualLayouts.js";
@@ -2602,19 +2603,25 @@ function getStructureVisualPlacement(structure, site, defaults) {
   const siteIndex = site.siteIndex;
   const visualPosition = getStructureVisualPosition(structure.type, layoutType, siteIndex);
   const system = getPlanetSystemForSite(site);
-  const mappedPosition = visualPosition && system
-    ? mapStructureVisualPosition(system, layoutType, visualPosition)
-    : { x: site.x, y: site.y };
+  const transform = visualPosition && system
+    ? applyDebugLayoutTransform({
+      referenceLayout: structureVisualReferenceLayouts[layoutType],
+      actualCenters: getCanonicalSystemPlanetCenters(system, layoutType),
+      visualPosition,
+      baseWidth: defaults.width,
+      baseHeight: defaults.height,
+      baseHitRadius: defaults.hitRadius
+    })
+    : null;
 
-  const scale = visualPosition?.scale ?? 1;
-  return {
-    x: mappedPosition.x,
-    y: mappedPosition.y,
-    width: defaults.width * scale,
-    height: defaults.height * scale,
-    hitRadius: defaults.hitRadius * scale,
-    rotation: visualPosition?.rotation ?? 0,
-    z: visualPosition?.z ?? 0
+  return transform ?? {
+    x: site.x,
+    y: site.y,
+    width: defaults.width,
+    height: defaults.height,
+    hitRadius: defaults.hitRadius,
+    rotation: 0,
+    z: 0
   };
 }
 
@@ -2631,28 +2638,6 @@ function getPlanetSystemForSite(site) {
     ...(boardLayout.startSystems ?? []),
     ...getVisiblePlanetSystems()
   ].find((system) => system.id === site.systemId) ?? null;
-}
-
-function mapStructureVisualPosition(system, layoutType, visualPosition) {
-  const reference = structureVisualReferenceLayouts[layoutType];
-  const actualCenters = getCanonicalSystemPlanetCenters(system, layoutType);
-  if (!reference || actualCenters.length !== 3) {
-    return { x: system.x, y: system.y };
-  }
-
-  const referenceCenter = averageRenderPoints(reference.centers);
-  const actualCenter = averageRenderPoints(actualCenters);
-  const referenceBounds = getRenderBounds(reference.centers);
-  const actualBounds = getRenderBounds(actualCenters);
-  const scaleX = actualBounds.width / referenceBounds.width;
-  const scaleY = actualBounds.height / referenceBounds.height;
-  const referenceX = (visualPosition.x / 100) * reference.width;
-  const referenceY = (visualPosition.y / 100) * reference.height;
-
-  return {
-    x: actualCenter.x + (referenceX - referenceCenter.x) * scaleX,
-    y: actualCenter.y + (referenceY - referenceCenter.y) * scaleY
-  };
 }
 
 function getCanonicalSystemPlanetCenters(system, layoutType) {
@@ -2673,27 +2658,6 @@ function getCanonicalSystemPlanetCenters(system, layoutType) {
     return [topPlanets[0], bottomPlanets[0], bottomPlanets[1]];
   }
   return planets;
-}
-
-function averageRenderPoints(points) {
-  const total = points.reduce((sum, point) => ({
-    x: sum.x + point.x,
-    y: sum.y + point.y
-  }), { x: 0, y: 0 });
-
-  return {
-    x: total.x / points.length,
-    y: total.y / points.length
-  };
-}
-
-function getRenderBounds(points) {
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  return {
-    width: Math.max(...xs) - Math.min(...xs) || 1,
-    height: Math.max(...ys) - Math.min(...ys) || 1
-  };
 }
 
 function queuePlacementVfxForStateChange(previousGameState, nextGameState) {

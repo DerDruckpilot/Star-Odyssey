@@ -59,3 +59,56 @@ export function getStructureVisualPosition(structureType, layoutType, siteIndex)
   const positions = structureVisualLayouts[group]?.[layoutType]?.positions ?? [];
   return positions.find((position) => position.siteIndex === siteIndex) ?? null;
 }
+
+export function applyDebugLayoutTransform({
+  referenceLayout,
+  actualCenters,
+  visualPosition,
+  baseWidth,
+  baseHeight,
+  baseHitRadius
+}) {
+  if (!referenceLayout || actualCenters.length !== 3 || !visualPosition) return null;
+
+  const referenceCenter = averagePoints(referenceLayout.centers);
+  const actualCenter = averagePoints(actualCenters);
+  const referenceBounds = getBounds(referenceLayout.centers);
+  const actualBounds = getBounds(actualCenters);
+  const scaleX = actualBounds.width / referenceBounds.width;
+  const scaleY = actualBounds.height / referenceBounds.height;
+  const localScale = (scaleX + scaleY) / 2;
+  const referenceX = (visualPosition.x / 100) * referenceLayout.width;
+  const referenceY = (visualPosition.y / 100) * referenceLayout.height;
+
+  return {
+    x: actualCenter.x + (referenceX - referenceCenter.x) * scaleX,
+    y: actualCenter.y + (referenceY - referenceCenter.y) * scaleY,
+    width: baseWidth * (visualPosition.scale ?? 1) * localScale,
+    height: baseHeight * (visualPosition.scale ?? 1) * localScale,
+    hitRadius: baseHitRadius * localScale,
+    rotation: visualPosition.rotation ?? 0,
+    z: visualPosition.z ?? 0,
+    localScale
+  };
+}
+
+function averagePoints(points) {
+  const total = points.reduce((sum, point) => ({
+    x: sum.x + point.x,
+    y: sum.y + point.y
+  }), { x: 0, y: 0 });
+
+  return {
+    x: total.x / points.length,
+    y: total.y / points.length
+  };
+}
+
+function getBounds(points) {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  return {
+    width: Math.max(...xs) - Math.min(...xs) || 1,
+    height: Math.max(...ys) - Math.min(...ys) || 1
+  };
+}
