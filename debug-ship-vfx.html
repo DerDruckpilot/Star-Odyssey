@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Star Odyssey - Schiff VFX Debug</title>
+    <link rel="stylesheet" href="./src/debug-outposts.css">
+    <link rel="stylesheet" href="./src/debug-ship-vfx.css">
+  </head>
+  <body>
+    <header class="debug-header">
+      <div>
+        <p class="eyebrow">Star Odyssey Debug</p>
+        <h1>Schiff VFX Debug</h1>
+        <p class="debug-subtitle">Energiespulen und Triebwerke auf Schiff-Assets ausrichten</p>
+      </div>
+      <nav>
+        <a href="./debug-upgrades.html">Upgrade Debug</a>
+        <a href="./debug-outposts.html">Outpost Debug</a>
+        <a href="./debug-colonies.html">Kolonien Debug</a>
+        <a href="./debug-spaceports.html">Raumhäfen Debug</a>
+        <a href="./debug-ship-vfx.html" aria-current="page">Schiff VFX Debug</a>
+        <a href="./debug-friendship-cards.html">Freundschaftskarten Debug</a>
+        <a href="./debug-encounter-cards.html">Begegnungskarten Debug</a>
+      </nav>
+    </header>
+
+    <main class="debug-shell debug-shell--ship-vfx">
+      <section class="debug-stage-card">
+        <canvas id="ship-vfx-canvas" width="960" height="620" aria-label="Schiff VFX Canvas"></canvas>
+      </section>
+
+      <aside class="debug-panel">
+        <h2>VFX Setup</h2>
+        <label>
+          Schiff
+          <select id="ship-select"></select>
+        </label>
+        <label>
+          Hintergrund
+          <select id="background-mode">
+            <option value="dark">Dunkel</option>
+            <option value="light">Hell</option>
+            <option value="checker">Transparentes Muster</option>
+          </select>
+        </label>
+        <label>
+          Zoom
+          <input id="zoom-control" type="range" min="0.25" max="1.4" step="0.01" value="0.68">
+        </label>
+        <label>
+          Bearbeiten
+          <select id="edit-mode">
+            <option value="coil">Energiespulen</option>
+            <option value="engine">Triebwerke</option>
+          </select>
+        </label>
+        <label>
+          Vorschau
+          <select id="motion-mode">
+            <option value="idle">Schiff steht</option>
+            <option value="moving">Schiff bewegt sich</option>
+          </select>
+        </label>
+        <label>
+          Spulenstatus
+          <select id="coil-preview-mode">
+            <option value="active">Aktiv</option>
+            <option value="inactive">Inaktiv</option>
+          </select>
+        </label>
+
+        <div class="selection-box">
+          <h3 id="selected-anchor-title">Kein Anker ausgewählt</h3>
+          <label>X <input id="anchor-x" type="number" step="1"></label>
+          <label>Y <input id="anchor-y" type="number" step="1"></label>
+          <label>Richtung <input id="anchor-direction" type="number" step="1"></label>
+          <div class="button-row">
+            <button id="add-engine-anchor" type="button">Triebwerk hinzufügen</button>
+            <button id="remove-engine-anchor" type="button">Triebwerk entfernen</button>
+          </div>
+        </div>
+
+        <div class="button-row">
+          <button id="reset-anchors" type="button">Reset</button>
+          <button id="export-anchors" type="button">Export aktualisieren</button>
+        </div>
+
+        <textarea id="export-output" readonly aria-label="Schiff VFX Export"></textarea>
+      </aside>
+    </main>
+
+    <script type="module" src="./src/debug-ship-vfx.js"></script>
+  </body>
+</html>

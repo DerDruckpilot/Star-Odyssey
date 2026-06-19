@@ -1,0 +1,30 @@
+.debug-shell--ship-vfx {
+  grid-template-columns: minmax(0, 1fr) 24rem;
+}
+
+#ship-vfx-canvas {
+  display: block;
+  width: 100%;
+  min-height: 34rem;
+  border: 1px solid rgba(178, 215, 255, 0.28);
+  background: #020817;
+  touch-action: none;
+}
+
+#zoom-control {
+  padding: 0;
+}
+
+#anchor-direction:disabled {
+  opacity: 0.48;
+}
+
+@media (max-width: 980px) {
+  .debug-shell--ship-vfx {
+    grid-template-columns: 1fr;
+  }
+
+  #ship-vfx-canvas {
+    min-height: 24rem;
+  }
+}
