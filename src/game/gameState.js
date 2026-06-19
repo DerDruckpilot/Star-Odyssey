@@ -320,14 +320,7 @@ export function rollPlacementStart(gameState, forcedRoll = null) {
         rolls,
         currentRollIndex: nextRollIndex
       },
-      logEntry: {
-        type: "placement",
-        messageKey: "logPlacementRolled",
-        messageParams: {
-          player: gameState.players[rollingPlayerIndex]?.name ?? rollingPlayerId,
-          total: roll.total
-        }
-      }
+      logEntry: createPlacementRollLog(gameState, rollingPlayerIndex, rollingPlayerId, roll.total)
     });
   }
 
@@ -347,11 +340,14 @@ export function rollPlacementStart(gameState, forcedRoll = null) {
         rollHistory: [...placement.rollHistory, rolls],
         tiedPlayerIds
       },
-      logEntry: {
-        type: "placement",
-        messageKey: "logPlacementTie",
-        messageParams: {}
-      }
+      logEntries: [
+        createPlacementRollLog(gameState, rollingPlayerIndex, rollingPlayerId, roll.total),
+        {
+          type: "placement",
+          messageKey: "logPlacementTie",
+          messageParams: {}
+        }
+      ]
     });
   }
 
@@ -375,14 +371,28 @@ export function rollPlacementStart(gameState, forcedRoll = null) {
       tiedPlayerIds: [],
       selectedSpaceportSiteId: null
     },
-    logEntry: {
-      type: "placement",
-      messageKey: "logPlacementStartPlayer",
-      messageParams: {
-        player: gameState.players[startPlayerIndex]?.name ?? startPlayerId
+    logEntries: [
+      createPlacementRollLog(gameState, rollingPlayerIndex, rollingPlayerId, roll.total),
+      {
+        type: "placement",
+        messageKey: "logPlacementStartPlayer",
+        messageParams: {
+          player: gameState.players[startPlayerIndex]?.name ?? startPlayerId
+        }
       }
-    }
+    ]
   });
+}
+
+function createPlacementRollLog(gameState, playerIndex, playerId, total) {
+  return {
+    type: "placement",
+    messageKey: "logPlacementRolled",
+    messageParams: {
+      player: gameState.players[playerIndex]?.name ?? playerId,
+      total
+    }
+  };
 }
 
 export function placeInitialSpaceport(gameState, boardLayout, siteId) {
@@ -574,11 +584,10 @@ export function drawSupply(gameState) {
     supplyDrawTurnKey: getTurnKey(gameState),
     logEntry: {
       type: "production",
-      messageKey: "logSupplyDrawn",
+      messageKey: drawnCards.length === 1 ? "logSupplyDrawnOne" : "logSupplyDrawnMany",
       messageParams: {
         player: activePlayer.name,
-        count: drawnCards.length,
-        resources: formatResourceList(drawnCards)
+        count: drawnCards.length
       }
     }
   });
@@ -1079,20 +1088,24 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
     logEntries: [
       {
         type: "flight",
-        messageKey: "logShipMoved",
+        messageKey: pathCost === 1 ? "logShipMovedOne" : "logShipMovedMany",
         messageParams: {
           player: activePlayer.name,
-          ship: ship.type,
-          from: ship.locationId,
-          to: targetNodeId,
-          cost: pathCost,
-          remaining
+          shipOrdinal: getPlayerShipOrdinal(ships, ship),
+          count: pathCost
         }
       },
       ...explorationResult.logEntries,
       ...specialResult.logEntries
     ]
   });
+}
+
+function getPlayerShipOrdinal(ships, ship) {
+  const playerShips = ships
+    .filter((candidate) => candidate.ownerPlayerId === ship.ownerPlayerId);
+  const index = playerShips.findIndex((candidate) => candidate.id === ship.id);
+  return index === 1 ? "second" : index === 2 ? "third" : "first";
 }
 
 export function foundColony(gameState, boardLayout, shipId) {

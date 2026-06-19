@@ -2366,6 +2366,7 @@ function formatMessageParam(key, value) {
   if (key === "resources") return String(value).split(", ").map((resource) => getResourceLabel(resource)).join(", ");
   if (key === "upgrade") return getUpgradeLabel(value);
   if (key === "ship") return getShipTypeLabel(value);
+  if (key === "shipOrdinal") return t(`shipOrdinal_${value}`);
   if (key === "metric") {
     return value === "speed" ? t("encounterMetricSpeed") : value === "drive" ? t("encounterMetricDrive") : String(value);
   }

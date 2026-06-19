@@ -80,10 +80,29 @@ let game = createGameState({ language: "de", playerCount: 2, boardLayout });
 
 assert(game.phase === "placement", "New games should start in placement phase.");
 
+let placementTieGame = createGameState({ language: "de", playerCount: 2, boardLayout });
+placementTieGame = rollPlacementStart(placementTieGame, { dice: [3, 3], total: 6 });
+placementTieGame = rollPlacementStart(placementTieGame, { dice: [2, 4], total: 6 });
+placementTieGame = rollPlacementStart(placementTieGame, { dice: [1, 2], total: 3 });
+placementTieGame = rollPlacementStart(placementTieGame, { dice: [4, 5], total: 9 });
+assert(
+  placementTieGame.log.filter((entry) => entry.messageKey === "logPlacementRolled").length === 4,
+  "Tied placement rerolls should log each individual roll."
+);
+assert(
+  placementTieGame.log.some((entry) => entry.messageKey === "logPlacementTie"),
+  "Tied placement rolls should log the reroll reason."
+);
+
 game = rollPlacementStart(game, { dice: [6, 6], total: 12 });
 game = rollPlacementStart(game, { dice: [3, 4], total: 7 });
 
 assert(game.placement.startPlayerId === "player-1", "Player 1 should win the deterministic starting roll.");
+assert(
+  game.log.filter((entry) => entry.messageKey === "logPlacementRolled").map((entry) => entry.messageParams.total).join(",") === "12,7",
+  "Starting placement rolls should log every player roll before the start player is chosen."
+);
+assert(game.log.at(-1)?.messageKey === "logPlacementStartPlayer", "Starting player should be logged after placement rolls.");
 assert(game.placement.order.join(",") === "player-1,player-2", "Placement order should start with the starting player.");
 assert(game.placement.reverseOrder.join(",") === "player-2,player-1", "Reverse placement order should be inverted.");
 
@@ -140,9 +159,18 @@ if (specialPlanet) {
 }
 
 game = rollProduction(game, boardLayout, { dice: [1, 5] });
+assert(
+  game.log
+    .filter((entry) => entry.messageKey === "logResourceGained")
+    .every((entry) => Boolean(entry.messageParams.resource)),
+  "Planet production logs should name public resource gains when resources are produced."
+);
 game = drawSupply(game);
 
 const playerOneTotal = getResourceTotal(game.players[0]);
+const supplyLog = game.log.at(-1);
+assert(["logSupplyDrawnOne", "logSupplyDrawnMany"].includes(supplyLog?.messageKey), "Supply draws should be logged.");
+assert(!("resources" in (supplyLog?.messageParams ?? {})), "Supply draw logs must not reveal drawn resource cards.");
 const afterSecondDrawAttempt = drawSupply(game);
 
 assert(playerOneTotal >= 2, "Player 1 should draw supply after production.");
@@ -1059,9 +1087,18 @@ if (movementTriplet) {
   });
 
   const passedOccupiedNode = moveShip(occupiedPassState, boardLayout, "player-1-move", movementTriplet.end);
+  const moveLog = passedOccupiedNode.log.at(-1);
   assert(
     passedOccupiedNode.board.ships.find((ship) => ship.id === "player-1-move")?.locationId === movementTriplet.end,
     "Ships should be able to pass through occupied nodes."
+  );
+  assert(
+    moveLog?.messageKey === "logShipMovedMany" &&
+      moveLog.messageParams.shipOrdinal === "first" &&
+      moveLog.messageParams.count === 2 &&
+      !("from" in moveLog.messageParams) &&
+      !("to" in moveLog.messageParams),
+    "Ship movement logs should use ship ordinal and distance without exposing internal node IDs."
   );
   assert(
     (passedOccupiedNode.remainingMovementByShipId?.["player-1-move"] ?? -1) === 0,
