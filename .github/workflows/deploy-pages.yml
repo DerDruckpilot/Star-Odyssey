@@ -38,6 +38,7 @@ jobs:
           cp debug-outposts.html _site/
           cp debug-colonies.html _site/
           cp debug-spaceports.html _site/
+          cp debug-ship-vfx.html _site/
           cp -R src _site/
           cp -R assets _site/
 
