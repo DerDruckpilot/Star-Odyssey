@@ -3,6 +3,8 @@ import { playerPieceColors, playerShipAssetPaths } from "./data/playerPieceVisua
 const storageKey = "star-odyssey-ship-vfx-anchors";
 const canvas = document.querySelector("#ship-vfx-canvas");
 const context = canvas.getContext("2d");
+const engineLayerCanvas = document.createElement("canvas");
+const engineLayerContext = engineLayerCanvas.getContext("2d");
 const shipSelect = document.querySelector("#ship-select");
 const backgroundModeSelect = document.querySelector("#background-mode");
 const zoomControl = document.querySelector("#zoom-control");
@@ -190,14 +192,8 @@ function render(time = performance.now()) {
   }
 
   const transform = getImageTransform(image);
-  drawEnginePreview(transform, option, "behind");
-  context.drawImage(
-    image,
-    transform.x,
-    transform.y,
-    image.naturalWidth * transform.scale,
-    image.naturalHeight * transform.scale
-  );
+  drawMaskedBehindEnginePreview(image, transform, option, width, height);
+  drawShipImage(context, image, transform);
   drawEnginePreview(transform, option, "inline");
   drawCoilPreview(transform, option);
   drawEnginePreview(transform, option, "front");
@@ -255,7 +251,29 @@ function drawCoilPreview(transform, option) {
   }
 }
 
-function drawEnginePreview(transform, option, layer) {
+function drawMaskedBehindEnginePreview(image, transform, option, width, height) {
+  engineLayerCanvas.width = width;
+  engineLayerCanvas.height = height;
+  engineLayerContext.clearRect(0, 0, width, height);
+  drawEnginePreview(transform, option, "behind", engineLayerContext);
+  engineLayerContext.save();
+  engineLayerContext.globalCompositeOperation = "destination-out";
+  drawShipImage(engineLayerContext, image, transform);
+  engineLayerContext.restore();
+  context.drawImage(engineLayerCanvas, 0, 0);
+}
+
+function drawShipImage(targetContext, image, transform) {
+  targetContext.drawImage(
+    image,
+    transform.x,
+    transform.y,
+    image.naturalWidth * transform.scale,
+    image.naturalHeight * transform.scale
+  );
+}
+
+function drawEnginePreview(transform, option, layer, targetContext = context) {
   const moving = motionModeSelect.value === "moving";
   for (const engine of getSelectedAnchors().engines.filter((entry) => normalizeEngineLayer(entry.layer) === layer)) {
     const color = normalizeHexColor(engine.color, glowColors[option.color] ?? glowColors.red);
@@ -265,14 +283,14 @@ function drawEnginePreview(transform, option, layer) {
     const baseSize = Number(engine.size ?? 9);
     const plumeLength = Number(engine.length ?? 58);
     const coreRadius = (moving ? baseSize : baseSize * 0.56) * transform.scale * flicker;
-    const gradient = context.createRadialGradient(point.x, point.y, 0, point.x, point.y, coreRadius * 3);
+    const gradient = targetContext.createRadialGradient(point.x, point.y, 0, point.x, point.y, coreRadius * 3);
     gradient.addColorStop(0, "#f8fafc");
     gradient.addColorStop(0.28, hexToRgba(color, moving ? 0.7 : 0.2));
     gradient.addColorStop(1, hexToRgba(color, 0));
-    context.fillStyle = gradient;
-    context.beginPath();
-    context.arc(point.x, point.y, coreRadius * 3, 0, Math.PI * 2);
-    context.fill();
+    targetContext.fillStyle = gradient;
+    targetContext.beginPath();
+    targetContext.arc(point.x, point.y, coreRadius * 3, 0, Math.PI * 2);
+    targetContext.fill();
 
     if (!moving) continue;
     for (let index = 0; index < 18; index += 1) {
@@ -281,10 +299,10 @@ function drawEnginePreview(transform, option, layer) {
       const spread = (seededNoise(index, engine.x) - 0.5) * baseSize * 2 * life;
       const particleX = point.x + Math.cos(direction) * drift * transform.scale + Math.cos(direction + Math.PI / 2) * spread * transform.scale;
       const particleY = point.y + Math.sin(direction) * drift * transform.scale + Math.sin(direction + Math.PI / 2) * spread * transform.scale;
-      context.fillStyle = hexToRgba(color, (1 - life) * 0.58);
-      context.beginPath();
-      context.arc(particleX, particleY, Math.max(1.2, (baseSize * 0.31 - life * baseSize * 0.18) * transform.scale), 0, Math.PI * 2);
-      context.fill();
+      targetContext.fillStyle = hexToRgba(color, (1 - life) * 0.58);
+      targetContext.beginPath();
+      targetContext.arc(particleX, particleY, Math.max(1.2, (baseSize * 0.31 - life * baseSize * 0.18) * transform.scale), 0, Math.PI * 2);
+      targetContext.fill();
     }
   }
 }
