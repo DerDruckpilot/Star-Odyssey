@@ -65,19 +65,18 @@ test("outpost debug page loads and exports layout", async ({ page }) => {
   await expect(page.locator('nav a[href="./debug-friendship-cards.html"]')).toBeVisible();
   await expect(page.locator('nav a[href="./debug-encounter-cards.html"]')).toBeVisible();
 
-  await page.locator("#layout-variant").selectOption("oneTop");
-  await expect(page.locator("#layout-variant")).toHaveValue("oneTop");
+  await page.locator("#layout-variant").selectOption("oneTopTwoBottom");
+  await expect(page.locator("#layout-variant")).toHaveValue("oneTopTwoBottom");
 
-  await page.locator("#station-count").selectOption("5");
   await expect(page.locator(".debug-object--tradeStation")).toHaveCount(5);
-  await expect(page.locator("#station-asset-5")).toBeVisible();
 
   await page.locator(".debug-object--outpost").click();
   await page.locator("#control-scale").fill("1.1");
   await page.locator("#save-layout").click();
   await expect(page.locator("#export-output")).toHaveValue(/"source": "debug-outposts\.html"/);
-  await expect(page.locator("#export-output")).toHaveValue(/"layoutVariant": "oneTop"/);
-  await expect(page.locator("#export-output")).toHaveValue(/"stationCount": 5/);
+  await expect(page.locator("#export-output")).toHaveValue(/"layoutType": "oneTopTwoBottom"/);
+  await expect(page.locator("#export-output")).toHaveValue(/"tradeStationSlots": \[/);
+  await expect(page.locator("#export-output")).toHaveValue(/"id": "station-slot-5"/);
 });
 
 test("player colony and spaceport debug pages load and export layouts", async ({ page }) => {

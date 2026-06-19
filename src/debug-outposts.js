@@ -1,6 +1,6 @@
 import { outpostAssetPaths, tradeStationAssetPaths } from "./data/outpostVisuals.js";
 
-const storageKey = "star-odyssey-outpost-debug-layout";
+const storageKey = "star-odyssey-outpost-station-debug-layout";
 const objectLayer = document.querySelector("#object-layer");
 const stage = document.querySelector("#debug-stage");
 const hexPolygons = document.querySelector("#hex-polygons");
@@ -8,10 +8,6 @@ const spaceLines = document.querySelector("#space-lines");
 const spacePoints = document.querySelector("#space-points");
 const layoutVariantSelect = document.querySelector("#layout-variant");
 const outpostAssetSelect = document.querySelector("#outpost-asset");
-const stationCountSelect = document.querySelector("#station-count");
-const stationAssetSelects = Array.from({ length: 5 }, (_, index) =>
-  document.querySelector(`#station-asset-${index + 1}`)
-);
 const controls = {
   x: document.querySelector("#control-x"),
   y: document.querySelector("#control-y"),
@@ -21,8 +17,8 @@ const controls = {
 };
 
 const layoutVariants = {
-  twoTop: {
-    id: "twoTop",
+  twoTopOneBottom: {
+    id: "twoTopOneBottom",
     label: "Layout A - 2 oben / 1 unten",
     centers: [
       [282, 160],
@@ -30,8 +26,8 @@ const layoutVariants = {
       [360, 295]
     ]
   },
-  oneTop: {
-    id: "oneTop",
+  oneTopTwoBottom: {
+    id: "oneTopTwoBottom",
     label: "Layout B - 1 oben / 2 unten",
     centers: [
       [360, 150],
@@ -41,78 +37,45 @@ const layoutVariants = {
   }
 };
 
-const defaultStations = [
-  {
-    id: "station-1",
-    kind: "tradeStation",
-    assetId: "red",
-    x: 39,
-    y: 66,
-    scale: 0.54,
-    rotation: 0,
-    layer: 30
-  },
-  {
-    id: "station-2",
-    kind: "tradeStation",
-    assetId: "blue",
-    x: 61,
-    y: 66,
-    scale: 0.54,
-    rotation: 0,
-    layer: 31
-  },
-  {
-    id: "station-3",
-    kind: "tradeStation",
-    assetId: "yellow",
-    x: 50,
-    y: 77,
-    scale: 0.54,
-    rotation: 0,
-    layer: 32
-  },
-  {
-    id: "station-4",
-    kind: "tradeStation",
-    assetId: "white",
-    x: 37,
-    y: 50,
-    scale: 0.54,
-    rotation: 0,
-    layer: 33
-  },
-  {
-    id: "station-5",
-    kind: "tradeStation",
-    assetId: "green",
-    x: 63,
-    y: 50,
-    scale: 0.54,
-    rotation: 0,
-    layer: 34
-  }
+const defaultOutpostTransform = {
+  id: "outpost",
+  kind: "outpost",
+  x: 50,
+  y: 47,
+  scale: 1,
+  rotation: 0,
+  layer: 20
+};
+
+const defaultStationTransforms = [
+  createDefaultStation("station-slot-1", 39, 66, 30),
+  createDefaultStation("station-slot-2", 61, 66, 31),
+  createDefaultStation("station-slot-3", 50, 77, 32),
+  createDefaultStation("station-slot-4", 37, 50, 33),
+  createDefaultStation("station-slot-5", 63, 50, 34)
 ];
 
 const defaultLayout = {
-  layoutVariant: "twoTop",
-  outpost: {
-    id: "outpost",
-    kind: "outpost",
-    assetId: "traders",
-    x: 50,
-    y: 47,
-    scale: 1,
-    rotation: 0,
-    layer: 20
-  },
-  stations: defaultStations,
-  stationCount: 2
+  outpostId: "traders",
+  layoutType: "twoTopOneBottom",
+  profiles: {}
 };
 
 let layout = loadLayout();
 let selectedId = "outpost";
 let dragState = null;
+
+function createDefaultStation(id, x, y, layer) {
+  return {
+    id,
+    kind: "tradeStation",
+    x,
+    y,
+    scale: 0.54,
+    rotation: 0,
+    layer
+  };
+}
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -130,27 +93,54 @@ function loadLayout() {
 
 function normalizeLayout(value) {
   const next = clone(defaultLayout);
-  next.layoutVariant = layoutVariants[value.layoutVariant] ? value.layoutVariant : next.layoutVariant;
-  next.outpost = { ...next.outpost, ...(value.outpost ?? {}) };
-  next.stations = next.stations.map((station, index) => ({
-    ...station,
-    ...(value.stations?.[index] ?? {})
-  }));
-  next.stationCount = clamp(Number(value.stationCount ?? next.stationCount), 0, 5);
+  next.outpostId = outpostAssetPaths[value.outpostId] ? value.outpostId : next.outpostId;
+  next.layoutType = layoutVariants[value.layoutType] ? value.layoutType : next.layoutType;
+  next.profiles = {};
+
+  const sourceProfiles = value.profiles ?? {};
+  for (const outpostId of Object.keys(outpostAssetPaths)) {
+    for (const layoutType of Object.keys(layoutVariants)) {
+      const key = getProfileKey(outpostId, layoutType);
+      const source = sourceProfiles[key] ?? {};
+      next.profiles[key] = normalizeProfile(source);
+    }
+  }
+
   return next;
 }
 
+function normalizeProfile(value) {
+  return {
+    outpost: { ...defaultOutpostTransform, ...(value.outpost ?? {}) },
+    stations: defaultStationTransforms.map((station, index) => ({
+      ...station,
+      ...(value.stations?.[index] ?? {})
+    }))
+  };
+}
+
+function getProfileKey(outpostId = layout.outpostId, layoutType = layout.layoutType) {
+  return `${outpostId}:${layoutType}`;
+}
+
+function getActiveProfile() {
+  const key = getProfileKey();
+  layout.profiles[key] = normalizeProfile(layout.profiles[key] ?? {});
+  return layout.profiles[key];
+}
+
 function getObjects() {
-  return [layout.outpost, ...layout.stations.slice(0, Number(layout.stationCount))];
+  const profile = getActiveProfile();
+  return [profile.outpost, ...profile.stations];
 }
 
 function getObjectById(id) {
-  return [layout.outpost, ...layout.stations].find((item) => item.id === id);
+  return getObjects().find((item) => item.id === id);
 }
 
 function getAssetPath(item) {
-  if (item.kind === "outpost") return outpostAssetPaths[item.assetId] ?? outpostAssetPaths.traders;
-  return tradeStationAssetPaths[item.assetId] ?? tradeStationAssetPaths.red;
+  if (item.kind === "outpost") return outpostAssetPaths[layout.outpostId] ?? outpostAssetPaths.traders;
+  return tradeStationAssetPaths.red;
 }
 
 function populateSelect(select, options, selectedValue) {
@@ -175,7 +165,7 @@ function populateSelect(select, options, selectedValue) {
 }
 
 function renderHexLayout() {
-  const variant = layoutVariants[layout.layoutVariant] ?? layoutVariants.twoTop;
+  const variant = layoutVariants[layout.layoutType] ?? layoutVariants.twoTopOneBottom;
   const hexes = variant.centers.map(([cx, cy]) => getHexPoints(cx, cy));
   hexPolygons.replaceChildren();
   spaceLines.replaceChildren();
@@ -244,7 +234,7 @@ function render() {
     wrapper.append(image);
 
     const label = document.createElement("span");
-    label.textContent = item.id === "outpost" ? "O" : item.id.replace("station-", "S");
+    label.textContent = item.id === "outpost" ? "O" : item.id.replace("station-slot-", "");
     wrapper.append(label);
 
     wrapper.addEventListener("pointerdown", startDrag);
@@ -320,21 +310,22 @@ function clamp(value, min, max) {
 function syncControls() {
   const item = getObjectById(selectedId);
   document.querySelector("#selected-title").textContent = item
-    ? `${item.id} (${item.kind})`
+    ? `${getObjectLabel(item)} (${item.kind})`
     : "Nichts ausgewählt";
   for (const [key, input] of Object.entries(controls)) {
     input.disabled = !item;
-    input.value = item ? item[key === "layer" ? "layer" : key] : "";
+    input.value = item ? item[key] : "";
   }
 }
 
+function getObjectLabel(item) {
+  if (item.id === "outpost") return "Außenposten";
+  return `Station ${item.id.replace("station-slot-", "")}`;
+}
+
 function syncSelects() {
-  layoutVariantSelect.value = layout.layoutVariant;
-  outpostAssetSelect.value = layout.outpost.assetId;
-  stationCountSelect.value = String(layout.stationCount);
-  stationAssetSelects.forEach((select, index) => {
-    select.value = layout.stations[index].assetId;
-  });
+  layoutVariantSelect.value = layout.layoutType;
+  outpostAssetSelect.value = layout.outpostId;
 }
 
 function updateSelectedFromControls() {
@@ -354,11 +345,13 @@ function saveToLocalStorage() {
 }
 
 function exportLayout() {
+  const profile = getActiveProfile();
   const output = {
     generatedAt: new Date().toISOString(),
     source: "debug-outposts.html",
-    layoutVariant: layout.layoutVariant,
-    stationCount: layout.stationCount,
+    outpostId: layout.outpostId,
+    outpostAsset: getAssetPath(profile.outpost),
+    layoutType: layout.layoutType,
     coordinateSystem: {
       origin: "debug-stage top-left",
       x: "percent of stage width",
@@ -367,14 +360,8 @@ function exportLayout() {
       rotation: "degrees",
       layer: "CSS z-index"
     },
-    outpost: {
-      ...layout.outpost,
-      asset: getAssetPath(layout.outpost)
-    },
-    tradeStations: layout.stations.map((station) => ({
-      ...station,
-      asset: getAssetPath(station)
-    }))
+    outpost: exportTransform(profile.outpost),
+    tradeStationSlots: profile.stations.map(exportTransform)
   };
   const json = JSON.stringify(output, null, 2);
   document.querySelector("#export-output").value = json;
@@ -382,43 +369,39 @@ function exportLayout() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "outpost-layout.json";
+  link.download = `outpost-${layout.outpostId}-${layout.layoutType}.json`;
   link.click();
   URL.revokeObjectURL(url);
 }
 
+function exportTransform(item) {
+  return {
+    id: item.id,
+    x: item.x,
+    y: item.y,
+    scale: item.scale,
+    rotation: item.rotation,
+    z: item.layer
+  };
+}
+
 function setupSelects() {
-  populateSelect(outpostAssetSelect, outpostAssetPaths, layout.outpost.assetId);
-  stationAssetSelects.forEach((select, index) => {
-    populateSelect(select, tradeStationAssetPaths, layout.stations[index].assetId);
-  });
+  populateSelect(outpostAssetSelect, outpostAssetPaths, layout.outpostId);
   syncSelects();
 }
 
 setupSelects();
 
 layoutVariantSelect.addEventListener("change", (event) => {
-  layout.layoutVariant = event.target.value;
+  layout.layoutType = event.target.value;
+  selectedId = "outpost";
   saveToLocalStorage();
   render();
+  syncControls();
 });
 outpostAssetSelect.addEventListener("change", (event) => {
-  layout.outpost.assetId = event.target.value;
-  saveToLocalStorage();
-  render();
-});
-stationAssetSelects.forEach((select, index) => {
-  select.addEventListener("change", (event) => {
-    layout.stations[index].assetId = event.target.value;
-    saveToLocalStorage();
-    render();
-  });
-});
-stationCountSelect.addEventListener("change", (event) => {
-  layout.stationCount = Number(event.target.value);
-  if (selectedId.startsWith("station-") && !getObjects().some((item) => item.id === selectedId)) {
-    selectedId = "outpost";
-  }
+  layout.outpostId = event.target.value;
+  selectedId = "outpost";
   saveToLocalStorage();
   render();
   syncControls();
@@ -430,7 +413,7 @@ document.querySelector("#reset-layout").addEventListener("click", () => {
   layout = clone(defaultLayout);
   selectedId = "outpost";
   saveToLocalStorage();
-  syncSelects();
+  setupSelects();
   render();
   syncControls();
 });

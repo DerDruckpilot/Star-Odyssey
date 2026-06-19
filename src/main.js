@@ -19,6 +19,10 @@ import {
   getPlayerSpaceportAssetPath,
   playerPieceVisualDefaults
 } from "./data/playerPieceVisuals.js";
+import {
+  getStructureVisualPosition,
+  structureVisualReferenceLayouts
+} from "./data/structureVisualLayouts.js";
 import { mothershipUpgradeSlots, upgradeMenuAssetPaths, upgradeMenuOrder } from "./data/upgradeVisuals.js";
 import {
   advanceToFlightPhase,
@@ -2545,8 +2549,123 @@ function getStructureAtLocation(locationId) {
 }
 
 function getStructureRenderPoint(structure) {
-  return (boardLayout.startSites ?? []).find((site) => site.id === structure.locationId)
+  return getVisibleColonySites().find((site) => site.id === structure.locationId || site.nodeId === structure.locationId)
     ?? (boardLayout.points ?? []).find((point) => point.id === structure.locationId);
+}
+
+function getStructureRenderSite(structure) {
+  return getVisibleColonySites().find((site) => site.id === structure.locationId || site.nodeId === structure.locationId) ?? null;
+}
+
+function getStructureVisualPlacement(structure, site, defaults) {
+  if (!["colony", "spaceport"].includes(structure.type)) {
+    return {
+      x: site.x,
+      y: site.y,
+      width: defaults.width,
+      height: defaults.height,
+      hitRadius: defaults.hitRadius,
+      rotation: 0,
+      z: 0
+    };
+  }
+
+  const layoutType = site.visualLayoutType;
+  const siteIndex = site.siteIndex;
+  const visualPosition = getStructureVisualPosition(structure.type, layoutType, siteIndex);
+  const system = getPlanetSystemForSite(site);
+  const mappedPosition = visualPosition && system
+    ? mapStructureVisualPosition(system, layoutType, visualPosition)
+    : { x: site.x, y: site.y };
+
+  const scale = visualPosition?.scale ?? 1;
+  return {
+    x: mappedPosition.x,
+    y: mappedPosition.y,
+    width: defaults.width * scale,
+    height: defaults.height * scale,
+    hitRadius: defaults.hitRadius * scale,
+    rotation: visualPosition?.rotation ?? 0,
+    z: visualPosition?.z ?? 0
+  };
+}
+
+function getStructureRenderZ(structure) {
+  if (!["colony", "spaceport"].includes(structure.type)) return 0;
+  const site = getStructureRenderSite(structure);
+  if (!site) return 0;
+  const visualPosition = getStructureVisualPosition(structure.type, site.visualLayoutType, site.siteIndex);
+  return visualPosition?.z ?? 0;
+}
+
+function getPlanetSystemForSite(site) {
+  return [
+    ...(boardLayout.startSystems ?? []),
+    ...getVisiblePlanetSystems()
+  ].find((system) => system.id === site.systemId) ?? null;
+}
+
+function mapStructureVisualPosition(system, layoutType, visualPosition) {
+  const reference = structureVisualReferenceLayouts[layoutType];
+  const actualCenters = getCanonicalSystemPlanetCenters(system, layoutType);
+  if (!reference || actualCenters.length !== 3) {
+    return { x: system.x, y: system.y };
+  }
+
+  const referenceCenter = averageRenderPoints(reference.centers);
+  const actualCenter = averageRenderPoints(actualCenters);
+  const referenceBounds = getRenderBounds(reference.centers);
+  const actualBounds = getRenderBounds(actualCenters);
+  const scaleX = actualBounds.width / referenceBounds.width;
+  const scaleY = actualBounds.height / referenceBounds.height;
+  const referenceX = (visualPosition.x / 100) * reference.width;
+  const referenceY = (visualPosition.y / 100) * reference.height;
+
+  return {
+    x: actualCenter.x + (referenceX - referenceCenter.x) * scaleX,
+    y: actualCenter.y + (referenceY - referenceCenter.y) * scaleY
+  };
+}
+
+function getCanonicalSystemPlanetCenters(system, layoutType) {
+  const planets = (system.planets ?? [])
+    .map((planet, index) => ({
+      ...getPlanetRenderPosition(system, planet, { x: 0, y: 0 }),
+      index
+    }))
+    .sort((left, right) => left.y - right.y || left.x - right.x);
+  const topY = planets[0]?.y ?? 0;
+  const topPlanets = planets.filter((planet) => Math.abs(planet.y - topY) < 1).sort((left, right) => left.x - right.x);
+  const bottomPlanets = planets.filter((planet) => Math.abs(planet.y - topY) >= 1).sort((left, right) => left.x - right.x);
+
+  if (layoutType === "twoTopOneBottom" && topPlanets.length === 2 && bottomPlanets.length === 1) {
+    return [topPlanets[0], topPlanets[1], bottomPlanets[0]];
+  }
+  if (layoutType === "oneTopTwoBottom" && topPlanets.length === 1 && bottomPlanets.length === 2) {
+    return [topPlanets[0], bottomPlanets[0], bottomPlanets[1]];
+  }
+  return planets;
+}
+
+function averageRenderPoints(points) {
+  const total = points.reduce((sum, point) => ({
+    x: sum.x + point.x,
+    y: sum.y + point.y
+  }), { x: 0, y: 0 });
+
+  return {
+    x: total.x / points.length,
+    y: total.y / points.length
+  };
+}
+
+function getRenderBounds(points) {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  return {
+    width: Math.max(...xs) - Math.min(...xs) || 1,
+    height: Math.max(...ys) - Math.min(...ys) || 1
+  };
 }
 
 function getOwnerName(ownerPlayerId) {
@@ -3290,8 +3409,10 @@ function renderPointsLayer() {
 
 function renderStructuresLayer() {
   const group = createSvgElement("g", { class: "board-structures-layer" });
+  const structures = [...(state.gameState?.board?.structures ?? [])]
+    .sort((left, right) => getStructureRenderZ(left) - getStructureRenderZ(right));
 
-  for (const structure of state.gameState?.board?.structures ?? []) {
+  for (const structure of structures) {
     const site = getStructureRenderPoint(structure);
     if (!site) continue;
     const selectedClass = isSelectedElement("structure", structure.id) ? " is-selected" : "";
@@ -3322,36 +3443,40 @@ function renderStructuresLayer() {
       }));
     } else if (structure.type === "spaceport") {
       const visual = playerPieceVisualDefaults.spaceport;
+      const placement = getStructureVisualPlacement(structure, site, visual);
       structureGroup.append(createSvgElement("circle", {
         class: "structure-hit-area",
-        cx: site.x,
-        cy: site.y,
-        r: visual.hitRadius
+        cx: placement.x,
+        cy: placement.y,
+        r: placement.hitRadius
       }));
       structureGroup.append(createSvgElement("image", {
         class: `spaceport-image player-color-${ownerIndex}`,
         href: getPlayerSpaceportAssetPath(owner?.color),
-        x: site.x - visual.width / 2,
-        y: site.y - visual.height / 2,
-        width: visual.width,
-        height: visual.height,
+        x: placement.x - placement.width / 2,
+        y: placement.y - placement.height / 2,
+        width: placement.width,
+        height: placement.height,
+        transform: `rotate(${placement.rotation} ${placement.x} ${placement.y})`,
         preserveAspectRatio: "xMidYMid meet"
       }));
     } else {
       const visual = playerPieceVisualDefaults.colony;
+      const placement = getStructureVisualPlacement(structure, site, visual);
       structureGroup.append(createSvgElement("circle", {
         class: "structure-hit-area",
-        cx: site.x,
-        cy: site.y,
-        r: visual.hitRadius
+        cx: placement.x,
+        cy: placement.y,
+        r: placement.hitRadius
       }));
       structureGroup.append(createSvgElement("image", {
         class: `colony-image player-color-${ownerIndex}`,
         href: getPlayerColonyAssetPath(owner?.color),
-        x: site.x - visual.width / 2,
-        y: site.y - visual.height / 2,
-        width: visual.width,
-        height: visual.height,
+        x: placement.x - placement.width / 2,
+        y: placement.y - placement.height / 2,
+        width: placement.width,
+        height: placement.height,
+        transform: `rotate(${placement.rotation} ${placement.x} ${placement.y})`,
         preserveAspectRatio: "xMidYMid meet"
       }));
     }

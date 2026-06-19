@@ -716,12 +716,55 @@ function averagePoints(points) {
   };
 }
 
+function createColonySiteVisualProfile(system) {
+  const planets = (system.planets ?? [])
+    .map((planet) => ({
+      id: planet.id,
+      position: planet.coordinate ? hexCenter(planet.coordinate) : { x: system.x, y: system.y }
+    }))
+    .sort((left, right) => left.position.y - right.position.y || left.position.x - right.position.x);
+
+  const topY = planets[0]?.position.y ?? 0;
+  const topPlanets = planets.filter((planet) => Math.abs(planet.position.y - topY) < 1).sort(sortByX);
+  const bottomPlanets = planets.filter((planet) => Math.abs(planet.position.y - topY) >= 1).sort(sortByX);
+  const siteIndexByPair = new Map();
+
+  if (topPlanets.length === 2 && bottomPlanets.length === 1) {
+    siteIndexByPair.set(createPlanetPairKey(topPlanets[0].id, topPlanets[1].id), 1);
+    siteIndexByPair.set(createPlanetPairKey(topPlanets[0].id, bottomPlanets[0].id), 2);
+    siteIndexByPair.set(createPlanetPairKey(topPlanets[1].id, bottomPlanets[0].id), 3);
+    return { layoutType: "twoTopOneBottom", siteIndexByPair };
+  }
+
+  if (topPlanets.length === 1 && bottomPlanets.length === 2) {
+    siteIndexByPair.set(createPlanetPairKey(topPlanets[0].id, bottomPlanets[0].id), 1);
+    siteIndexByPair.set(createPlanetPairKey(topPlanets[0].id, bottomPlanets[1].id), 2);
+    siteIndexByPair.set(createPlanetPairKey(bottomPlanets[0].id, bottomPlanets[1].id), 3);
+    return { layoutType: "oneTopTwoBottom", siteIndexByPair };
+  }
+
+  planets.forEach((planet, index) => {
+    const nextPlanet = planets[(index + 1) % planets.length];
+    if (nextPlanet) siteIndexByPair.set(createPlanetPairKey(planet.id, nextPlanet.id), index + 1);
+  });
+  return { layoutType: "twoTopOneBottom", siteIndexByPair };
+}
+
+function sortByX(left, right) {
+  return left.position.x - right.position.x;
+}
+
+function createPlanetPairKey(firstPlanetId, secondPlanetId) {
+  return [firstPlanetId, secondPlanetId].sort().join("|");
+}
+
 function applySystemMetadata(system) {
   const planets = system.planets ?? [];
   const planetByHexId = new Map(planets
     .filter((planet) => planet.coordinate)
     .map((planet) => [planet.coordinate, planet]));
   const systemHexIds = new Set(planetByHexId.keys());
+  const visualProfile = createColonySiteVisualProfile(system);
   const adjacentNodeIds = [];
   const blockedNodeIds = [];
   const colonySites = [];
@@ -740,11 +783,16 @@ function applySystemMetadata(system) {
     adjacentNodeIds.push(point.id);
 
     if (adjacentPlanets.length === 2) {
+      const adjacentPlanetIds = adjacentPlanets.map((planet) => planet.id);
       colonySites.push({
         id: `${system.id}-${point.id}-colony-site`,
         nodeId: point.id,
         systemId: system.id,
-        adjacentPlanetIds: adjacentPlanets.map((planet) => planet.id),
+        x: point.x,
+        y: point.y,
+        adjacentPlanetIds,
+        visualLayoutType: visualProfile.layoutType,
+        siteIndex: visualProfile.siteIndexByPair.get(createPlanetPairKey(...adjacentPlanetIds)) ?? colonySites.length + 1,
         launchNodeIds: getExternalNeighborNodeIds(point.id, systemHexIds),
         occupiedByStructureId: null
       });
@@ -755,6 +803,7 @@ function applySystemMetadata(system) {
   system.isExplored = !system.hidden;
   system.planetIds = planets.map((planet) => planet.id);
   system.systemHexIds = [...systemHexIds];
+  system.visualLayoutType = visualProfile.layoutType;
   system.adjacentNodeIds = [...new Set(adjacentNodeIds)];
   system.blockedNodeIds = [...new Set(blockedNodeIds)];
   system.colonySites = colonySites;
