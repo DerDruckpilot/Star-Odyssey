@@ -15,7 +15,19 @@
   padding: 0;
 }
 
-#anchor-direction:disabled {
+.paired-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5rem;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.paired-control input[type="range"] {
+  padding: 0;
+}
+
+#anchor-direction:disabled,
+.selection-box input:disabled {
   opacity: 0.48;
 }
 

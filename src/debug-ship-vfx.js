@@ -15,6 +15,13 @@ const anchorInputs = {
   y: document.querySelector("#anchor-y"),
   direction: document.querySelector("#anchor-direction")
 };
+const engineInputs = {
+  sizeRange: document.querySelector("#engine-size-range"),
+  sizeValue: document.querySelector("#engine-size-value"),
+  lengthRange: document.querySelector("#engine-length-range"),
+  lengthValue: document.querySelector("#engine-length-value"),
+  color: document.querySelector("#engine-color")
+};
 const exportOutput = document.querySelector("#export-output");
 
 const glowColors = {
@@ -58,7 +65,7 @@ function normalizeLayout(value) {
 }
 
 function normalizeShipAnchors(value, option) {
-  const defaultAnchors = createDefaultShipAnchors(option.variant);
+  const defaultAnchors = createDefaultShipAnchors(option.variant, option.color);
   return {
     color: option.color,
     variant: option.variant,
@@ -69,12 +76,12 @@ function normalizeShipAnchors(value, option) {
       id: `coil-${index + 1}`
     })),
     engines: Array.isArray(value?.engines) && value.engines.length > 0
-      ? value.engines.map((engine, index) => normalizeEngine(engine, index))
+      ? value.engines.map((engine, index) => normalizeEngine(engine, index, option.color))
       : defaultAnchors.engines
   };
 }
 
-function createDefaultShipAnchors(variant) {
+function createDefaultShipAnchors(variant, color) {
   const coilDefaults = {
     1: [{ x: 555, y: 505 }],
     2: [{ x: 505, y: 500 }, { x: 680, y: 500 }],
@@ -82,16 +89,19 @@ function createDefaultShipAnchors(variant) {
   };
   return {
     coils: coilDefaults[variant].map((point, index) => ({ id: `coil-${index + 1}`, ...point })),
-    engines: [normalizeEngine({ x: 112, y: 510, direction: 180 }, 0)]
+    engines: [normalizeEngine({ x: 112, y: 510, direction: 180 }, 0, color)]
   };
 }
 
-function normalizeEngine(engine, index) {
+function normalizeEngine(engine, index, color = getSelectedOption().color) {
   return {
     id: `engine-${index + 1}`,
     x: Number(engine.x ?? 112),
     y: Number(engine.y ?? 510),
-    direction: Number(engine.direction ?? 180)
+    direction: Number(engine.direction ?? 180),
+    size: Number(engine.size ?? 9),
+    length: Number(engine.length ?? 58),
+    color: normalizeHexColor(engine.color, glowColors[color] ?? glowColors.red)
   };
 }
 
@@ -243,12 +253,14 @@ function drawCoilPreview(transform, option) {
 
 function drawEnginePreview(transform, option) {
   const moving = motionModeSelect.value === "moving";
-  const color = glowColors[option.color] ?? glowColors.red;
   for (const engine of getSelectedAnchors().engines) {
+    const color = normalizeHexColor(engine.color, glowColors[option.color] ?? glowColors.red);
     const point = assetToCanvasPoint(engine, transform);
     const direction = (engine.direction * Math.PI) / 180;
     const flicker = 0.72 + seededNoise(engine.x + engine.y, lastFrameTime / 95) * 0.28;
-    const coreRadius = (moving ? 9 : 5) * transform.scale * flicker;
+    const baseSize = Number(engine.size ?? 9);
+    const plumeLength = Number(engine.length ?? 58);
+    const coreRadius = (moving ? baseSize : baseSize * 0.56) * transform.scale * flicker;
     const gradient = context.createRadialGradient(point.x, point.y, 0, point.x, point.y, coreRadius * 3);
     gradient.addColorStop(0, "#f8fafc");
     gradient.addColorStop(0.28, hexToRgba(color, moving ? 0.7 : 0.2));
@@ -261,13 +273,13 @@ function drawEnginePreview(transform, option) {
     if (!moving) continue;
     for (let index = 0; index < 18; index += 1) {
       const life = (lastFrameTime / 520 + index * 0.137) % 1;
-      const drift = 18 + life * 58;
-      const spread = (seededNoise(index, engine.x) - 0.5) * 18 * life;
+      const drift = baseSize * 2 + life * plumeLength;
+      const spread = (seededNoise(index, engine.x) - 0.5) * baseSize * 2 * life;
       const particleX = point.x + Math.cos(direction) * drift * transform.scale + Math.cos(direction + Math.PI / 2) * spread * transform.scale;
       const particleY = point.y + Math.sin(direction) * drift * transform.scale + Math.sin(direction + Math.PI / 2) * spread * transform.scale;
       context.fillStyle = hexToRgba(color, (1 - life) * 0.58);
       context.beginPath();
-      context.arc(particleX, particleY, Math.max(1.2, (2.8 - life * 1.6) * transform.scale), 0, Math.PI * 2);
+      context.arc(particleX, particleY, Math.max(1.2, (baseSize * 0.31 - life * baseSize * 0.18) * transform.scale), 0, Math.PI * 2);
       context.fill();
     }
   }
@@ -352,13 +364,24 @@ function moveSelectedAnchor(clientX, clientY) {
 
 function syncAnchorInputs() {
   const anchor = getSelectedAnchor();
+  const engineSelected = selectedAnchor.type === "engine" && Boolean(anchor);
   selectedAnchorTitle.textContent = anchor
     ? `${selectedAnchor.type === "engine" ? "Triebwerk" : "Energiespule"} ${selectedAnchor.index + 1}`
     : "Kein Anker ausgewählt";
   anchorInputs.x.value = anchor?.x ?? "";
   anchorInputs.y.value = anchor?.y ?? "";
   anchorInputs.direction.value = anchor?.direction ?? 180;
-  anchorInputs.direction.disabled = selectedAnchor.type !== "engine" || !anchor;
+  anchorInputs.direction.disabled = !engineSelected;
+  const size = anchor?.size ?? 9;
+  const length = anchor?.length ?? 58;
+  engineInputs.sizeRange.value = size;
+  engineInputs.sizeValue.value = size;
+  engineInputs.lengthRange.value = length;
+  engineInputs.lengthValue.value = length;
+  engineInputs.color.value = normalizeHexColor(anchor?.color, glowColors[getSelectedOption().color] ?? glowColors.red);
+  for (const input of Object.values(engineInputs)) {
+    input.disabled = !engineSelected;
+  }
 }
 
 function updateAnchorFromInputs() {
@@ -372,10 +395,26 @@ function updateAnchorFromInputs() {
   render();
 }
 
+function updateEngineFromInputs(source) {
+  const anchor = getSelectedAnchor();
+  if (!anchor || selectedAnchor.type !== "engine") return;
+  if (source === engineInputs.sizeRange) engineInputs.sizeValue.value = engineInputs.sizeRange.value;
+  if (source === engineInputs.sizeValue) engineInputs.sizeRange.value = engineInputs.sizeValue.value;
+  if (source === engineInputs.lengthRange) engineInputs.lengthValue.value = engineInputs.lengthRange.value;
+  if (source === engineInputs.lengthValue) engineInputs.lengthRange.value = engineInputs.lengthValue.value;
+  anchor.size = clamp(Number(engineInputs.sizeValue.value), 3, 28);
+  anchor.length = clamp(Number(engineInputs.lengthValue.value), 12, 140);
+  anchor.color = normalizeHexColor(engineInputs.color.value, glowColors[getSelectedOption().color] ?? glowColors.red);
+  syncAnchorInputs();
+  saveLayout();
+  updateExport();
+  render();
+}
+
 function addEngineAnchor() {
   const engines = getSelectedAnchors().engines;
   const last = engines.at(-1) ?? { x: 112, y: 510, direction: 180 };
-  engines.push(normalizeEngine({ x: last.x, y: last.y + 28, direction: last.direction }, engines.length));
+  engines.push(normalizeEngine({ ...last, y: last.y + 28 }, engines.length, getSelectedOption().color));
   setSelectedAnchor("engine", engines.length - 1);
   saveLayout();
   updateExport();
@@ -385,7 +424,7 @@ function removeEngineAnchor() {
   const engines = getSelectedAnchors().engines;
   if (selectedAnchor.type !== "engine" || engines.length <= 1) return;
   engines.splice(selectedAnchor.index, 1);
-  getSelectedAnchors().engines = engines.map(normalizeEngine);
+  getSelectedAnchors().engines = engines.map((engine, index) => normalizeEngine(engine, index, getSelectedOption().color));
   setSelectedAnchor("engine", Math.max(0, selectedAnchor.index - 1));
   saveLayout();
   updateExport();
@@ -410,7 +449,7 @@ function updateExport() {
     exportData[option.color][`ship${option.variant}`] = {
       asset: anchors.asset,
       coils: anchors.coils.map(({ id, x, y }) => ({ id, x, y })),
-      engines: anchors.engines.map(({ id, x, y, direction }) => ({ id, x, y, direction }))
+      engines: anchors.engines.map(({ id, x, y, direction, size, length, color }) => ({ id, x, y, direction, size, length, color }))
     };
   }
   exportOutput.value = `export const SHIP_VFX_ANCHORS = ${JSON.stringify(exportData, null, 2)};\n`;
@@ -441,12 +480,16 @@ function clamp(value, min, max) {
 }
 
 function hexToRgba(hex, alpha) {
-  const clean = hex.replace("#", "");
+  const clean = normalizeHexColor(hex, "#ffffff").replace("#", "");
   const value = Number.parseInt(clean, 16);
   const red = (value >> 16) & 255;
   const green = (value >> 8) & 255;
   const blue = value & 255;
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function normalizeHexColor(value, fallback) {
+  return /^#[0-9a-f]{6}$/i.test(String(value)) ? String(value) : fallback;
 }
 
 function seededNoise(seed, frame) {
@@ -473,6 +516,9 @@ for (const element of [backgroundModeSelect, zoomControl, motionModeSelect, coil
 editModeSelect.addEventListener("change", (event) => setSelectedAnchor(event.target.value, 0));
 for (const input of Object.values(anchorInputs)) {
   input.addEventListener("input", updateAnchorFromInputs);
+}
+for (const input of Object.values(engineInputs)) {
+  input.addEventListener("input", () => updateEngineFromInputs(input));
 }
 document.querySelector("#add-engine-anchor").addEventListener("click", addEngineAnchor);
 document.querySelector("#remove-engine-anchor").addEventListener("click", removeEngineAnchor);
