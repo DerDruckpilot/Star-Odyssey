@@ -20,7 +20,8 @@ const engineInputs = {
   sizeValue: document.querySelector("#engine-size-value"),
   lengthRange: document.querySelector("#engine-length-range"),
   lengthValue: document.querySelector("#engine-length-value"),
-  color: document.querySelector("#engine-color")
+  color: document.querySelector("#engine-color"),
+  layer: document.querySelector("#engine-layer")
 };
 const exportOutput = document.querySelector("#export-output");
 
@@ -101,7 +102,8 @@ function normalizeEngine(engine, index, color = getSelectedOption().color) {
     direction: Number(engine.direction ?? 180),
     size: Number(engine.size ?? 9),
     length: Number(engine.length ?? 58),
-    color: normalizeHexColor(engine.color, glowColors[color] ?? glowColors.red)
+    color: normalizeHexColor(engine.color, glowColors[color] ?? glowColors.red),
+    layer: normalizeEngineLayer(engine.layer)
   };
 }
 
@@ -188,6 +190,7 @@ function render(time = performance.now()) {
   }
 
   const transform = getImageTransform(image);
+  drawEnginePreview(transform, option, "behind");
   context.drawImage(
     image,
     transform.x,
@@ -195,8 +198,9 @@ function render(time = performance.now()) {
     image.naturalWidth * transform.scale,
     image.naturalHeight * transform.scale
   );
+  drawEnginePreview(transform, option, "inline");
   drawCoilPreview(transform, option);
-  drawEnginePreview(transform, option);
+  drawEnginePreview(transform, option, "front");
   drawAnchorHandles(transform);
   requestRenderLoop();
 }
@@ -251,9 +255,9 @@ function drawCoilPreview(transform, option) {
   }
 }
 
-function drawEnginePreview(transform, option) {
+function drawEnginePreview(transform, option, layer) {
   const moving = motionModeSelect.value === "moving";
-  for (const engine of getSelectedAnchors().engines) {
+  for (const engine of getSelectedAnchors().engines.filter((entry) => normalizeEngineLayer(entry.layer) === layer)) {
     const color = normalizeHexColor(engine.color, glowColors[option.color] ?? glowColors.red);
     const point = assetToCanvasPoint(engine, transform);
     const direction = (engine.direction * Math.PI) / 180;
@@ -379,6 +383,7 @@ function syncAnchorInputs() {
   engineInputs.lengthRange.value = length;
   engineInputs.lengthValue.value = length;
   engineInputs.color.value = normalizeHexColor(anchor?.color, glowColors[getSelectedOption().color] ?? glowColors.red);
+  engineInputs.layer.value = normalizeEngineLayer(anchor?.layer);
   for (const input of Object.values(engineInputs)) {
     input.disabled = !engineSelected;
   }
@@ -405,6 +410,7 @@ function updateEngineFromInputs(source) {
   anchor.size = clamp(Number(engineInputs.sizeValue.value), 3, 28);
   anchor.length = clamp(Number(engineInputs.lengthValue.value), 12, 140);
   anchor.color = normalizeHexColor(engineInputs.color.value, glowColors[getSelectedOption().color] ?? glowColors.red);
+  anchor.layer = normalizeEngineLayer(engineInputs.layer.value);
   syncAnchorInputs();
   saveLayout();
   updateExport();
@@ -449,7 +455,7 @@ function updateExport() {
     exportData[option.color][`ship${option.variant}`] = {
       asset: anchors.asset,
       coils: anchors.coils.map(({ id, x, y }) => ({ id, x, y })),
-      engines: anchors.engines.map(({ id, x, y, direction, size, length, color }) => ({ id, x, y, direction, size, length, color }))
+      engines: anchors.engines.map(({ id, x, y, direction, size, length, color, layer }) => ({ id, x, y, direction, size, length, color, layer }))
     };
   }
   exportOutput.value = `export const SHIP_VFX_ANCHORS = ${JSON.stringify(exportData, null, 2)};\n`;
@@ -490,6 +496,10 @@ function hexToRgba(hex, alpha) {
 
 function normalizeHexColor(value, fallback) {
   return /^#[0-9a-f]{6}$/i.test(String(value)) ? String(value) : fallback;
+}
+
+function normalizeEngineLayer(value) {
+  return ["behind", "inline", "front"].includes(value) ? value : "behind";
 }
 
 function seededNoise(seed, frame) {
