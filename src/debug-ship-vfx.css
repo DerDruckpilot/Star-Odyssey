@@ -11,6 +11,34 @@
   touch-action: none;
 }
 
+.debug-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.debug-tab {
+  border: 1px solid rgba(178, 215, 255, 0.28);
+  background: rgba(15, 23, 42, 0.88);
+  color: #cbd5e1;
+  cursor: pointer;
+  padding: 0.55rem 0.8rem;
+}
+
+.debug-tab.is-active {
+  border-color: rgba(56, 189, 248, 0.9);
+  color: #f8fafc;
+  background: rgba(14, 116, 144, 0.38);
+}
+
+.panel-tab {
+  display: none;
+}
+
+.panel-tab.is-active {
+  display: block;
+}
+
 #zoom-control {
   padding: 0;
 }
@@ -30,6 +58,14 @@
 .selection-box input:disabled,
 .selection-box select:disabled {
   opacity: 0.48;
+}
+
+#emitter-list {
+  min-height: 8rem;
+}
+
+.import-control input {
+  margin-top: 0.35rem;
 }
 
 @media (max-width: 980px) {

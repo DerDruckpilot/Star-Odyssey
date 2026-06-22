@@ -27,87 +27,189 @@
 
     <main class="debug-shell debug-shell--ship-vfx">
       <section class="debug-stage-card">
+        <div class="debug-tabs" role="tablist" aria-label="Schiff VFX Bereiche">
+          <button class="debug-tab is-active" id="ship-vfx-tab" type="button" data-tab="ship" role="tab" aria-selected="true">Schiff-VFX</button>
+          <button class="debug-tab" id="engine-template-tab" type="button" data-tab="template" role="tab" aria-selected="false">Triebwerks-Template</button>
+        </div>
         <canvas id="ship-vfx-canvas" width="960" height="620" aria-label="Schiff VFX Canvas"></canvas>
       </section>
 
       <aside class="debug-panel">
-        <h2>VFX Setup</h2>
-        <label>
-          Schiff
-          <select id="ship-select"></select>
-        </label>
-        <label>
-          Hintergrund
-          <select id="background-mode">
-            <option value="dark">Dunkel</option>
-            <option value="light">Hell</option>
-            <option value="checker">Transparentes Muster</option>
-          </select>
-        </label>
-        <label>
-          Zoom
-          <input id="zoom-control" type="range" min="0.25" max="1.4" step="0.01" value="0.68">
-        </label>
-        <label>
-          Bearbeiten
-          <select id="edit-mode">
-            <option value="coil">Energiespulen</option>
-            <option value="engine">Triebwerke</option>
-          </select>
-        </label>
-        <label>
-          Vorschau
-          <select id="motion-mode">
-            <option value="idle">Schiff steht</option>
-            <option value="moving">Schiff bewegt sich</option>
-          </select>
-        </label>
-        <label>
-          Spulenstatus
-          <select id="coil-preview-mode">
-            <option value="active">Aktiv</option>
-            <option value="inactive">Inaktiv</option>
-          </select>
-        </label>
+        <section class="panel-tab is-active" data-panel="ship">
+          <h2>VFX Setup</h2>
+          <label>
+            Schiff
+            <select id="ship-select"></select>
+          </label>
+          <label>
+            Hintergrund
+            <select id="background-mode">
+              <option value="dark">Dunkel</option>
+              <option value="light">Hell</option>
+              <option value="checker">Transparentes Muster</option>
+            </select>
+          </label>
+          <label>
+            Zoom
+            <input id="zoom-control" type="range" min="0.25" max="1.4" step="0.01" value="0.68">
+          </label>
+          <label>
+            Bearbeiten
+            <select id="edit-mode">
+              <option value="coil">Energiespulen</option>
+              <option value="engine">Triebwerke</option>
+            </select>
+          </label>
+          <label>
+            Vorschau
+            <select id="motion-mode">
+              <option value="idle">Schiff steht</option>
+              <option value="moving">Schiff bewegt sich</option>
+            </select>
+          </label>
+          <label>
+            Spulenstatus
+            <select id="coil-preview-mode">
+              <option value="active">Aktiv</option>
+              <option value="inactive">Inaktiv</option>
+            </select>
+          </label>
 
-        <div class="selection-box">
-          <h3 id="selected-anchor-title">Kein Anker ausgewählt</h3>
-          <label>X <input id="anchor-x" type="number" step="1"></label>
-          <label>Y <input id="anchor-y" type="number" step="1"></label>
-          <label>Richtung <input id="anchor-direction" type="number" step="1"></label>
+          <div class="selection-box">
+            <h3 id="selected-anchor-title">Kein Anker ausgewählt</h3>
+            <label>X <input id="anchor-x" type="number" step="1"></label>
+            <label>Y <input id="anchor-y" type="number" step="1"></label>
+            <label>Richtung <input id="anchor-direction" type="number" step="1"></label>
+            <label>
+              Triebwerks-Template
+              <select id="engine-template-select"></select>
+            </label>
+            <label>
+              Glow-Größe
+              <span class="paired-control">
+                <input id="engine-size-range" type="range" min="3" max="28" step="0.5">
+                <input id="engine-size-value" type="number" min="3" max="28" step="0.5">
+              </span>
+            </label>
+            <label>
+              Partikellänge
+              <span class="paired-control">
+                <input id="engine-length-range" type="range" min="12" max="140" step="1">
+                <input id="engine-length-value" type="number" min="12" max="140" step="1">
+              </span>
+            </label>
+            <label>Effektfarbe <input id="engine-color" type="color"></label>
+            <label>
+              Effekt-Layer
+              <select id="engine-layer">
+                <option value="behind">behind</option>
+                <option value="inline">inline</option>
+                <option value="front">front</option>
+              </select>
+            </label>
+            <div class="button-row">
+              <button id="add-engine-anchor" type="button">Triebwerk hinzufügen</button>
+              <button id="remove-engine-anchor" type="button">Triebwerk entfernen</button>
+            </div>
+          </div>
+
+          <div class="button-row">
+            <button id="reset-anchors" type="button">Reset</button>
+            <button id="export-anchors" type="button">Export aktualisieren</button>
+          </div>
+        </section>
+
+        <section class="panel-tab" data-panel="template">
+          <h2>Triebwerks-Template</h2>
           <label>
-            Glow-Größe
-            <span class="paired-control">
-              <input id="engine-size-range" type="range" min="3" max="28" step="0.5">
-              <input id="engine-size-value" type="number" min="3" max="28" step="0.5">
-            </span>
+            Template
+            <select id="template-select"></select>
           </label>
           <label>
-            Partikellänge
-            <span class="paired-control">
-              <input id="engine-length-range" type="range" min="12" max="140" step="1">
-              <input id="engine-length-value" type="number" min="12" max="140" step="1">
-            </span>
+            Name
+            <input id="template-name" type="text">
           </label>
-          <label>Effektfarbe <input id="engine-color" type="color"></label>
           <label>
-            Effekt-Layer
-            <select id="engine-layer">
-              <option value="behind">behind</option>
-              <option value="inline">inline</option>
-              <option value="front">front</option>
+            Vorschau-Hintergrund
+            <select id="template-background-mode">
+              <option value="dark">Dunkel</option>
+              <option value="light">Hell</option>
+            </select>
+          </label>
+          <label>
+            Vorschau
+            <select id="template-motion-mode">
+              <option value="moving">Aktiv / in Bewegung</option>
+              <option value="idle">Schiff steht</option>
+            </select>
+          </label>
+          <label>
+            Testansicht
+            <select id="template-preview-mode">
+              <option value="effect">Nur Effekt</option>
+              <option value="ship">Auf Beispiel-Schiff</option>
             </select>
           </label>
           <div class="button-row">
-            <button id="add-engine-anchor" type="button">Triebwerk hinzufügen</button>
-            <button id="remove-engine-anchor" type="button">Triebwerk entfernen</button>
+            <button id="add-template" type="button">Neu</button>
+            <button id="delete-template" type="button">Löschen</button>
           </div>
-        </div>
+
+          <div class="selection-box">
+            <h3>Sub-Emitter</h3>
+            <select id="emitter-list" size="5"></select>
+            <div class="button-row">
+              <button id="add-emitter" type="button">Hinzufügen</button>
+              <button id="duplicate-emitter" type="button">Duplizieren</button>
+              <button id="remove-emitter" type="button">Entfernen</button>
+            </div>
+            <div class="button-row">
+              <button id="move-emitter-up" type="button">Hoch</button>
+              <button id="move-emitter-down" type="button">Runter</button>
+            </div>
+            <label>Typ
+              <select id="emitter-type">
+                <option value="flame">flame</option>
+                <option value="smoke">smoke</option>
+                <option value="spark">spark</option>
+                <option value="plasma">plasma</option>
+                <option value="glow">glow</option>
+                <option value="mist">mist / haze</option>
+                <option value="ember">ember</option>
+                <option value="ion">ion trail</option>
+              </select>
+            </label>
+            <label>X <input id="emitter-x" type="number" step="1"></label>
+            <label>Y <input id="emitter-y" type="number" step="1"></label>
+            <label>Richtung <input id="emitter-direction" type="number" step="1"></label>
+            <label>Größe <input id="emitter-size" type="number" min="1" max="80" step="0.5"></label>
+            <label>Länge <input id="emitter-length" type="number" min="1" max="240" step="1"></label>
+            <label>Farbe <input id="emitter-color" type="color"></label>
+            <label>
+              Layer
+              <select id="emitter-layer">
+                <option value="behind">behind</option>
+                <option value="inline">inline</option>
+                <option value="front">front</option>
+              </select>
+            </label>
+            <label>Intensität <input id="emitter-intensity" type="number" min="0" max="2" step="0.05"></label>
+            <label>Spread <input id="emitter-spread" type="number" min="0" max="120" step="1"></label>
+            <label>Dichte <input id="emitter-count" type="number" min="0" max="120" step="1"></label>
+            <label>Speed <input id="emitter-speed" type="number" min="0" max="4" step="0.05"></label>
+            <label>Jitter <input id="emitter-jitter" type="number" min="0" max="1" step="0.05"></label>
+          </div>
+        </section>
 
         <div class="button-row">
-          <button id="reset-anchors" type="button">Reset</button>
-          <button id="export-anchors" type="button">Export aktualisieren</button>
+          <button id="export-all-vfx" type="button">Alle VFX-Daten exportieren</button>
+          <button id="download-all-vfx" type="button">ship-vfx-data.json</button>
+          <button id="reset-vfx-storage" type="button">Arbeitsstand löschen</button>
         </div>
+        <label class="import-control">
+          Import
+          <input id="import-vfx-data" type="file" accept="application/json,.json">
+        </label>
 
         <textarea id="export-output" readonly aria-label="Schiff VFX Export"></textarea>
       </aside>
