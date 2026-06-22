@@ -1,4 +1,4 @@
-import { mothershipUpgradeSlots, upgradeMenuAssetPaths } from "./data/upgradeVisuals.js";
+import { upgradeMenuAssetPaths } from "./data/upgradeVisuals.js";
 
 const storageKey = "star-odyssey-mothership-speed-debug";
 const canvas = document.querySelector("#mothership-speed-canvas");
@@ -33,7 +33,9 @@ const inputs = {
   maskX: document.querySelector("#mask-x"),
   maskY: document.querySelector("#mask-y"),
   maskWidth: document.querySelector("#mask-width"),
-  maskHeight: document.querySelector("#mask-height")
+  maskHeight: document.querySelector("#mask-height"),
+  maskRadius: document.querySelector("#mask-radius"),
+  maskRadiusRange: document.querySelector("#mask-radius-range")
 };
 
 const outputs = {
@@ -58,7 +60,7 @@ const defaultConfig = {
       { id: "ball-1", start: { x: 50.5, y: 62 }, end: { x: 50.5, y: 75.5 } },
       { id: "ball-2", start: { x: 50.5, y: 66 }, end: { x: 50.5, y: 82.5 } }
     ],
-    mask: { x: 47.7, y: 73.2, width: 5.7, height: 13.5 }
+    mask: { x: 47.7, y: 73.2, width: 5.7, height: 13.5, cornerRadius: 1.4 }
   }
 };
 
@@ -129,7 +131,8 @@ function normalizeRect(value, fallback) {
     x: finiteNumber(value?.x, fallback.x),
     y: finiteNumber(value?.y, fallback.y),
     width: Math.max(1, finiteNumber(value?.width, fallback.width)),
-    height: Math.max(1, finiteNumber(value?.height, fallback.height))
+    height: Math.max(1, finiteNumber(value?.height, fallback.height)),
+    cornerRadius: Math.max(0, finiteNumber(value?.cornerRadius, fallback.cornerRadius ?? 0))
   };
 }
 
@@ -184,6 +187,8 @@ function syncInputs() {
   inputs.maskY.value = config.balls.mask.y;
   inputs.maskWidth.value = config.balls.mask.width;
   inputs.maskHeight.value = config.balls.mask.height;
+  inputs.maskRadius.value = config.balls.mask.cornerRadius;
+  inputs.maskRadiusRange.value = config.balls.mask.cornerRadius;
   updateZoomLabels();
   updateExport();
 }
@@ -233,20 +238,6 @@ function drawMothership(rect) {
   const base = getImage(upgradeMenuAssetPaths.mothership);
   if (base.complete) {
     context.drawImage(base, rect.x, rect.y, rect.width, rect.height);
-  }
-
-  for (const slot of mothershipUpgradeSlots) {
-    const src = upgradeMenuAssetPaths.overlays[slot.assetId];
-    const image = getImage(src);
-    if (!image.complete) continue;
-    const drawWidth = rect.width * (slot.widthPercent / 100) * (slot.scale ?? 1);
-    const ratio = image.naturalHeight && image.naturalWidth ? image.naturalHeight / image.naturalWidth : 1;
-    const drawHeight = drawWidth * ratio;
-    const centerX = rect.x + rect.width / 2;
-    const centerY = rect.y + rect.height / 2;
-    const x = centerX + (slot.x / 100) * drawWidth;
-    const y = centerY + (slot.y / 100) * drawHeight;
-    context.drawImage(image, x, y, drawWidth, drawHeight);
   }
 }
 
@@ -333,8 +324,7 @@ function drawMaskAndBalls(rect, timestamp) {
   const progress = easeOutCubic(cycle);
 
   context.save();
-  context.beginPath();
-  context.rect(mask.x, mask.y, mask.width, mask.height);
+  addRoundedRectPath(context, mask.x, mask.y, mask.width, mask.height, mask.radius);
   context.clip();
   config.balls.slots.forEach((slot, index) => {
     const point = {
@@ -346,12 +336,14 @@ function drawMaskAndBalls(rect, timestamp) {
   context.restore();
 
   context.save();
+  context.fillStyle = "rgba(2, 8, 23, 0.26)";
+  addRoundedRectPath(context, mask.x, mask.y, mask.width, mask.height, mask.radius);
+  context.fill();
   context.strokeStyle = "rgba(250, 204, 21, 0.95)";
   context.lineWidth = 2;
   context.setLineDash([6, 4]);
-  context.strokeRect(mask.x, mask.y, mask.width, mask.height);
-  context.fillStyle = "rgba(2, 8, 23, 0.26)";
-  context.fillRect(mask.x, mask.y, mask.width, mask.height);
+  addRoundedRectPath(context, mask.x, mask.y, mask.width, mask.height, mask.radius);
+  context.stroke();
   context.restore();
 }
 
@@ -362,8 +354,28 @@ function getMaskCanvasRect(rect = getShipRect()) {
     x: topLeft.x,
     y: topLeft.y,
     width: rect.width * (mask.width / 100),
-    height: rect.height * (mask.height / 100)
+    height: rect.height * (mask.height / 100),
+    radius: Math.min(
+      rect.width * ((mask.cornerRadius ?? 0) / 100),
+      (rect.width * (mask.width / 100)) / 2,
+      (rect.height * (mask.height / 100)) / 2
+    )
   };
+}
+
+function addRoundedRectPath(target, x, y, width, height, radius) {
+  const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+  target.beginPath();
+  target.moveTo(x + safeRadius, y);
+  target.lineTo(x + width - safeRadius, y);
+  target.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+  target.lineTo(x + width, y + height - safeRadius);
+  target.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+  target.lineTo(x + safeRadius, y + height);
+  target.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+  target.lineTo(x, y + safeRadius);
+  target.quadraticCurveTo(x, y, x + safeRadius, y);
+  target.closePath();
 }
 
 function drawSlotHandles(rect) {
@@ -523,12 +535,18 @@ function updateFromInputs() {
   config.balls.slots[1].start.y = finiteNumber(inputs.ball2StartY.value, config.balls.slots[1].start.y);
   config.balls.slots[1].end.x = finiteNumber(inputs.ball2EndX.value, config.balls.slots[1].end.x);
   config.balls.slots[1].end.y = finiteNumber(inputs.ball2EndY.value, config.balls.slots[1].end.y);
+  const maskRadiusValue = document.activeElement === inputs.maskRadiusRange
+    ? inputs.maskRadiusRange.value
+    : inputs.maskRadius.value;
   config.balls.mask = normalizeRect({
     x: inputs.maskX.value,
     y: inputs.maskY.value,
     width: inputs.maskWidth.value,
-    height: inputs.maskHeight.value
+    height: inputs.maskHeight.value,
+    cornerRadius: maskRadiusValue
   }, config.balls.mask);
+  inputs.maskRadius.value = config.balls.mask.cornerRadius;
+  inputs.maskRadiusRange.value = config.balls.mask.cornerRadius;
   saveConfig();
   updateZoomLabels();
   updateExport();
