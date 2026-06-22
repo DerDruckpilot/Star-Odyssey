@@ -1,10 +1,12 @@
-import { playerPieceColors, playerShipAssetPaths } from "./data/playerPieceVisuals.js";
+import { colonyShipAssetPaths, playerPieceColors, playerShipAssetPaths } from "./data/playerPieceVisuals.js";
 
 const storageKey = "star-odyssey-ship-vfx-anchors";
+const colonyShipStorageKey = "star-odyssey-colony-ship-vfx-anchors";
 const canvas = document.querySelector("#ship-vfx-canvas");
 const context = canvas.getContext("2d");
 const engineLayerCanvas = document.createElement("canvas");
 const engineLayerContext = engineLayerCanvas.getContext("2d");
+const assetPanelTitle = document.querySelector("#asset-panel-title");
 const shipSelect = document.querySelector("#ship-select");
 const backgroundModeSelect = document.querySelector("#background-mode");
 const zoomControl = document.querySelector("#zoom-control");
@@ -80,10 +82,20 @@ const shipOptions = playerPieceColors.flatMap((color) =>
     assetPath
   }))
 );
+const colonyShipOptions = playerPieceColors.flatMap((color) =>
+  colonyShipAssetPaths[color].map((assetPath, index) => ({
+    id: `${color}-colony-ship-${index + 1}`,
+    color,
+    variant: index + 1,
+    assetPath
+  }))
+);
 
 const imageCache = new Map();
 let debugData = loadDebugData();
+let colonyShipDebugData = loadColonyShipDebugData(debugData.engineTemplates);
 let selectedShipId = shipOptions[0].id;
+let selectedColonyShipId = colonyShipOptions[0].id;
 let selectedAnchor = { type: "coil", index: 0 };
 let selectedTemplateId = debugData.engineTemplates[0]?.id ?? "template-plasma";
 let selectedEmitterIndex = 0;
@@ -101,6 +113,15 @@ function loadDebugData() {
   }
 }
 
+function loadColonyShipDebugData(engineTemplates) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(colonyShipStorageKey) ?? "null");
+    return normalizeColonyShipDebugData(parsed, engineTemplates);
+  } catch {
+    return normalizeColonyShipDebugData(null, engineTemplates);
+  }
+}
+
 function normalizeDebugData(value) {
   const anchorsSource = value?.shipVfxAnchors ?? value;
   const engineTemplates = normalizeEngineTemplates(value?.engineTemplates);
@@ -111,9 +132,17 @@ function normalizeDebugData(value) {
   };
 }
 
-function normalizeShipVfxAnchors(value, engineTemplates) {
+function normalizeColonyShipDebugData(value, engineTemplates = debugData?.engineTemplates ?? []) {
+  const anchorsSource = value?.colonyShipVfxAnchors ?? value;
+  return {
+    version: 2,
+    colonyShipVfxAnchors: normalizeShipVfxAnchors(anchorsSource, engineTemplates, colonyShipOptions)
+  };
+}
+
+function normalizeShipVfxAnchors(value, engineTemplates, options = shipOptions) {
   const anchors = {};
-  for (const option of shipOptions) {
+  for (const option of options) {
     anchors[option.id] = normalizeShipAnchors(value?.[option.id], option, engineTemplates);
   }
   return anchors;
@@ -221,13 +250,14 @@ function normalizeEmitter(emitter, index) {
 
 function populateShipSelect() {
   shipSelect.replaceChildren();
-  for (const option of shipOptions) {
+  for (const option of getActiveAssetOptions()) {
     const element = document.createElement("option");
     element.value = option.id;
-    element.textContent = `${option.color} - Schiff ${option.variant}`;
+    element.textContent = `${option.color} - ${getActiveAssetLabel()} ${option.variant}`;
     shipSelect.append(element);
   }
-  shipSelect.value = selectedShipId;
+  shipSelect.value = getSelectedAssetId();
+  assetPanelTitle.textContent = activeTab === "colony" ? "Kolonieschiff VFX Setup" : "Schiff VFX Setup";
 }
 
 function populateTemplateSelects() {
@@ -255,11 +285,33 @@ function createTemplateOption(value, label) {
 }
 
 function getSelectedOption() {
-  return shipOptions.find((option) => option.id === selectedShipId) ?? shipOptions[0];
+  return getActiveAssetOptions().find((option) => option.id === getSelectedAssetId()) ?? getActiveAssetOptions()[0];
 }
 
 function getSelectedAnchors() {
-  return debugData.shipVfxAnchors[selectedShipId];
+  return activeTab === "colony"
+    ? colonyShipDebugData.colonyShipVfxAnchors[selectedColonyShipId]
+    : debugData.shipVfxAnchors[selectedShipId];
+}
+
+function getActiveAssetOptions() {
+  return activeTab === "colony" ? colonyShipOptions : shipOptions;
+}
+
+function getActiveAssetLabel() {
+  return activeTab === "colony" ? "Kolonieschiff" : "Schiff";
+}
+
+function getSelectedAssetId() {
+  return activeTab === "colony" ? selectedColonyShipId : selectedShipId;
+}
+
+function setSelectedAssetId(value) {
+  if (activeTab === "colony") {
+    selectedColonyShipId = value;
+  } else {
+    selectedShipId = value;
+  }
 }
 
 function getSelectedAnchorList() {
@@ -937,6 +989,11 @@ function deleteTemplate() {
       if (engine.templateId === deleteId) engine.templateId = "";
     }
   }
+  for (const anchors of Object.values(colonyShipDebugData.colonyShipVfxAnchors)) {
+    for (const engine of anchors.engines) {
+      if (engine.templateId === deleteId) engine.templateId = "";
+    }
+  }
   selectedTemplateId = debugData.engineTemplates[0].id;
   selectedEmitterIndex = 0;
   syncTemplateInputs();
@@ -1004,12 +1061,18 @@ function resetSelectedShipAnchors() {
 }
 
 function layoutCurrentShip() {
-  debugData.shipVfxAnchors[selectedShipId] = normalizeShipAnchors(null, getSelectedOption(), debugData.engineTemplates);
+  if (activeTab === "colony") {
+    colonyShipDebugData.colonyShipVfxAnchors[selectedColonyShipId] = normalizeShipAnchors(null, getSelectedOption(), debugData.engineTemplates);
+  } else {
+    debugData.shipVfxAnchors[selectedShipId] = normalizeShipAnchors(null, getSelectedOption(), debugData.engineTemplates);
+  }
 }
 
 function resetAllStorage() {
   localStorage.removeItem(storageKey);
+  localStorage.removeItem(colonyShipStorageKey);
   debugData = normalizeDebugData(null);
+  colonyShipDebugData = normalizeColonyShipDebugData(null, debugData.engineTemplates);
   selectedTemplateId = debugData.engineTemplates[0].id;
   selectedEmitterIndex = 0;
   setSelectedAnchor(editModeSelect.value, 0);
@@ -1021,6 +1084,7 @@ function resetAllStorage() {
 
 function saveDebugData() {
   localStorage.setItem(storageKey, JSON.stringify(createExportData()));
+  localStorage.setItem(colonyShipStorageKey, JSON.stringify(createColonyShipExportData()));
 }
 
 function createExportData() {
@@ -1071,8 +1135,73 @@ function createExportData() {
   };
 }
 
+function createColonyShipExportData() {
+  const colonyShipVfxAnchors = {};
+  for (const option of colonyShipOptions) {
+    const anchors = colonyShipDebugData.colonyShipVfxAnchors[option.id];
+    colonyShipVfxAnchors[option.id] = {
+      color: anchors.color,
+      variant: anchors.variant,
+      asset: anchors.asset,
+      coils: anchors.coils.map(({ id, x, y }) => ({ id, x, y })),
+      engines: anchors.engines.map(({ id, x, y, direction, size, length, color, layer, templateId }) => ({
+        id,
+        x,
+        y,
+        direction,
+        size,
+        length,
+        color,
+        layer,
+        templateId
+      }))
+    };
+  }
+  return {
+    version: 2,
+    engineTemplates: debugData.engineTemplates.map((template) => ({
+      id: template.id,
+      name: template.name,
+      emitters: template.emitters.map(({ id, type, x, y, direction, size, length, color, layer, intensity, spread, count, speed, jitter }) => ({
+        id,
+        type,
+        x,
+        y,
+        direction,
+        size,
+        length,
+        color,
+        layer,
+        intensity,
+        spread,
+        count,
+        speed,
+        jitter
+      }))
+    })),
+    colonyShipVfxAnchors
+  };
+}
+
+function createCombinedExportData() {
+  return {
+    ...createExportData(),
+    colonyShipVfxAnchors: createColonyShipExportData().colonyShipVfxAnchors
+  };
+}
+
 function updateExport() {
-  exportOutput.value = `export const SHIP_VFX_DATA = ${JSON.stringify(createExportData(), null, 2)};\n`;
+  if (activeTab === "colony") {
+    exportOutput.value = `export const COLONY_SHIP_VFX_DATA = ${JSON.stringify(createColonyShipExportData(), null, 2)};\n`;
+  } else if (activeTab === "template") {
+    exportOutput.value = `export const ALL_SHIP_VFX_DATA = ${JSON.stringify(createCombinedExportData(), null, 2)};\n`;
+  } else {
+    exportOutput.value = `export const SHIP_VFX_DATA = ${JSON.stringify(createExportData(), null, 2)};\n`;
+  }
+}
+
+function updateCombinedExport() {
+  exportOutput.value = `export const ALL_SHIP_VFX_DATA = ${JSON.stringify(createCombinedExportData(), null, 2)};\n`;
 }
 
 function downloadExport() {
@@ -1085,15 +1214,37 @@ function downloadExport() {
   URL.revokeObjectURL(url);
 }
 
+function downloadColonyShipExport() {
+  const blob = new Blob([JSON.stringify(createColonyShipExportData(), null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "colony-ship-vfx-data.json";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function importExport(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.addEventListener("load", () => {
     try {
-      debugData = normalizeDebugData(JSON.parse(String(reader.result)));
+      const parsed = JSON.parse(String(reader.result));
+      if (parsed?.shipVfxAnchors || !parsed?.colonyShipVfxAnchors) {
+        debugData = normalizeDebugData(parsed);
+      } else if (parsed?.engineTemplates) {
+        debugData = {
+          ...debugData,
+          engineTemplates: normalizeEngineTemplates(parsed.engineTemplates)
+        };
+      }
+      if (parsed?.colonyShipVfxAnchors) {
+        colonyShipDebugData = normalizeColonyShipDebugData(parsed, debugData.engineTemplates);
+      }
       selectedTemplateId = debugData.engineTemplates[0]?.id ?? "";
       selectedEmitterIndex = 0;
       setSelectedAnchor(editModeSelect.value, 0);
+      populateShipSelect();
       syncTemplateInputs();
       saveDebugData();
       updateExport();
@@ -1106,7 +1257,7 @@ function importExport(file) {
 }
 
 function preloadImages() {
-  return Promise.all(shipOptions.map((option) => new Promise((resolve) => {
+  return Promise.all([...shipOptions, ...colonyShipOptions].map((option) => new Promise((resolve) => {
     const image = getShipImage(option);
     if (image.complete && image.naturalWidth > 0) {
       resolve({ id: option.id, loaded: true });
@@ -1137,9 +1288,15 @@ function setActiveTab(tab) {
     button.classList.toggle("is-active", selected);
     button.setAttribute("aria-selected", String(selected));
   }
+  const panelKey = tab === "colony" ? "ship" : tab;
   for (const panel of panelTabs) {
-    panel.classList.toggle("is-active", panel.dataset.panel === tab);
+    panel.classList.toggle("is-active", panel.dataset.panel === panelKey);
   }
+  if (tab !== "template") {
+    populateShipSelect();
+    setSelectedAnchor(editModeSelect.value, 0);
+  }
+  updateExport();
   render();
 }
 
@@ -1198,7 +1355,7 @@ preloadImages().then((results) => {
 });
 
 shipSelect.addEventListener("change", (event) => {
-  selectedShipId = event.target.value;
+  setSelectedAssetId(event.target.value);
   setSelectedAnchor(editModeSelect.value, 0);
   render();
 });
@@ -1244,8 +1401,9 @@ document.querySelector("#duplicate-emitter").addEventListener("click", duplicate
 document.querySelector("#remove-emitter").addEventListener("click", removeEmitter);
 document.querySelector("#move-emitter-up").addEventListener("click", () => moveEmitter(-1));
 document.querySelector("#move-emitter-down").addEventListener("click", () => moveEmitter(1));
-document.querySelector("#export-all-vfx").addEventListener("click", updateExport);
+document.querySelector("#export-all-vfx").addEventListener("click", updateCombinedExport);
 document.querySelector("#download-all-vfx").addEventListener("click", downloadExport);
+document.querySelector("#download-colony-ship-vfx").addEventListener("click", downloadColonyShipExport);
 document.querySelector("#reset-vfx-storage").addEventListener("click", resetAllStorage);
 importInput.addEventListener("change", (event) => importExport(event.target.files?.[0]));
 

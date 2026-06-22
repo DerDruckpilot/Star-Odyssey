@@ -29,6 +29,7 @@
       <section class="debug-stage-card">
         <div class="debug-tabs" role="tablist" aria-label="Schiff VFX Bereiche">
           <button class="debug-tab is-active" id="ship-vfx-tab" type="button" data-tab="ship" role="tab" aria-selected="true">Schiff-VFX</button>
+          <button class="debug-tab" id="colony-ship-vfx-tab" type="button" data-tab="colony" role="tab" aria-selected="false">Kolonieschiffe</button>
           <button class="debug-tab" id="engine-template-tab" type="button" data-tab="template" role="tab" aria-selected="false">Triebwerks-Template</button>
         </div>
         <canvas id="ship-vfx-canvas" width="960" height="620" aria-label="Schiff VFX Canvas"></canvas>
@@ -36,9 +37,9 @@
 
       <aside class="debug-panel">
         <section class="panel-tab is-active" data-panel="ship">
-          <h2>VFX Setup</h2>
+          <h2 id="asset-panel-title">VFX Setup</h2>
           <label>
-            Schiff
+            Asset
             <select id="ship-select"></select>
           </label>
           <label>
@@ -208,6 +209,7 @@
         <div class="button-row">
           <button id="export-all-vfx" type="button">Alle VFX-Daten exportieren</button>
           <button id="download-all-vfx" type="button">ship-vfx-data.json</button>
+          <button id="download-colony-ship-vfx" type="button">colony-ship-vfx-data.json</button>
           <button id="reset-vfx-storage" type="button">Arbeitsstand löschen</button>
         </div>
         <label class="import-control">

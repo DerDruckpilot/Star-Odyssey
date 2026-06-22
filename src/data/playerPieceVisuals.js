@@ -23,6 +23,29 @@ export const playerShipAssetPaths = {
   ]
 };
 
+export const colonyShipAssetPaths = {
+  red: [
+    "./assets/generated/colony-ships/colony-ship-red-variant-01.png",
+    "./assets/generated/colony-ships/colony-ship-red-variant-02.png",
+    "./assets/generated/colony-ships/colony-ship-red-variant-03.png"
+  ],
+  blue: [
+    "./assets/generated/colony-ships/colony-ship-blue-variant-01.png",
+    "./assets/generated/colony-ships/colony-ship-blue-variant-02.png",
+    "./assets/generated/colony-ships/colony-ship-blue-variant-03.png"
+  ],
+  yellow: [
+    "./assets/generated/colony-ships/colony-ship-yellow-variant-01.png",
+    "./assets/generated/colony-ships/colony-ship-yellow-variant-02.png",
+    "./assets/generated/colony-ships/colony-ship-yellow-variant-03.png"
+  ],
+  green: [
+    "./assets/generated/colony-ships/colony-ship-green-variant-01.png",
+    "./assets/generated/colony-ships/colony-ship-green-variant-02.png",
+    "./assets/generated/colony-ships/colony-ship-green-variant-03.png"
+  ]
+};
+
 export const playerColonyAssetPaths = {
   red: "./assets/generated/player-colonies/player-colony-red.png",
   blue: "./assets/generated/player-colonies/player-colony-blue.png",
@@ -61,6 +84,11 @@ const colorAliases = {
 
 export function getPlayerShipAssetPath(playerColor, shipId = "") {
   const assets = playerShipAssetPaths[normalizePlayerPieceColor(playerColor)] ?? playerShipAssetPaths.red;
+  return assets[getShipVariantIndex(shipId, assets.length)] ?? assets[0];
+}
+
+export function getColonyShipAssetPath(playerColor, shipId = "") {
+  const assets = colonyShipAssetPaths[normalizePlayerPieceColor(playerColor)] ?? colonyShipAssetPaths.red;
   return assets[getShipVariantIndex(shipId, assets.length)] ?? assets[0];
 }
 
