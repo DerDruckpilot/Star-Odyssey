@@ -125,7 +125,18 @@ const shipFlightAnimation = {
   frameRequestId: null,
   currentTime: 0
 };
+const diceRollAnimation = {
+  item: null,
+  frameRequestId: null,
+  currentTime: 0
+};
 const shipVisualAngles = new Map();
+const playerDiceColors = {
+  red: "#ef4444",
+  blue: "#38bdf8",
+  yellow: "#facc15",
+  green: "#22c55e"
+};
 
 function loadLanguage() {
   try {
@@ -426,16 +437,24 @@ function moveSelectedShipTo(targetNodeId) {
 
 function rollProductionForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "production") return;
+  if (isDiceRollAnimating()) return;
 
+  const rollingPlayer = getActivePlayer();
   state.gameState = rollProduction(state.gameState, boardLayout);
+  queueDiceRollAnimation(rollingPlayer, state.gameState.lastRoll?.dice);
   saveCurrentGameState();
   render();
 }
 
 function rollPlacementForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "placement") return;
+  if (isDiceRollAnimating()) return;
 
+  const previousGameState = state.gameState;
+  const rollingPlayer = getActivePlayer();
+  const rollingPlayerId = previousGameState.placement?.rollPlayerIds?.[previousGameState.placement?.currentRollIndex ?? 0];
   state.gameState = rollPlacementStart(state.gameState);
+  queueDiceRollAnimation(rollingPlayer, getPlacementRollDice(state.gameState, rollingPlayerId));
   saveCurrentGameState();
   render();
 }
@@ -864,7 +883,7 @@ function renderBoardShell() {
   const board = document.createElement("div");
   board.className = "board-placeholder";
   board.setAttribute("aria-label", t("boardAreaLabel"));
-  board.append(renderBoardSvg());
+  board.append(renderBoardSvg(), renderDiceRollCanvas());
 
   screen.append(
     hiddenTitle,
@@ -1301,7 +1320,9 @@ function renderPhaseActions(player = getActivePlayer()) {
   if (state.gameState.phase === "placement") {
     wrapper.append(renderPlacementActions());
   } else if (state.gameState.phase === "production") {
-    wrapper.append(createButton(t("rollProduction"), rollProductionForActivePlayer, "small-button"));
+    const rollButton = createButton(t("rollProduction"), rollProductionForActivePlayer, "small-button");
+    rollButton.disabled = isDiceRollAnimating();
+    wrapper.append(rollButton);
   } else if (state.gameState.phase === "tradeBuild") {
     const hint = document.createElement("p");
     hint.textContent = t("tradeBuildReady");
@@ -1350,7 +1371,9 @@ function renderPlacementActions() {
   wrapper.append(instruction);
 
   if (placement?.step === "rollStartPlayer") {
-    wrapper.append(createButton(t("rollStartPlayer"), rollPlacementForActivePlayer, "small-button"));
+    const rollButton = createButton(t("rollStartPlayer"), rollPlacementForActivePlayer, "small-button");
+    rollButton.disabled = isDiceRollAnimating();
+    wrapper.append(rollButton);
   }
 
   return wrapper;
@@ -2888,13 +2911,266 @@ function createPlacementTransform(centerX, centerY, rotation, pop) {
   return transforms.join(" ");
 }
 
+function queueDiceRollAnimation(player, dice) {
+  if (!player || !Array.isArray(dice) || dice.length !== 2 || isDiceRollAnimating()) return;
+
+  const now = getAnimationNow();
+  const seed = createDiceRollSeed(player.id, dice, now);
+  const duration = 900 + seededRandom(seed, 1) * 700;
+  const holdDuration = 260;
+  diceRollAnimation.item = {
+    playerId: player.id,
+    color: playerDiceColors[player.color] ?? playerDiceColors.red,
+    dice: dice.map((value) => Math.max(1, Math.min(6, Number(value) || 1))),
+    startTime: now,
+    duration,
+    holdDuration,
+    seed,
+    start: {
+      x: 0.24 + seededRandom(seed, 2) * 0.2,
+      y: 0.16 + seededRandom(seed, 3) * 0.18
+    },
+    end: {
+      x: 0.5 + (seededRandom(seed, 4) - 0.5) * 0.18,
+      y: 0.47 + (seededRandom(seed, 5) - 0.5) * 0.16
+    },
+    spread: 0.075 + seededRandom(seed, 6) * 0.035,
+    direction: (seededRandom(seed, 7) - 0.5) * Math.PI * 0.55,
+    spin: [
+      (seededRandom(seed, 8) > 0.5 ? 1 : -1) * (Math.PI * (2.2 + seededRandom(seed, 9) * 2.8)),
+      (seededRandom(seed, 10) > 0.5 ? 1 : -1) * (Math.PI * (2.2 + seededRandom(seed, 11) * 2.8))
+    ]
+  };
+  startDiceRollLoop();
+}
+
+function getPlacementRollDice(gameState, playerId) {
+  if (!playerId) return null;
+  const currentRoll = gameState.placement?.rolls?.[playerId];
+  if (Array.isArray(currentRoll?.dice) && currentRoll.dice.length === 2) return currentRoll.dice;
+  const historyRoll = gameState.placement?.rollHistory?.at(-1)?.[playerId];
+  return Array.isArray(historyRoll?.dice) && historyRoll.dice.length === 2 ? historyRoll.dice : null;
+}
+
+function isDiceRollAnimating() {
+  const item = diceRollAnimation.item;
+  if (!item) return false;
+  return getAnimationNow() - item.startTime < item.duration + item.holdDuration;
+}
+
+function startDiceRollLoop() {
+  if (diceRollAnimation.frameRequestId || !diceRollAnimation.item) return;
+  diceRollAnimation.frameRequestId = requestAnimationFrame(updateDiceRollAnimation);
+}
+
+function updateDiceRollAnimation(now) {
+  diceRollAnimation.currentTime = now;
+  const item = diceRollAnimation.item;
+  diceRollAnimation.frameRequestId = null;
+  if (!item || now - item.startTime >= item.duration + item.holdDuration) {
+    diceRollAnimation.item = null;
+    render();
+    return;
+  }
+  render();
+  diceRollAnimation.frameRequestId = requestAnimationFrame(updateDiceRollAnimation);
+}
+
+function renderDiceRollCanvas() {
+  const canvasElement = document.createElement("canvas");
+  canvasElement.className = "dice-roll-overlay";
+  canvasElement.setAttribute("aria-hidden", "true");
+  return canvasElement;
+}
+
+function drawDiceRollOverlay() {
+  const item = diceRollAnimation.item;
+  if (!item || state.view !== "board") return;
+
+  const canvasElement = document.querySelector(".dice-roll-overlay");
+  if (!(canvasElement instanceof HTMLCanvasElement)) return;
+  const targetContext = canvasElement.getContext("2d");
+  const rect = canvasElement.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  const width = Math.max(1, Math.round(rect.width * ratio));
+  const height = Math.max(1, Math.round(rect.height * ratio));
+  if (canvasElement.width !== width || canvasElement.height !== height) {
+    canvasElement.width = width;
+    canvasElement.height = height;
+  }
+
+  targetContext.clearRect(0, 0, width, height);
+  const elapsed = getDiceRollTime() - item.startTime;
+  const rollingProgress = clamp01(elapsed / item.duration);
+  const eased = easeInOutCubic(rollingProgress);
+  const holdProgress = elapsed <= item.duration ? 0 : clamp01((elapsed - item.duration) / item.holdDuration);
+  const fade = elapsed <= item.duration ? 1 : 1 - holdProgress;
+  const center = getDiceRollCenter(item, eased, width, height);
+  const size = Math.max(42 * ratio, Math.min(width, height) * 0.09);
+  const bounce = Math.sin(rollingProgress * Math.PI * 6 + item.direction) * (1 - rollingProgress) * 24 * ratio;
+  const perpendicular = item.direction + Math.PI / 2;
+
+  for (let index = 0; index < 2; index += 1) {
+    const side = index === 0 ? -1 : 1;
+    const offset = side * item.spread * width;
+    const x = center.x + Math.cos(perpendicular) * offset;
+    const y = center.y + Math.sin(perpendicular) * offset + bounce * (index === 0 ? 0.8 : 1);
+    const value = getAnimatedDieValue(item, index, rollingProgress);
+    const rotation = item.spin[index] * eased + Math.sin(rollingProgress * Math.PI * 5 + index) * (1 - rollingProgress) * 0.28;
+    drawDie(targetContext, {
+      x,
+      y,
+      size,
+      value,
+      rotation,
+      color: item.color,
+      alpha: fade
+    });
+  }
+}
+
+function getDiceRollTime() {
+  return diceRollAnimation.currentTime || getAnimationNow();
+}
+
+function getDiceRollCenter(item, progress, width, height) {
+  const arc = Math.sin(progress * Math.PI) * (0.2 + seededRandom(item.seed, 12) * 0.18) * height;
+  const wobbleX = Math.sin(progress * Math.PI * 5 + item.seed) * (1 - progress) * 18;
+  const wobbleY = Math.cos(progress * Math.PI * 4 + item.seed) * (1 - progress) * 12;
+  return {
+    x: lerp(item.start.x, item.end.x, progress) * width + wobbleX,
+    y: lerp(item.start.y, item.end.y, progress) * height - arc + wobbleY
+  };
+}
+
+function getAnimatedDieValue(item, index, progress) {
+  if (progress >= 0.92) return item.dice[index];
+  const frame = Math.floor(progress * item.duration / 72);
+  return 1 + Math.floor(seededRandom(item.seed + index * 17, frame) * 6);
+}
+
+function drawDie(targetContext, { x, y, size, value, rotation, color, alpha }) {
+  const corner = size * 0.18;
+  const pipColor = getContrastingPipColor(color);
+  targetContext.save();
+  targetContext.globalAlpha = alpha;
+  targetContext.translate(x, y);
+  targetContext.rotate(rotation);
+  targetContext.shadowColor = "rgba(2, 6, 23, 0.65)";
+  targetContext.shadowBlur = size * 0.24;
+  targetContext.shadowOffsetY = size * 0.12;
+  drawRoundedRect(targetContext, -size / 2, -size / 2, size, size, corner);
+  const gradient = targetContext.createLinearGradient(-size / 2, -size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, lightenHex(color, 0.22));
+  gradient.addColorStop(0.55, color);
+  gradient.addColorStop(1, darkenHex(color, 0.18));
+  targetContext.fillStyle = gradient;
+  targetContext.fill();
+  targetContext.shadowColor = "transparent";
+  targetContext.strokeStyle = "rgba(248, 250, 252, 0.58)";
+  targetContext.lineWidth = Math.max(1.5, size * 0.035);
+  targetContext.stroke();
+  drawDiePips(targetContext, value, size, pipColor);
+  targetContext.restore();
+}
+
+function drawRoundedRect(targetContext, x, y, width, height, radius) {
+  targetContext.beginPath();
+  targetContext.moveTo(x + radius, y);
+  targetContext.lineTo(x + width - radius, y);
+  targetContext.quadraticCurveTo(x + width, y, x + width, y + radius);
+  targetContext.lineTo(x + width, y + height - radius);
+  targetContext.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  targetContext.lineTo(x + radius, y + height);
+  targetContext.quadraticCurveTo(x, y + height, x, y + height - radius);
+  targetContext.lineTo(x, y + radius);
+  targetContext.quadraticCurveTo(x, y, x + radius, y);
+}
+
+function drawDiePips(targetContext, value, size, color) {
+  const offset = size * 0.24;
+  const radius = size * 0.065;
+  const positions = {
+    center: [0, 0],
+    topLeft: [-offset, -offset],
+    topRight: [offset, -offset],
+    middleLeft: [-offset, 0],
+    middleRight: [offset, 0],
+    bottomLeft: [-offset, offset],
+    bottomRight: [offset, offset]
+  };
+  const pipLayouts = {
+    1: ["center"],
+    2: ["topLeft", "bottomRight"],
+    3: ["topLeft", "center", "bottomRight"],
+    4: ["topLeft", "topRight", "bottomLeft", "bottomRight"],
+    5: ["topLeft", "topRight", "center", "bottomLeft", "bottomRight"],
+    6: ["topLeft", "topRight", "middleLeft", "middleRight", "bottomLeft", "bottomRight"]
+  };
+  targetContext.fillStyle = color;
+  for (const key of pipLayouts[value] ?? pipLayouts[1]) {
+    const [x, y] = positions[key];
+    targetContext.beginPath();
+    targetContext.arc(x, y, radius, 0, Math.PI * 2);
+    targetContext.fill();
+  }
+}
+
+function createDiceRollSeed(playerId, dice, now) {
+  let seed = Math.floor(now) + dice[0] * 31 + dice[1] * 71;
+  for (const character of String(playerId)) {
+    seed = (seed * 33 + character.charCodeAt(0)) >>> 0;
+  }
+  return seed || 1;
+}
+
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
+}
+
+function lerp(start, end, progress) {
+  return start + (end - start) * progress;
 }
 
 function easeOutCubic(value) {
   const progress = clamp01(value);
   return 1 - ((1 - progress) ** 3);
+}
+
+function getContrastingPipColor(hex) {
+  const { red, green, blue } = hexToRgb(hex);
+  const luminance = (red * 0.299 + green * 0.587 + blue * 0.114) / 255;
+  return luminance > 0.58 ? "#0f172a" : "#f8fafc";
+}
+
+function lightenHex(hex, amount) {
+  const { red, green, blue } = hexToRgb(hex);
+  return rgbToHex(
+    red + (255 - red) * amount,
+    green + (255 - green) * amount,
+    blue + (255 - blue) * amount
+  );
+}
+
+function darkenHex(hex, amount) {
+  const { red, green, blue } = hexToRgb(hex);
+  return rgbToHex(red * (1 - amount), green * (1 - amount), blue * (1 - amount));
+}
+
+function hexToRgb(hex) {
+  const clean = String(hex).replace("#", "");
+  const value = Number.parseInt(clean, 16);
+  return {
+    red: (value >> 16) & 255,
+    green: (value >> 8) & 255,
+    blue: value & 255
+  };
+}
+
+function rgbToHex(red, green, blue) {
+  return `#${[red, green, blue]
+    .map((channel) => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, "0"))
+    .join("")}`;
 }
 
 function seededRandom(seed, index) {
@@ -4351,6 +4627,7 @@ function render() {
   const renderedModal = renderModal();
 
   app.replaceChildren(...[renderedView, renderedModal].filter(Boolean));
+  drawDiceRollOverlay();
 }
 
 render();

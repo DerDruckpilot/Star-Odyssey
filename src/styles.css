@@ -873,6 +873,15 @@ h1 {
   display: block;
 }
 
+.dice-roll-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .quadrant {
   fill: rgba(15, 23, 42, 0.04);
   stroke: none;
