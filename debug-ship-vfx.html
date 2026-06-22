@@ -28,8 +28,8 @@
     <main class="debug-shell debug-shell--ship-vfx">
       <section class="debug-stage-card">
         <div class="debug-tabs" role="tablist" aria-label="Schiff VFX Bereiche">
-          <button class="debug-tab is-active" id="ship-vfx-tab" type="button" data-tab="ship" role="tab" aria-selected="true">Schiff-VFX</button>
-          <button class="debug-tab" id="colony-ship-vfx-tab" type="button" data-tab="colony" role="tab" aria-selected="false">Kolonieschiffe</button>
+          <button class="debug-tab is-active" id="colony-ship-vfx-tab" type="button" data-tab="ship" role="tab" aria-selected="true">Kolonieschiffe</button>
+          <button class="debug-tab" id="trade-ship-vfx-tab" type="button" data-tab="trade" role="tab" aria-selected="false">Handelsschiffe</button>
           <button class="debug-tab" id="engine-template-tab" type="button" data-tab="template" role="tab" aria-selected="false">Triebwerks-Template</button>
         </div>
         <canvas id="ship-vfx-canvas" width="960" height="620" aria-label="Schiff VFX Canvas"></canvas>
@@ -208,8 +208,9 @@
 
         <div class="button-row">
           <button id="export-all-vfx" type="button">Alle VFX-Daten exportieren</button>
-          <button id="download-all-vfx" type="button">ship-vfx-data.json</button>
+          <button id="download-all-vfx" type="button">Alle VFX-Daten</button>
           <button id="download-colony-ship-vfx" type="button">colony-ship-vfx-data.json</button>
+          <button id="download-trade-ship-vfx" type="button">trade-ship-vfx-data.json</button>
           <button id="reset-vfx-storage" type="button">Arbeitsstand löschen</button>
         </div>
         <label class="import-control">

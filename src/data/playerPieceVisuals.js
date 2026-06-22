@@ -1,6 +1,6 @@
 export const playerPieceColors = ["red", "blue", "yellow", "green"];
 
-export const playerShipAssetPaths = {
+export const colonyShipAssetPaths = {
   red: [
     "./assets/generated/player-ships/player-ship-red-variant-01.png",
     "./assets/generated/player-ships/player-ship-red-variant-02.png",
@@ -23,26 +23,28 @@ export const playerShipAssetPaths = {
   ]
 };
 
-export const colonyShipAssetPaths = {
+export const playerShipAssetPaths = colonyShipAssetPaths;
+
+export const tradeShipAssetPaths = {
   red: [
-    "./assets/generated/colony-ships/colony-ship-red-variant-01.png",
-    "./assets/generated/colony-ships/colony-ship-red-variant-02.png",
-    "./assets/generated/colony-ships/colony-ship-red-variant-03.png"
+    "./assets/generated/trade-ships/trade-ship-red-variant-01.png",
+    "./assets/generated/trade-ships/trade-ship-red-variant-02.png",
+    "./assets/generated/trade-ships/trade-ship-red-variant-03.png"
   ],
   blue: [
-    "./assets/generated/colony-ships/colony-ship-blue-variant-01.png",
-    "./assets/generated/colony-ships/colony-ship-blue-variant-02.png",
-    "./assets/generated/colony-ships/colony-ship-blue-variant-03.png"
+    "./assets/generated/trade-ships/trade-ship-blue-variant-01.png",
+    "./assets/generated/trade-ships/trade-ship-blue-variant-02.png",
+    "./assets/generated/trade-ships/trade-ship-blue-variant-03.png"
   ],
   yellow: [
-    "./assets/generated/colony-ships/colony-ship-yellow-variant-01.png",
-    "./assets/generated/colony-ships/colony-ship-yellow-variant-02.png",
-    "./assets/generated/colony-ships/colony-ship-yellow-variant-03.png"
+    "./assets/generated/trade-ships/trade-ship-yellow-variant-01.png",
+    "./assets/generated/trade-ships/trade-ship-yellow-variant-02.png",
+    "./assets/generated/trade-ships/trade-ship-yellow-variant-03.png"
   ],
   green: [
-    "./assets/generated/colony-ships/colony-ship-green-variant-01.png",
-    "./assets/generated/colony-ships/colony-ship-green-variant-02.png",
-    "./assets/generated/colony-ships/colony-ship-green-variant-03.png"
+    "./assets/generated/trade-ships/trade-ship-green-variant-01.png",
+    "./assets/generated/trade-ships/trade-ship-green-variant-02.png",
+    "./assets/generated/trade-ships/trade-ship-green-variant-03.png"
   ]
 };
 
@@ -89,6 +91,11 @@ export function getPlayerShipAssetPath(playerColor, shipId = "") {
 
 export function getColonyShipAssetPath(playerColor, shipId = "") {
   const assets = colonyShipAssetPaths[normalizePlayerPieceColor(playerColor)] ?? colonyShipAssetPaths.red;
+  return assets[getShipVariantIndex(shipId, assets.length)] ?? assets[0];
+}
+
+export function getTradeShipAssetPath(playerColor, shipId = "") {
+  const assets = tradeShipAssetPaths[normalizePlayerPieceColor(playerColor)] ?? tradeShipAssetPaths.red;
   return assets[getShipVariantIndex(shipId, assets.length)] ?? assets[0];
 }
 

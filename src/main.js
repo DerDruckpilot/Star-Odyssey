@@ -136,6 +136,8 @@ const diceRollAnimation = {
   frameRequestId: null,
   currentTime: 0
 };
+const DICE_RESULT_HOLD_MS = 4000;
+const DICE_RESULT_FADE_MS = 320;
 const shipVisualAngles = new Map();
 const playerDiceColors = {
   red: "#ef4444",
@@ -372,6 +374,7 @@ function determineSpeedForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "flight") return;
 
   state.gameState = determineFlightSpeed(state.gameState);
+  state.hudPlayerId = null;
   saveCurrentGameState();
   render();
 }
@@ -2936,7 +2939,6 @@ function queueDiceRollAnimation(player, dice) {
   const now = getAnimationNow();
   const seed = createDiceRollSeed(player.id, dice, now);
   const duration = 1000 + seededRandom(seed, 1) * 800;
-  const holdDuration = 420;
   diceRollAnimation.currentTime = now;
   diceRollAnimation.item = {
     playerId: player.id,
@@ -2944,7 +2946,8 @@ function queueDiceRollAnimation(player, dice) {
     dice: dice.map((value) => Math.max(1, Math.min(6, Number(value) || 1))),
     startTime: now,
     duration,
-    holdDuration,
+    holdDuration: DICE_RESULT_HOLD_MS,
+    fadeDuration: DICE_RESULT_FADE_MS,
     seed,
     start: {
       x: 0.24 + seededRandom(seed, 2) * 0.2,
@@ -2976,7 +2979,7 @@ function getPlacementRollDice(gameState, playerId) {
 function isDiceRollAnimating() {
   const item = diceRollAnimation.item;
   if (!item) return false;
-  return getAnimationNow() - item.startTime < item.duration + item.holdDuration;
+  return getAnimationNow() - item.startTime < item.duration + item.holdDuration + item.fadeDuration;
 }
 
 function startDiceRollLoop() {
@@ -2988,7 +2991,7 @@ function updateDiceRollAnimation(now) {
   diceRollAnimation.currentTime = now;
   const item = diceRollAnimation.item;
   diceRollAnimation.frameRequestId = null;
-  if (!item || now - item.startTime >= item.duration + item.holdDuration) {
+  if (!item || now - item.startTime >= item.duration + item.holdDuration + item.fadeDuration) {
     diceRollAnimation.item = null;
     diceRollAnimation.currentTime = 0;
     render();
@@ -3051,8 +3054,9 @@ function renderDice3dOverlay() {
 
   const elapsed = getDiceRollTime() - item.startTime;
   const rollingProgress = clamp01(elapsed / item.duration);
-  const holdProgress = elapsed <= item.duration ? 0 : clamp01((elapsed - item.duration) / item.holdDuration);
-  const fade = elapsed <= item.duration ? 1 : 1 - easeOutCubic(holdProgress);
+  const fadeElapsed = Math.max(0, elapsed - item.duration - item.holdDuration);
+  const fadeProgress = clamp01(fadeElapsed / item.fadeDuration);
+  const fade = 1 - easeOutCubic(fadeProgress);
   const overlay = document.createElement("div");
   overlay.className = "dice3d-overlay";
   overlay.style.opacity = fade.toFixed(3);
