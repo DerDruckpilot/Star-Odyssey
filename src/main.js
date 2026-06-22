@@ -127,6 +127,8 @@ const shipFlightAnimation = {
   frameRequestId: null,
   currentTime: 0
 };
+const shipEngineTrailDuration = 1250;
+const shipEngineTrails = [];
 const shipVfxCanvasLayers = ["behind", "inline", "front"];
 const shipVfxAnimation = {
   frameRequestId: null,
@@ -3048,7 +3050,8 @@ function drawShipEngineVfxLayer(layerName) {
 
   targetContext.setTransform(1, 0, 0, 1, 0, 0);
   targetContext.clearRect(0, 0, width, height);
-  if (shipFlightAnimation.items.length === 0) return;
+  pruneShipEngineTrails(getShipVfxTime());
+  if (shipFlightAnimation.items.length === 0 && shipEngineTrails.length === 0) return;
 
   targetContext.setTransform(width / boardLayout.width, 0, 0, height / boardLayout.height, 0, 0);
   const pointsById = new Map((boardLayout.points ?? []).map((point) => [point.id, point]));
@@ -3060,6 +3063,16 @@ function drawShipEngineVfxLayer(layerName) {
     const anchors = getShipVfxAnchorsForRender(owner, ship);
     if (!point || !anchors) continue;
     drawShipEngineVfx(targetContext, ship, owner, anchors, getShipRenderPose(ship, point), layerName, time);
+  }
+  for (const trail of shipEngineTrails) {
+    const ship = state.gameState?.board?.ships?.find((candidate) => candidate.id === trail.shipId);
+    if (!ship || isShipFlightAnimating(ship.id)) continue;
+    const owner = state.gameState?.players?.find((player) => player.id === ship.ownerPlayerId);
+    const anchors = getShipVfxAnchorsForRender(owner, ship);
+    if (!anchors) continue;
+    drawShipEngineVfx(targetContext, ship, owner, anchors, trail.pose, layerName, time, {
+      inactiveSince: trail.inactiveSince
+    });
   }
   targetContext.setTransform(1, 0, 0, 1, 0, 0);
 }
@@ -3361,7 +3374,9 @@ function updateShipFlightAnimations(now) {
   const activeAnimations = [];
   for (const item of shipFlightAnimation.items) {
     if (now - item.startTime >= item.duration) {
-      shipVisualAngles.set(item.shipId, getShipFlightPose(item, 1).angle);
+      const finalPose = getShipFlightPose(item, 1);
+      shipVisualAngles.set(item.shipId, finalPose.angle);
+      queueShipEngineTrail(item.shipId, finalPose, now);
     } else {
       activeAnimations.push(item);
     }
@@ -3371,6 +3386,29 @@ function updateShipFlightAnimations(now) {
   render();
   if (shipFlightAnimation.items.length > 0) {
     shipFlightAnimation.frameRequestId = requestAnimationFrame(updateShipFlightAnimations);
+  }
+}
+
+function queueShipEngineTrail(shipId, pose, inactiveSince) {
+  const existingIndex = shipEngineTrails.findIndex((trail) => trail.shipId === shipId);
+  const trail = {
+    shipId,
+    pose,
+    inactiveSince,
+    expiresAt: inactiveSince + shipEngineTrailDuration
+  };
+  if (existingIndex >= 0) {
+    shipEngineTrails[existingIndex] = trail;
+  } else {
+    shipEngineTrails.push(trail);
+  }
+}
+
+function pruneShipEngineTrails(now) {
+  for (let index = shipEngineTrails.length - 1; index >= 0; index -= 1) {
+    if (shipEngineTrails[index].expiresAt <= now) {
+      shipEngineTrails.splice(index, 1);
+    }
   }
 }
 
@@ -3445,6 +3483,7 @@ function stopShipVfxLoop() {
 function updateShipVfxAnimation(now) {
   shipVfxAnimation.currentTime = now;
   shipVfxAnimation.frameRequestId = null;
+  pruneShipEngineTrails(now);
   drawShipEngineVfxOverlays();
   if (shouldRunShipVfxLoop()) {
     startShipVfxLoop();
@@ -3463,11 +3502,12 @@ function syncShipVfxLoop() {
 
 function shouldRunShipVfxLoop() {
   if (state.view !== "board" || !state.gameState) return false;
+  if (shipEngineTrails.length > 0) return true;
   if (shipFlightAnimation.items.length > 0) return false;
   return state.gameState.phase === "flight" && state.gameState.hasRolledFlightSpeed;
 }
 
-function drawShipEngineVfx(targetContext, ship, owner, anchors, pose, layerName, time) {
+function drawShipEngineVfx(targetContext, ship, owner, anchors, pose, layerName, time, options = {}) {
   const visual = playerPieceVisualDefaults.ship;
   for (const engine of anchors.engines ?? []) {
     const template = engine.templateId ? getShipEngineTemplate(engine.templateId) : null;
@@ -3475,12 +3515,12 @@ function drawShipEngineVfx(targetContext, ship, owner, anchors, pose, layerName,
     for (const emitter of emitters) {
       const emitterLayer = normalizeShipVfxLayer(emitter.layer ?? engine.layer);
       if (emitterLayer !== layerName) continue;
-      drawShipEngineEmitter(targetContext, anchors, visual, pose, engine, emitter, owner, time);
+      drawShipEngineEmitter(targetContext, anchors, visual, pose, engine, emitter, owner, time, options);
     }
   }
 }
 
-function drawShipEngineEmitter(targetContext, anchors, visual, pose, engine, emitter, owner, time) {
+function drawShipEngineEmitter(targetContext, anchors, visual, pose, engine, emitter, owner, time, options = {}) {
   const localPoint = {
     x: engine.x + (emitter.x ?? 0),
     y: engine.y + (emitter.y ?? 0)
@@ -3489,17 +3529,24 @@ function drawShipEngineEmitter(targetContext, anchors, visual, pose, engine, emi
   const origin = getShipVfxWorldPoint(anchors, visual, pose, localPoint.x, localPoint.y);
   const direction = pose.angle + degreesToRadians((engine.direction ?? 0) + (emitter.direction ?? 0));
   const color = emitter.color ?? engine.color ?? getShipVfxColor(owner?.color);
-  const intensity = Math.max(0.05, emitter.intensity ?? 0.75);
-  const size = Math.max(1, (emitter.size ?? engine.size ?? 8) * fitScale);
-  const length = Math.max(3, (emitter.length ?? engine.length ?? 44) * fitScale);
-  const spread = Math.max(0, emitter.spread ?? 18);
-  const count = Math.max(4, Math.min(72, Math.round(emitter.count ?? 18)));
-  const speed = Math.max(0.05, emitter.speed ?? 0.5);
-  const jitter = Math.max(0, emitter.jitter ?? 0.25);
+  const trailProgress = options.inactiveSince
+    ? clamp01((time - options.inactiveSince) / shipEngineTrailDuration)
+    : 0;
+  const trailFade = options.inactiveSince ? 1 - easeOutCubic(trailProgress) : 1;
+  const intensity = Math.max(0.05, emitter.intensity ?? 0.75) * trailFade;
+  if (intensity <= 0.01) return;
+  const size = Math.max(1.2, (emitter.size ?? engine.size ?? 8) * fitScale * 1.18);
+  const length = Math.max(5, (emitter.length ?? engine.length ?? 44) * fitScale * 1.16);
+  const spread = Math.max(0, (emitter.spread ?? 18) * 1.18);
+  const count = Math.max(6, Math.min(96, Math.round((emitter.count ?? 18) * 1.32)));
+  const speed = Math.max(0.08, (emitter.speed ?? 0.5) * 1.95);
+  const jitter = Math.max(0, (emitter.jitter ?? 0.25) * 1.35);
   const seed = createShipEmitterSeed(engine.id, emitter.id, color);
   const flicker = 0.82 + seededRandom(seed, Math.floor(time / 96)) * 0.28;
 
-  drawShipEngineGlow(targetContext, origin, color, size * flicker, intensity, emitter.type);
+  if (!options.inactiveSince) {
+    drawShipEngineGlow(targetContext, origin, color, size * flicker, intensity, emitter.type);
+  }
   drawShipEngineParticles(targetContext, {
     origin,
     direction,
@@ -3513,7 +3560,8 @@ function drawShipEngineEmitter(targetContext, anchors, visual, pose, engine, emi
     jitter,
     type: emitter.type ?? "plasma",
     seed,
-    time
+    time,
+    inactiveSince: options.inactiveSince
   });
 }
 
@@ -3540,7 +3588,13 @@ function drawShipEngineParticles(targetContext, options) {
 
   for (let index = 0; index < options.count; index += 1) {
     const phaseOffset = seededRandom(options.seed, index * 5 + 1);
-    const loop = ((options.time * 0.001 * options.speed + phaseOffset) % 1 + 1) % 1;
+    const cutoffLoop = options.inactiveSince
+      ? ((options.inactiveSince * 0.001 * options.speed + phaseOffset) % 1 + 1) % 1
+      : null;
+    const loop = cutoffLoop === null
+      ? ((options.time * 0.001 * options.speed + phaseOffset) % 1 + 1) % 1
+      : cutoffLoop + Math.max(0, options.time - options.inactiveSince) * 0.001 * options.speed;
+    if (loop >= 1) continue;
     const travel = loop * options.length;
     const spreadDirection = (seededRandom(options.seed, index * 5 + 2) - 0.5) * degreesToRadians(options.spread);
     const lateral = (seededRandom(options.seed, index * 5 + 3) - 0.5)
@@ -3565,18 +3619,18 @@ function drawShipEngineParticles(targetContext, options) {
 }
 
 function getEmitterParticleAlpha(type, progress, intensity) {
-  if (type === "smoke") return (1 - progress) * 0.18 * intensity;
-  if (type === "ember" || type === "spark") return (1 - progress) * 0.9 * intensity;
-  if (type === "glow") return (1 - progress) * 0.22 * intensity;
-  return (1 - progress) * 0.58 * intensity;
+  if (type === "smoke") return (1 - progress) * 0.26 * intensity;
+  if (type === "ember" || type === "spark") return (1 - progress) * 1.0 * intensity;
+  if (type === "glow") return (1 - progress) * 0.34 * intensity;
+  return (1 - progress) * 0.76 * intensity;
 }
 
 function getEmitterParticleRadius(type, size, progress, seed, index) {
   const randomScale = 0.72 + seededRandom(seed, index * 5 + 4) * 0.68;
   if (type === "smoke") return size * (0.18 + progress * 0.58) * randomScale;
-  if (type === "ember" || type === "spark") return size * 0.18 * randomScale;
-  if (type === "glow") return size * 0.36 * randomScale;
-  return size * (0.18 + (1 - progress) * 0.22) * randomScale;
+  if (type === "ember" || type === "spark") return size * 0.24 * randomScale;
+  if (type === "glow") return size * 0.42 * randomScale;
+  return size * (0.24 + (1 - progress) * 0.26) * randomScale;
 }
 
 function getShipVfxFitScale(anchors, visual) {
@@ -4692,10 +4746,10 @@ function renderShipCoilVfx(owner, ship, anchors, pose, pop) {
   anchors.coils.forEach((coil, index) => {
     const point = getShipVfxWorldPoint(anchors, visual, pose, coil.x, coil.y, pop);
     const pulse = coilState.active
-      ? 0.72 + Math.sin(time / 210 + index * 0.9) * 0.22
-      : 0.36;
+      ? 0.88 + Math.sin(time / 210 + index * 0.9) * 0.24
+      : 0.48;
     const opacity = coilState.opacity * pulse;
-    const radius = (coilState.active ? 4.2 : 2.6) * (0.9 + pulse * 0.22);
+    const radius = (coilState.active ? 4.8 : 3.0) * (0.94 + pulse * 0.24);
     group.append(
       createSvgElement("circle", {
         class: "ship-coil-vfx__halo ship-coil-vfx__halo--outer",
@@ -4703,7 +4757,7 @@ function renderShipCoilVfx(owner, ship, anchors, pose, pop) {
         cy: point.y,
         r: radius * 4.2,
         fill: color,
-        opacity: opacity * 0.06,
+        opacity: opacity * 0.14,
         filter: "url(#ship-coil-glow)"
       }),
       createSvgElement("circle", {
@@ -4712,7 +4766,7 @@ function renderShipCoilVfx(owner, ship, anchors, pose, pop) {
         cy: point.y,
         r: radius * 2.2,
         fill: color,
-        opacity: opacity * 0.16,
+        opacity: opacity * 0.34,
         filter: "url(#ship-coil-glow)"
       }),
       createSvgElement("circle", {
@@ -4721,7 +4775,7 @@ function renderShipCoilVfx(owner, ship, anchors, pose, pop) {
         cy: point.y,
         r: radius * 0.55,
         fill: color,
-        opacity: opacity * 0.42,
+        opacity: opacity * 0.78,
         filter: "url(#ship-coil-glow)"
       })
     );
