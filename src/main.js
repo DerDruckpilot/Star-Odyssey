@@ -141,6 +141,22 @@ const diceRollAnimation = {
 };
 const DICE_RESULT_HOLD_MS = 4000;
 const DICE_RESULT_FADE_MS = 320;
+const mothershipSpeedAnimation = {
+  item: null,
+  frameRequestId: null,
+  currentTime: 0
+};
+const MOTHERSHIP_SPEED_APPEAR_MS = 220;
+const MOTHERSHIP_SPEED_SHAKE_MS = 980;
+const MOTHERSHIP_SPEED_REVEAL_MS = 420;
+const MOTHERSHIP_SPEED_HOLD_MS = 2000;
+const MOTHERSHIP_SPEED_FADE_MS = 360;
+const mothershipBallVisuals = {
+  yellow: { color: "#fde047", light: "#fff176", dark: "#ca8a04" },
+  blue: { color: "#38bdf8", light: "#7dd3fc", dark: "#0369a1" },
+  red: { color: "#ef4444", light: "#f87171", dark: "#991b1b" },
+  black: { color: "#111827", light: "#4b5563", dark: "#020617" }
+};
 const shipVisualAngles = new Map();
 const playerDiceColors = {
   red: "#ef4444",
@@ -375,14 +391,12 @@ function handlePlacementPointSelection(nodeId) {
 
 function determineSpeedForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "flight") return;
+  if (state.gameState.hasRolledFlightSpeed || isMothershipSpeedAnimating()) return;
 
   state.gameState = determineFlightSpeed(state.gameState);
-  if (state.gameState.activeEncounter) {
-    state.hudPlayerId = getActivePlayer()?.id ?? state.hudPlayerId;
-    state.hudTab = "turn";
-  } else {
-    state.hudPlayerId = null;
-  }
+  state.hudPlayerId = null;
+  state.hudTab = "turn";
+  queueMothershipSpeedAnimation(getActivePlayer(), state.gameState.flightRoll);
   saveCurrentGameState();
   render();
 }
@@ -913,7 +927,8 @@ function renderBoardShell() {
     renderBoardSvg(),
     renderShipEngineVfxCanvas("inline"),
     renderShipEngineVfxCanvas("front"),
-    renderDice3dOverlay()
+    renderDice3dOverlay(),
+    renderMothershipSpeedOverlay()
   ].filter(Boolean));
 
   screen.append(
@@ -1364,7 +1379,9 @@ function renderPhaseActions(player = getActivePlayer()) {
     );
   } else if (state.gameState.phase === "flight") {
     if (!state.gameState.hasRolledFlightSpeed) {
-      wrapper.append(createButton(t("determineSpeed"), determineSpeedForActivePlayer, "small-button"));
+      const speedButton = createButton(t("determineSpeed"), determineSpeedForActivePlayer, "small-button");
+      speedButton.disabled = isMothershipSpeedAnimating();
+      wrapper.append(speedButton);
     } else {
       wrapper.append(renderFlightControls());
     }
@@ -3032,6 +3049,198 @@ function drawShipEngineVfxOverlays() {
   for (const layerName of shipVfxCanvasLayers) {
     drawShipEngineVfxLayer(layerName);
   }
+}
+
+function queueMothershipSpeedAnimation(player, flightRoll) {
+  if (!player || !Array.isArray(flightRoll?.balls) || flightRoll.balls.length !== 2) return;
+
+  const now = getAnimationNow();
+  const seed = createMothershipSpeedSeed(player.id, flightRoll.balls, now);
+  mothershipSpeedAnimation.currentTime = now;
+  mothershipSpeedAnimation.item = {
+    playerId: player.id,
+    balls: flightRoll.balls.slice(0, 2),
+    baseSpeed: flightRoll.baseSpeed,
+    totalSpeed: state.gameState?.flightSpeedTotal ?? flightRoll.baseSpeed,
+    encounterTriggered: Boolean(flightRoll.encounterTriggered),
+    startTime: now,
+    seed
+  };
+  startMothershipSpeedLoop();
+}
+
+function isMothershipSpeedAnimating() {
+  const item = mothershipSpeedAnimation.item;
+  if (!item) return false;
+  return getAnimationNow() - item.startTime < getMothershipSpeedTotalDuration();
+}
+
+function startMothershipSpeedLoop() {
+  if (mothershipSpeedAnimation.frameRequestId || !mothershipSpeedAnimation.item) return;
+  mothershipSpeedAnimation.frameRequestId = requestAnimationFrame(updateMothershipSpeedAnimation);
+}
+
+function updateMothershipSpeedAnimation(now) {
+  mothershipSpeedAnimation.currentTime = now;
+  const item = mothershipSpeedAnimation.item;
+  mothershipSpeedAnimation.frameRequestId = null;
+  if (!item || now - item.startTime >= getMothershipSpeedTotalDuration()) {
+    mothershipSpeedAnimation.item = null;
+    mothershipSpeedAnimation.currentTime = 0;
+    if (state.gameState?.phase === "flight" && state.gameState.activeEncounter) {
+      state.hudPlayerId = getActivePlayer()?.id ?? null;
+      state.hudTab = "turn";
+    }
+    render();
+    return;
+  }
+  updateMothershipSpeedOverlayDom();
+  mothershipSpeedAnimation.frameRequestId = requestAnimationFrame(updateMothershipSpeedAnimation);
+}
+
+function getMothershipSpeedTotalDuration() {
+  return MOTHERSHIP_SPEED_APPEAR_MS
+    + MOTHERSHIP_SPEED_SHAKE_MS
+    + MOTHERSHIP_SPEED_REVEAL_MS
+    + MOTHERSHIP_SPEED_HOLD_MS
+    + MOTHERSHIP_SPEED_FADE_MS;
+}
+
+function getMothershipSpeedTime() {
+  return mothershipSpeedAnimation.currentTime || getAnimationNow();
+}
+
+function createMothershipSpeedSeed(playerId, balls, now) {
+  let seed = Math.floor(now) + balls.join("").length * 97;
+  for (const character of `${playerId}:${balls.join("-")}`) {
+    seed = (seed * 31 + character.charCodeAt(0)) >>> 0;
+  }
+  return seed || 1;
+}
+
+function renderMothershipSpeedOverlay() {
+  const item = mothershipSpeedAnimation.item;
+  if (!item || state.view !== "board") return null;
+
+  const metrics = getMothershipSpeedMetrics(item);
+  const player = state.gameState?.players?.find((candidate) => candidate.id === item.playerId) ?? getActivePlayer();
+
+  const overlay = document.createElement("div");
+  overlay.className = "mothership-speed-overlay";
+  overlay.style.opacity = metrics.opacity.toFixed(3);
+  overlay.setAttribute("aria-hidden", "true");
+
+  const panel = document.createElement("section");
+  panel.className = "mothership-speed-panel";
+
+  const visualWrap = document.createElement("div");
+  visualWrap.className = "mothership-speed-visual-wrap";
+  visualWrap.style.transform = getMothershipSpeedVisualTransform(metrics);
+
+  const visual = renderMothershipUpgradeVisual(player);
+  visual.classList.add("mothership-speed-visual");
+  const pocket = document.createElement("div");
+  pocket.className = "mothership-speed-ball-pocket";
+  item.balls.forEach((ball, index) => {
+    pocket.append(renderMothershipSpeedBall(ball, index, metrics.revealProgress, item.seed));
+  });
+  visual.append(pocket);
+  visualWrap.append(visual);
+
+  const status = document.createElement("p");
+  status.className = "mothership-speed-result";
+  status.hidden = metrics.revealProgress <= 0;
+  status.textContent = item.encounterTriggered
+    ? `${t("encounter")} · ${t("flightSpeed")}: ${item.totalSpeed}`
+    : `${t("flightSpeed")}: ${item.totalSpeed}`;
+
+  panel.append(visualWrap, status);
+  overlay.append(panel);
+  return overlay;
+}
+
+function updateMothershipSpeedOverlayDom() {
+  const overlay = document.querySelector(".mothership-speed-overlay");
+  const item = mothershipSpeedAnimation.item;
+  if (!overlay || !item) {
+    render();
+    return;
+  }
+
+  const metrics = getMothershipSpeedMetrics(item);
+  overlay.style.opacity = metrics.opacity.toFixed(3);
+  const visualWrap = overlay.querySelector(".mothership-speed-visual-wrap");
+  if (visualWrap) {
+    visualWrap.style.transform = getMothershipSpeedVisualTransform(metrics);
+  }
+  const balls = overlay.querySelectorAll(".mothership-speed-ball");
+  balls.forEach((ballElement, index) => {
+    applyMothershipSpeedBallStyle(ballElement, index, metrics.revealProgress, item.seed);
+  });
+  const status = overlay.querySelector(".mothership-speed-result");
+  if (status) {
+    status.hidden = metrics.revealProgress <= 0;
+  }
+}
+
+function getMothershipSpeedMetrics(item) {
+  const elapsed = getMothershipSpeedTime() - item.startTime;
+  const appearProgress = easeOutCubic(clamp01(elapsed / MOTHERSHIP_SPEED_APPEAR_MS));
+  const shakeStart = MOTHERSHIP_SPEED_APPEAR_MS;
+  const revealStart = shakeStart + MOTHERSHIP_SPEED_SHAKE_MS;
+  const fadeStart = revealStart + MOTHERSHIP_SPEED_REVEAL_MS + MOTHERSHIP_SPEED_HOLD_MS;
+  const revealProgress = clamp01((elapsed - revealStart) / MOTHERSHIP_SPEED_REVEAL_MS);
+  const fadeProgress = clamp01((elapsed - fadeStart) / MOTHERSHIP_SPEED_FADE_MS);
+  return {
+    appearProgress,
+    revealProgress,
+    opacity: appearProgress * (1 - easeOutCubic(fadeProgress)),
+    shake: getMothershipSpeedShake(item, elapsed)
+  };
+}
+
+function getMothershipSpeedVisualTransform(metrics) {
+  return [
+    "translate(-50%, -50%)",
+    `translate(${metrics.shake.x.toFixed(2)}px, ${metrics.shake.y.toFixed(2)}px)`,
+    `rotate(${metrics.shake.rotation.toFixed(3)}deg)`,
+    `scale(${(0.9 + metrics.appearProgress * 0.1).toFixed(3)})`
+  ].join(" ");
+}
+
+function getMothershipSpeedShake(item, elapsed) {
+  const shakeProgress = clamp01((elapsed - MOTHERSHIP_SPEED_APPEAR_MS) / MOTHERSHIP_SPEED_SHAKE_MS);
+  if (shakeProgress <= 0 || shakeProgress >= 1) return { x: 0, y: 0, rotation: 0 };
+
+  const falloff = Math.sin(shakeProgress * Math.PI);
+  const frequency = 18 + seededRandom(item.seed, 3) * 5;
+  return {
+    x: Math.sin(shakeProgress * frequency * Math.PI + item.seed) * falloff * 13,
+    y: Math.cos(shakeProgress * (frequency + 2) * Math.PI) * falloff * 7,
+    rotation: Math.sin(shakeProgress * (frequency - 3) * Math.PI + 1.2) * falloff * 3.4
+  };
+}
+
+function renderMothershipSpeedBall(ball, index, revealProgress, seed) {
+  const visual = mothershipBallVisuals[ball] ?? mothershipBallVisuals.yellow;
+  const ballElement = document.createElement("span");
+  ballElement.className = `mothership-speed-ball mothership-speed-ball--${ball}`;
+  ballElement.style.setProperty("--ball-color", visual.color);
+  ballElement.style.setProperty("--ball-light", visual.light);
+  ballElement.style.setProperty("--ball-dark", visual.dark);
+  applyMothershipSpeedBallStyle(ballElement, index, revealProgress, seed);
+  return ballElement;
+}
+
+function applyMothershipSpeedBallStyle(ballElement, index, revealProgress, seed) {
+  const delay = index * 0.18;
+  const progress = easeOutCubic(clamp01((revealProgress - delay) / (1 - delay)));
+  const jitter = (seededRandom(seed, 22 + index) - 0.5) * 8;
+  ballElement.style.opacity = progress.toFixed(3);
+  ballElement.style.transform = [
+    `translate(${(-50 + index * 100 + jitter).toFixed(2)}%, ${(-38 - (1 - progress) * 160).toFixed(2)}%)`,
+    `scale(${(0.58 + progress * 0.42).toFixed(3)})`
+  ].join(" ");
 }
 
 function drawShipEngineVfxLayer(layerName) {
