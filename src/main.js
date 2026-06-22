@@ -896,13 +896,13 @@ function renderBoardShell() {
   const board = document.createElement("div");
   board.className = "board-placeholder";
   board.setAttribute("aria-label", t("boardAreaLabel"));
-  board.append(
+  board.append(...[
     renderShipEngineVfxCanvas("behind"),
     renderBoardSvg(),
     renderShipEngineVfxCanvas("inline"),
     renderShipEngineVfxCanvas("front"),
-    renderDiceRollCanvas()
-  );
+    renderDice3dOverlay()
+  ].filter(Boolean));
 
   screen.append(
     hiddenTitle,
@@ -2935,8 +2935,9 @@ function queueDiceRollAnimation(player, dice) {
 
   const now = getAnimationNow();
   const seed = createDiceRollSeed(player.id, dice, now);
-  const duration = 900 + seededRandom(seed, 1) * 700;
-  const holdDuration = 260;
+  const duration = 1000 + seededRandom(seed, 1) * 800;
+  const holdDuration = 420;
+  diceRollAnimation.currentTime = now;
   diceRollAnimation.item = {
     playerId: player.id,
     color: playerDiceColors[player.color] ?? playerDiceColors.red,
@@ -2955,9 +2956,10 @@ function queueDiceRollAnimation(player, dice) {
     },
     spread: 0.075 + seededRandom(seed, 6) * 0.035,
     direction: (seededRandom(seed, 7) - 0.5) * Math.PI * 0.55,
+    fallHeight: 42 + seededRandom(seed, 12) * 34,
     spin: [
-      (seededRandom(seed, 8) > 0.5 ? 1 : -1) * (Math.PI * (2.2 + seededRandom(seed, 9) * 2.8)),
-      (seededRandom(seed, 10) > 0.5 ? 1 : -1) * (Math.PI * (2.2 + seededRandom(seed, 11) * 2.8))
+      createDice3dSpin(seed, 0),
+      createDice3dSpin(seed, 1)
     ]
   };
   startDiceRollLoop();
@@ -2988,6 +2990,7 @@ function updateDiceRollAnimation(now) {
   diceRollAnimation.frameRequestId = null;
   if (!item || now - item.startTime >= item.duration + item.holdDuration) {
     diceRollAnimation.item = null;
+    diceRollAnimation.currentTime = 0;
     render();
     return;
   }
@@ -3042,144 +3045,169 @@ function drawShipEngineVfxLayer(layerName) {
   targetContext.setTransform(1, 0, 0, 1, 0, 0);
 }
 
-function renderDiceRollCanvas() {
-  const canvasElement = document.createElement("canvas");
-  canvasElement.className = "dice-roll-overlay";
-  canvasElement.setAttribute("aria-hidden", "true");
-  return canvasElement;
-}
-
-function drawDiceRollOverlay() {
+function renderDice3dOverlay() {
   const item = diceRollAnimation.item;
-  if (!item || state.view !== "board") return;
+  if (!item || state.view !== "board") return null;
 
-  const canvasElement = document.querySelector(".dice-roll-overlay");
-  if (!(canvasElement instanceof HTMLCanvasElement)) return;
-  const targetContext = canvasElement.getContext("2d");
-  const rect = canvasElement.getBoundingClientRect();
-  const ratio = window.devicePixelRatio || 1;
-  const width = Math.max(1, Math.round(rect.width * ratio));
-  const height = Math.max(1, Math.round(rect.height * ratio));
-  if (canvasElement.width !== width || canvasElement.height !== height) {
-    canvasElement.width = width;
-    canvasElement.height = height;
-  }
-
-  targetContext.clearRect(0, 0, width, height);
   const elapsed = getDiceRollTime() - item.startTime;
   const rollingProgress = clamp01(elapsed / item.duration);
-  const eased = easeInOutCubic(rollingProgress);
   const holdProgress = elapsed <= item.duration ? 0 : clamp01((elapsed - item.duration) / item.holdDuration);
-  const fade = elapsed <= item.duration ? 1 : 1 - holdProgress;
-  const center = getDiceRollCenter(item, eased, width, height);
-  const size = Math.max(42 * ratio, Math.min(width, height) * 0.09);
-  const bounce = Math.sin(rollingProgress * Math.PI * 6 + item.direction) * (1 - rollingProgress) * 24 * ratio;
-  const perpendicular = item.direction + Math.PI / 2;
+  const fade = elapsed <= item.duration ? 1 : 1 - easeOutCubic(holdProgress);
+  const overlay = document.createElement("div");
+  overlay.className = "dice3d-overlay";
+  overlay.style.opacity = fade.toFixed(3);
+  overlay.setAttribute("aria-hidden", "true");
+  overlay.addEventListener("click", (event) => event.stopPropagation());
+  overlay.addEventListener("pointerdown", (event) => event.stopPropagation());
 
+  const scene = document.createElement("div");
+  scene.className = "dice3d-scene";
   for (let index = 0; index < 2; index += 1) {
-    const side = index === 0 ? -1 : 1;
-    const offset = side * item.spread * width;
-    const x = center.x + Math.cos(perpendicular) * offset;
-    const y = center.y + Math.sin(perpendicular) * offset + bounce * (index === 0 ? 0.8 : 1);
-    const value = getAnimatedDieValue(item, index, rollingProgress);
-    const rotation = item.spin[index] * eased + Math.sin(rollingProgress * Math.PI * 5 + index) * (1 - rollingProgress) * 0.28;
-    drawDie(targetContext, {
-      x,
-      y,
-      size,
-      value,
-      rotation,
-      color: item.color,
-      alpha: fade
-    });
+    scene.append(renderDice3dDie(item, index, rollingProgress));
   }
+  overlay.append(scene);
+  return overlay;
+}
+
+function renderDice3dDie(item, index, progress) {
+  const pose = getDice3dPose(item, index, progress);
+  const die = document.createElement("div");
+  die.className = "dice3d-die";
+  die.style.left = `${pose.x}%`;
+  die.style.top = `${pose.y}%`;
+  die.style.setProperty("--dice-size", `${pose.size}px`);
+  die.style.setProperty("--dice-color", item.color);
+  die.style.setProperty("--dice-light", lightenHex(item.color, 0.24));
+  die.style.setProperty("--dice-dark", darkenHex(item.color, 0.2));
+  die.style.setProperty("--pip-color", getContrastingPipColor(item.color));
+  die.style.setProperty("--shadow-scale", pose.shadowScale.toFixed(3));
+  die.style.setProperty("--shadow-alpha", pose.shadowAlpha.toFixed(3));
+  die.style.transform = [
+    "translate(-50%, -50%)",
+    `translate3d(${pose.wobbleX.toFixed(2)}px, ${pose.bounceY.toFixed(2)}px, ${pose.depth.toFixed(2)}px)`,
+    `scale(${pose.scaleX.toFixed(3)}, ${pose.scaleY.toFixed(3)})`
+  ].join(" ");
+
+  const shadow = document.createElement("div");
+  shadow.className = "dice3d-shadow";
+
+  const cube = document.createElement("div");
+  cube.className = "dice3d-cube";
+  cube.style.transform = getDice3dCubeTransform(item, index, progress);
+  for (const face of getDice3dFaces()) {
+    cube.append(createDice3dFace(face.value, face.className));
+  }
+
+  die.append(shadow, cube);
+  return die;
+}
+
+function getDice3dPose(item, index, progress) {
+  const progressEased = easeOutCubic(progress);
+  const perpendicular = item.direction + Math.PI / 2;
+  const side = index === 0 ? -1 : 1;
+  const offset = side * item.spread * 100;
+  const startX = item.start.x * 100 + Math.cos(perpendicular) * offset;
+  const startY = item.start.y * 100 + Math.sin(perpendicular) * offset;
+  const endX = item.end.x * 100 + Math.cos(perpendicular) * offset * 0.72;
+  const endY = item.end.y * 100 + Math.sin(perpendicular) * offset * 0.72;
+  const bouncePhase = Math.sin(progress * Math.PI * (4.1 + seededRandom(item.seed, 20 + index) * 0.8));
+  const bounceY = -Math.max(0, bouncePhase) * (1 - progress) * item.fallHeight;
+  const wobbleX = Math.sin(progress * Math.PI * 5.5 + item.seed + index) * (1 - progress) * 16;
+  const impact = Math.max(0, Math.cos(progress * Math.PI * 4.1)) * (1 - progress);
+  const viewportSize = Math.min(window.innerWidth || 900, window.innerHeight || 600);
+  const size = Math.max(48, Math.min(84, viewportSize * 0.11));
+
+  return {
+    x: lerp(startX, endX, progressEased),
+    y: lerp(startY, endY, progressEased),
+    bounceY,
+    wobbleX,
+    depth: Math.sin(progress * Math.PI) * (42 + seededRandom(item.seed, 21 + index) * 24),
+    size,
+    scaleX: 1 + impact * 0.06,
+    scaleY: 1 - impact * 0.08,
+    shadowScale: 0.62 + progress * 0.38 + impact * 0.16,
+    shadowAlpha: 0.2 + progress * 0.34 + impact * 0.18
+  };
+}
+
+function getDice3dCubeTransform(item, index, progress) {
+  const finalRotation = getDice3dFinalRotation(item.dice[index], index);
+  const settleProgress = easeOutCubic(clamp01((progress - 0.68) / 0.32));
+  const spinFactor = 1 - settleProgress;
+  const rollProgress = 1 - progress * 0.24;
+  const spin = item.spin[index];
+  return [
+    `rotateX(${(finalRotation.x + spin.x * spinFactor * rollProgress).toFixed(2)}deg)`,
+    `rotateY(${(finalRotation.y + spin.y * spinFactor * rollProgress).toFixed(2)}deg)`,
+    `rotateZ(${(finalRotation.z + spin.z * spinFactor * rollProgress).toFixed(2)}deg)`
+  ].join(" ");
+}
+
+function getDice3dFinalRotation(value, index) {
+  const finalTilt = index === 0 ? -7 : 6;
+  const finalRoll = index === 0 ? 5 : -4;
+  const rotations = {
+    1: { x: -12, y: 0, z: finalRoll },
+    2: { x: -12, y: -90, z: finalRoll },
+    3: { x: -102, y: 0, z: finalRoll },
+    4: { x: 78, y: 0, z: finalRoll },
+    5: { x: -12, y: 90, z: finalRoll },
+    6: { x: -12, y: 180, z: finalRoll }
+  };
+  const rotation = rotations[value] ?? rotations[1];
+  return {
+    ...rotation,
+    x: rotation.x + finalTilt
+  };
+}
+
+function getDice3dFaces() {
+  return [
+    { value: 1, className: "front" },
+    { value: 6, className: "back" },
+    { value: 2, className: "right" },
+    { value: 5, className: "left" },
+    { value: 3, className: "top" },
+    { value: 4, className: "bottom" }
+  ];
+}
+
+function createDice3dFace(value, className) {
+  const face = document.createElement("div");
+  face.className = `dice3d-face dice3d-face--${className}`;
+  for (const pipPosition of getDicePipPositions(value)) {
+    const pip = document.createElement("span");
+    pip.className = `dice3d-pip dice3d-pip--${pipPosition}`;
+    face.append(pip);
+  }
+  return face;
+}
+
+function getDicePipPositions(value) {
+  const pipLayouts = {
+    1: ["center"],
+    2: ["top-left", "bottom-right"],
+    3: ["top-left", "center", "bottom-right"],
+    4: ["top-left", "top-right", "bottom-left", "bottom-right"],
+    5: ["top-left", "top-right", "center", "bottom-left", "bottom-right"],
+    6: ["top-left", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-right"]
+  };
+  return pipLayouts[value] ?? pipLayouts[1];
+}
+
+function createDice3dSpin(seed, index) {
+  const offset = index * 23;
+  return {
+    x: (seededRandom(seed, 8 + offset) > 0.5 ? 1 : -1) * (720 + seededRandom(seed, 9 + offset) * 1260),
+    y: (seededRandom(seed, 10 + offset) > 0.5 ? 1 : -1) * (900 + seededRandom(seed, 11 + offset) * 1440),
+    z: (seededRandom(seed, 12 + offset) > 0.5 ? 1 : -1) * (180 + seededRandom(seed, 13 + offset) * 540)
+  };
 }
 
 function getDiceRollTime() {
   return diceRollAnimation.currentTime || getAnimationNow();
-}
-
-function getDiceRollCenter(item, progress, width, height) {
-  const arc = Math.sin(progress * Math.PI) * (0.2 + seededRandom(item.seed, 12) * 0.18) * height;
-  const wobbleX = Math.sin(progress * Math.PI * 5 + item.seed) * (1 - progress) * 18;
-  const wobbleY = Math.cos(progress * Math.PI * 4 + item.seed) * (1 - progress) * 12;
-  return {
-    x: lerp(item.start.x, item.end.x, progress) * width + wobbleX,
-    y: lerp(item.start.y, item.end.y, progress) * height - arc + wobbleY
-  };
-}
-
-function getAnimatedDieValue(item, index, progress) {
-  if (progress >= 0.92) return item.dice[index];
-  const frame = Math.floor(progress * item.duration / 72);
-  return 1 + Math.floor(seededRandom(item.seed + index * 17, frame) * 6);
-}
-
-function drawDie(targetContext, { x, y, size, value, rotation, color, alpha }) {
-  const corner = size * 0.18;
-  const pipColor = getContrastingPipColor(color);
-  targetContext.save();
-  targetContext.globalAlpha = alpha;
-  targetContext.translate(x, y);
-  targetContext.rotate(rotation);
-  targetContext.shadowColor = "rgba(2, 6, 23, 0.65)";
-  targetContext.shadowBlur = size * 0.24;
-  targetContext.shadowOffsetY = size * 0.12;
-  drawRoundedRect(targetContext, -size / 2, -size / 2, size, size, corner);
-  const gradient = targetContext.createLinearGradient(-size / 2, -size / 2, size / 2, size / 2);
-  gradient.addColorStop(0, lightenHex(color, 0.22));
-  gradient.addColorStop(0.55, color);
-  gradient.addColorStop(1, darkenHex(color, 0.18));
-  targetContext.fillStyle = gradient;
-  targetContext.fill();
-  targetContext.shadowColor = "transparent";
-  targetContext.strokeStyle = "rgba(248, 250, 252, 0.58)";
-  targetContext.lineWidth = Math.max(1.5, size * 0.035);
-  targetContext.stroke();
-  drawDiePips(targetContext, value, size, pipColor);
-  targetContext.restore();
-}
-
-function drawRoundedRect(targetContext, x, y, width, height, radius) {
-  targetContext.beginPath();
-  targetContext.moveTo(x + radius, y);
-  targetContext.lineTo(x + width - radius, y);
-  targetContext.quadraticCurveTo(x + width, y, x + width, y + radius);
-  targetContext.lineTo(x + width, y + height - radius);
-  targetContext.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  targetContext.lineTo(x + radius, y + height);
-  targetContext.quadraticCurveTo(x, y + height, x, y + height - radius);
-  targetContext.lineTo(x, y + radius);
-  targetContext.quadraticCurveTo(x, y, x + radius, y);
-}
-
-function drawDiePips(targetContext, value, size, color) {
-  const offset = size * 0.24;
-  const radius = size * 0.065;
-  const positions = {
-    center: [0, 0],
-    topLeft: [-offset, -offset],
-    topRight: [offset, -offset],
-    middleLeft: [-offset, 0],
-    middleRight: [offset, 0],
-    bottomLeft: [-offset, offset],
-    bottomRight: [offset, offset]
-  };
-  const pipLayouts = {
-    1: ["center"],
-    2: ["topLeft", "bottomRight"],
-    3: ["topLeft", "center", "bottomRight"],
-    4: ["topLeft", "topRight", "bottomLeft", "bottomRight"],
-    5: ["topLeft", "topRight", "center", "bottomLeft", "bottomRight"],
-    6: ["topLeft", "topRight", "middleLeft", "middleRight", "bottomLeft", "bottomRight"]
-  };
-  targetContext.fillStyle = color;
-  for (const key of pipLayouts[value] ?? pipLayouts[1]) {
-    const [x, y] = positions[key];
-    targetContext.beginPath();
-    targetContext.arc(x, y, radius, 0, Math.PI * 2);
-    targetContext.fill();
-  }
 }
 
 function createDiceRollSeed(playerId, dice, now) {
@@ -4968,7 +4996,6 @@ function render() {
 
   app.replaceChildren(...[renderedView, renderedModal].filter(Boolean));
   drawShipEngineVfxOverlays();
-  drawDiceRollOverlay();
   syncShipVfxLoop();
 }
 

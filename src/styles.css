@@ -895,13 +895,157 @@ h1 {
   z-index: 5;
 }
 
-.dice-roll-overlay {
+.dice3d-overlay {
   position: absolute;
   inset: 0;
   z-index: 6;
   width: 100%;
   height: 100%;
+  pointer-events: auto;
+  perspective: 760px;
+  perspective-origin: 50% 42%;
+  background: radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.18) 60%, rgba(15, 23, 42, 0.04));
+  transition: opacity 90ms linear;
+}
+
+.dice3d-scene {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.dice3d-die {
+  position: absolute;
+  width: var(--dice-size);
+  height: var(--dice-size);
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.dice3d-cube {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.dice3d-shadow {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: calc(var(--dice-size) * 1.24);
+  height: calc(var(--dice-size) * 0.36);
+  border-radius: 50%;
+  background: rgba(2, 6, 23, var(--shadow-alpha));
+  filter: blur(calc(var(--dice-size) * 0.11));
+  transform: translate(-50%, calc(var(--dice-size) * 0.62)) scale(var(--shadow-scale));
+}
+
+.dice3d-face {
+  position: absolute;
+  inset: 0;
+  border: max(1px, calc(var(--dice-size) * 0.025)) solid rgba(248, 250, 252, 0.42);
+  border-radius: 17%;
+  background:
+    radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.42), transparent 34%),
+    linear-gradient(145deg, var(--dice-light), var(--dice-color) 56%, var(--dice-dark));
+  box-shadow:
+    inset calc(var(--dice-size) * 0.08) calc(var(--dice-size) * 0.08) calc(var(--dice-size) * 0.13) rgba(255, 255, 255, 0.24),
+    inset calc(var(--dice-size) * -0.09) calc(var(--dice-size) * -0.1) calc(var(--dice-size) * 0.14) rgba(2, 6, 23, 0.3),
+    0 calc(var(--dice-size) * 0.02) calc(var(--dice-size) * 0.05) rgba(2, 6, 23, 0.28);
+  transform-style: preserve-3d;
+  overflow: hidden;
+}
+
+.dice3d-face::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 calc(var(--dice-size) * 0.055) rgba(255, 255, 255, 0.08);
   pointer-events: none;
+}
+
+.dice3d-face--front {
+  transform: translateZ(calc(var(--dice-size) / 2));
+}
+
+.dice3d-face--back {
+  filter: brightness(0.82);
+  transform: rotateY(180deg) translateZ(calc(var(--dice-size) / 2));
+}
+
+.dice3d-face--right {
+  filter: brightness(0.9);
+  transform: rotateY(90deg) translateZ(calc(var(--dice-size) / 2));
+}
+
+.dice3d-face--left {
+  filter: brightness(0.78);
+  transform: rotateY(-90deg) translateZ(calc(var(--dice-size) / 2));
+}
+
+.dice3d-face--top {
+  filter: brightness(1.08);
+  transform: rotateX(90deg) translateZ(calc(var(--dice-size) / 2));
+}
+
+.dice3d-face--bottom {
+  filter: brightness(0.72);
+  transform: rotateX(-90deg) translateZ(calc(var(--dice-size) / 2));
+}
+
+.dice3d-pip {
+  position: absolute;
+  width: calc(var(--dice-size) * 0.14);
+  height: calc(var(--dice-size) * 0.14);
+  border-radius: 999px;
+  background: var(--pip-color);
+  box-shadow:
+    inset calc(var(--dice-size) * 0.018) calc(var(--dice-size) * 0.018) calc(var(--dice-size) * 0.024) rgba(255, 255, 255, 0.3),
+    inset calc(var(--dice-size) * -0.02) calc(var(--dice-size) * -0.02) calc(var(--dice-size) * 0.028) rgba(2, 6, 23, 0.3);
+  transform: translate(-50%, -50%) translateZ(calc(var(--dice-size) * 0.018));
+}
+
+.dice3d-pip--top-left {
+  left: 28%;
+  top: 28%;
+}
+
+.dice3d-pip--top-right {
+  left: 72%;
+  top: 28%;
+}
+
+.dice3d-pip--middle-left {
+  left: 28%;
+  top: 50%;
+}
+
+.dice3d-pip--middle-right {
+  left: 72%;
+  top: 50%;
+}
+
+.dice3d-pip--center {
+  left: 50%;
+  top: 50%;
+}
+
+.dice3d-pip--bottom-left {
+  left: 28%;
+  top: 72%;
+}
+
+.dice3d-pip--bottom-right {
+  left: 72%;
+  top: 72%;
+}
+
+@media (max-width: 720px) {
+  .dice3d-overlay {
+    perspective: 620px;
+  }
 }
 
 .quadrant {
