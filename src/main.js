@@ -23,6 +23,7 @@ import {
   getPlayerSpaceportAssetPath,
   playerPieceVisualDefaults
 } from "./data/playerPieceVisuals.js";
+import { getShipEngineTemplate, getShipVfxAnchors } from "./data/shipVfxData.js";
 import {
   applyDebugLayoutTransform,
   getStructureVisualPosition,
@@ -125,6 +126,11 @@ const shipFlightAnimation = {
   frameRequestId: null,
   currentTime: 0
 };
+const shipVfxCanvasLayers = ["behind", "inline", "front"];
+const shipVfxAnimation = {
+  frameRequestId: null,
+  currentTime: 0
+};
 const diceRollAnimation = {
   item: null,
   frameRequestId: null,
@@ -136,6 +142,13 @@ const playerDiceColors = {
   blue: "#38bdf8",
   yellow: "#facc15",
   green: "#22c55e"
+};
+const shipVfxDefaultColorByPlayerColor = {
+  red: "#ef4444",
+  blue: "#38bdf8",
+  yellow: "#facc15",
+  green: "#4ade80",
+  white: "#4ade80"
 };
 
 function loadLanguage() {
@@ -883,7 +896,13 @@ function renderBoardShell() {
   const board = document.createElement("div");
   board.className = "board-placeholder";
   board.setAttribute("aria-label", t("boardAreaLabel"));
-  board.append(renderBoardSvg(), renderDiceRollCanvas());
+  board.append(
+    renderShipEngineVfxCanvas("behind"),
+    renderBoardSvg(),
+    renderShipEngineVfxCanvas("inline"),
+    renderShipEngineVfxCanvas("front"),
+    renderDiceRollCanvas()
+  );
 
   screen.append(
     hiddenTitle,
@@ -2976,6 +2995,53 @@ function updateDiceRollAnimation(now) {
   diceRollAnimation.frameRequestId = requestAnimationFrame(updateDiceRollAnimation);
 }
 
+function renderShipEngineVfxCanvas(layerName) {
+  const canvasElement = document.createElement("canvas");
+  canvasElement.className = `ship-engine-vfx-overlay ship-engine-vfx-overlay--${layerName}`;
+  canvasElement.dataset.layer = layerName;
+  canvasElement.setAttribute("aria-hidden", "true");
+  return canvasElement;
+}
+
+function drawShipEngineVfxOverlays() {
+  if (state.view !== "board") return;
+  for (const layerName of shipVfxCanvasLayers) {
+    drawShipEngineVfxLayer(layerName);
+  }
+}
+
+function drawShipEngineVfxLayer(layerName) {
+  const canvasElement = document.querySelector(`.ship-engine-vfx-overlay--${layerName}`);
+  if (!(canvasElement instanceof HTMLCanvasElement)) return;
+
+  const targetContext = canvasElement.getContext("2d");
+  const rect = canvasElement.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  const width = Math.max(1, Math.round(rect.width * ratio));
+  const height = Math.max(1, Math.round(rect.height * ratio));
+  if (canvasElement.width !== width || canvasElement.height !== height) {
+    canvasElement.width = width;
+    canvasElement.height = height;
+  }
+
+  targetContext.setTransform(1, 0, 0, 1, 0, 0);
+  targetContext.clearRect(0, 0, width, height);
+  if (shipFlightAnimation.items.length === 0) return;
+
+  targetContext.setTransform(width / boardLayout.width, 0, 0, height / boardLayout.height, 0, 0);
+  const pointsById = new Map((boardLayout.points ?? []).map((point) => [point.id, point]));
+  const time = getShipVfxTime();
+  for (const ship of state.gameState?.board?.ships ?? []) {
+    if (!isShipFlightAnimating(ship.id)) continue;
+    const point = pointsById.get(ship.locationId);
+    const owner = state.gameState?.players?.find((player) => player.id === ship.ownerPlayerId);
+    const anchors = getShipVfxAnchors(owner?.color, ship.id);
+    if (!point || !anchors) continue;
+    drawShipEngineVfx(targetContext, ship, owner, anchors, getShipRenderPose(ship, point), layerName, time);
+  }
+  targetContext.setTransform(1, 0, 0, 1, 0, 0);
+}
+
 function renderDiceRollCanvas() {
   const canvasElement = document.createElement("canvas");
   canvasElement.className = "dice-roll-overlay";
@@ -3157,6 +3223,15 @@ function darkenHex(hex, amount) {
   return rgbToHex(red * (1 - amount), green * (1 - amount), blue * (1 - amount));
 }
 
+function rgbaFromHex(hex, alpha) {
+  const { red, green, blue } = hexToRgb(hex);
+  return `rgba(${red}, ${green}, ${blue}, ${clamp01(alpha)})`;
+}
+
+function getShipVfxColor(playerColor) {
+  return shipVfxDefaultColorByPlayerColor[playerColor] ?? shipVfxDefaultColorByPlayerColor.red;
+}
+
 function hexToRgb(hex) {
   const clean = String(hex).replace("#", "");
   const value = Number.parseInt(clean, 16);
@@ -3283,6 +3358,187 @@ function isShipFlightAnimating(shipId) {
 
 function getShipFlightTime() {
   return shipFlightAnimation.currentTime || getAnimationNow();
+}
+
+function getShipVfxTime() {
+  return shipVfxAnimation.currentTime || shipFlightAnimation.currentTime || getAnimationNow();
+}
+
+function startShipVfxLoop() {
+  if (shipVfxAnimation.frameRequestId || !shouldRunShipVfxLoop()) return;
+  shipVfxAnimation.frameRequestId = requestAnimationFrame(updateShipVfxAnimation);
+}
+
+function stopShipVfxLoop() {
+  if (shipVfxAnimation.frameRequestId) {
+    cancelAnimationFrame(shipVfxAnimation.frameRequestId);
+  }
+  shipVfxAnimation.frameRequestId = null;
+}
+
+function updateShipVfxAnimation(now) {
+  shipVfxAnimation.currentTime = now;
+  shipVfxAnimation.frameRequestId = null;
+  render();
+}
+
+function syncShipVfxLoop() {
+  if (shouldRunShipVfxLoop()) {
+    startShipVfxLoop();
+  } else {
+    stopShipVfxLoop();
+  }
+}
+
+function shouldRunShipVfxLoop() {
+  if (state.view !== "board" || !state.gameState) return false;
+  if (shipFlightAnimation.items.length > 0) return false;
+  return state.gameState.phase === "flight" && state.gameState.hasRolledFlightSpeed;
+}
+
+function drawShipEngineVfx(targetContext, ship, owner, anchors, pose, layerName, time) {
+  const visual = playerPieceVisualDefaults.ship;
+  for (const engine of anchors.engines ?? []) {
+    const template = engine.templateId ? getShipEngineTemplate(engine.templateId) : null;
+    const emitters = template?.emitters?.length ? template.emitters : [engine];
+    for (const emitter of emitters) {
+      const emitterLayer = normalizeShipVfxLayer(emitter.layer ?? engine.layer);
+      if (emitterLayer !== layerName) continue;
+      drawShipEngineEmitter(targetContext, anchors, visual, pose, engine, emitter, owner, time);
+    }
+  }
+}
+
+function drawShipEngineEmitter(targetContext, anchors, visual, pose, engine, emitter, owner, time) {
+  const localPoint = {
+    x: engine.x + (emitter.x ?? 0),
+    y: engine.y + (emitter.y ?? 0)
+  };
+  const fitScale = getShipVfxFitScale(anchors, visual);
+  const origin = getShipVfxWorldPoint(anchors, visual, pose, localPoint.x, localPoint.y);
+  const direction = pose.angle + degreesToRadians((engine.direction ?? 0) + (emitter.direction ?? 0));
+  const color = emitter.color ?? engine.color ?? getShipVfxColor(owner?.color);
+  const intensity = Math.max(0.05, emitter.intensity ?? 0.75);
+  const size = Math.max(1, (emitter.size ?? engine.size ?? 8) * fitScale);
+  const length = Math.max(3, (emitter.length ?? engine.length ?? 44) * fitScale);
+  const spread = Math.max(0, emitter.spread ?? 18);
+  const count = Math.max(4, Math.min(72, Math.round(emitter.count ?? 18)));
+  const speed = Math.max(0.05, emitter.speed ?? 0.5);
+  const jitter = Math.max(0, emitter.jitter ?? 0.25);
+  const seed = createShipEmitterSeed(engine.id, emitter.id, color);
+  const flicker = 0.82 + seededRandom(seed, Math.floor(time / 96)) * 0.28;
+
+  drawShipEngineGlow(targetContext, origin, color, size * flicker, intensity, emitter.type);
+  drawShipEngineParticles(targetContext, {
+    origin,
+    direction,
+    color,
+    intensity,
+    size,
+    length,
+    spread,
+    count,
+    speed,
+    jitter,
+    type: emitter.type ?? "plasma",
+    seed,
+    time
+  });
+}
+
+function drawShipEngineGlow(targetContext, origin, color, radius, intensity, type) {
+  const alpha = type === "smoke" ? 0.14 : 0.34;
+  const gradient = targetContext.createRadialGradient(origin.x, origin.y, 0, origin.x, origin.y, radius * 2.8);
+  gradient.addColorStop(0, rgbaFromHex(color, Math.min(0.72, alpha * intensity * 2.4)));
+  gradient.addColorStop(0.36, rgbaFromHex(color, alpha * intensity));
+  gradient.addColorStop(1, rgbaFromHex(color, 0));
+  targetContext.save();
+  targetContext.globalCompositeOperation = type === "smoke" ? "source-over" : "lighter";
+  targetContext.fillStyle = gradient;
+  targetContext.beginPath();
+  targetContext.arc(origin.x, origin.y, radius * 2.8, 0, Math.PI * 2);
+  targetContext.fill();
+  targetContext.restore();
+}
+
+function drawShipEngineParticles(targetContext, options) {
+  const perpendicular = options.direction + Math.PI / 2;
+  const spreadScale = options.length * 0.006;
+  targetContext.save();
+  targetContext.globalCompositeOperation = ["smoke", "mist", "haze"].includes(options.type) ? "source-over" : "lighter";
+
+  for (let index = 0; index < options.count; index += 1) {
+    const phaseOffset = seededRandom(options.seed, index * 5 + 1);
+    const loop = ((options.time * 0.001 * options.speed + phaseOffset) % 1 + 1) % 1;
+    const travel = loop * options.length;
+    const spreadDirection = (seededRandom(options.seed, index * 5 + 2) - 0.5) * degreesToRadians(options.spread);
+    const lateral = (seededRandom(options.seed, index * 5 + 3) - 0.5)
+      * options.spread
+      * spreadScale
+      * loop
+      * (1 + Math.sin(options.time * 0.006 + index) * options.jitter);
+    const direction = options.direction + spreadDirection * loop;
+    const x = options.origin.x + Math.cos(direction) * travel + Math.cos(perpendicular) * lateral;
+    const y = options.origin.y + Math.sin(direction) * travel + Math.sin(perpendicular) * lateral;
+    const alpha = getEmitterParticleAlpha(options.type, loop, options.intensity);
+    const radius = getEmitterParticleRadius(options.type, options.size, loop, options.seed, index);
+    if (alpha <= 0 || radius <= 0) continue;
+
+    targetContext.fillStyle = rgbaFromHex(options.color, alpha);
+    targetContext.beginPath();
+    targetContext.arc(x, y, radius, 0, Math.PI * 2);
+    targetContext.fill();
+  }
+
+  targetContext.restore();
+}
+
+function getEmitterParticleAlpha(type, progress, intensity) {
+  if (type === "smoke") return (1 - progress) * 0.18 * intensity;
+  if (type === "ember" || type === "spark") return (1 - progress) * 0.9 * intensity;
+  if (type === "glow") return (1 - progress) * 0.22 * intensity;
+  return (1 - progress) * 0.58 * intensity;
+}
+
+function getEmitterParticleRadius(type, size, progress, seed, index) {
+  const randomScale = 0.72 + seededRandom(seed, index * 5 + 4) * 0.68;
+  if (type === "smoke") return size * (0.18 + progress * 0.58) * randomScale;
+  if (type === "ember" || type === "spark") return size * 0.18 * randomScale;
+  if (type === "glow") return size * 0.36 * randomScale;
+  return size * (0.18 + (1 - progress) * 0.22) * randomScale;
+}
+
+function getShipVfxFitScale(anchors, visual) {
+  return Math.min(visual.width / anchors.assetWidth, visual.height / anchors.assetHeight);
+}
+
+function getShipVfxWorldPoint(anchors, visual, pose, localX, localY, pop = null) {
+  const fitScale = getShipVfxFitScale(anchors, visual);
+  const popScale = pop?.scale ?? 1;
+  const offsetX = (localX - anchors.assetWidth / 2) * fitScale * popScale;
+  const offsetY = (localY - anchors.assetHeight / 2) * fitScale * popScale;
+  const cos = Math.cos(pose.angle);
+  const sin = Math.sin(pose.angle);
+  return {
+    x: pose.x + (pop?.wobbleX ?? 0) + offsetX * cos - offsetY * sin,
+    y: pose.y + (pop?.wobbleY ?? 0) + offsetX * sin + offsetY * cos
+  };
+}
+
+function normalizeShipVfxLayer(layerName) {
+  return shipVfxCanvasLayers.includes(layerName) ? layerName : "behind";
+}
+
+function degreesToRadians(degrees) {
+  return (degrees * Math.PI) / 180;
+}
+
+function createShipEmitterSeed(engineId, emitterId, color) {
+  let seed = 17;
+  for (const character of `${engineId}:${emitterId}:${color}`) {
+    seed = (seed * 31 + character.charCodeAt(0)) >>> 0;
+  }
+  return seed || 1;
 }
 
 function getShipVisualAngle(shipId) {
@@ -3881,7 +4137,26 @@ function renderPlacementVfxDefs() {
     createSvgElement("feMergeNode", { in: "glow" }),
     createSvgElement("feMergeNode", { in: "SourceGraphic" })
   );
-  defs.append(filter);
+  const coilFilter = createSvgElement("filter", {
+    id: "ship-coil-glow",
+    x: "-180%",
+    y: "-180%",
+    width: "460%",
+    height: "460%"
+  });
+  coilFilter.append(
+    createSvgElement("feGaussianBlur", {
+      in: "SourceGraphic",
+      stdDeviation: 2.4,
+      result: "blur"
+    }),
+    createSvgElement("feMerge")
+  );
+  coilFilter.querySelector("feMerge").append(
+    createSvgElement("feMergeNode", { in: "blur" }),
+    createSvgElement("feMergeNode", { in: "SourceGraphic" })
+  );
+  defs.append(filter, coilFilter);
   return defs;
 }
 
@@ -4314,6 +4589,68 @@ function renderStructuresLayer() {
   return group;
 }
 
+function renderShipCoilVfx(owner, ship, anchors, pose, pop) {
+  const coilState = getShipCoilVfxState(ship);
+  if (!coilState.visible || !anchors?.coils?.length) return null;
+
+  const group = createSvgElement("g", {
+    class: "ship-coil-vfx",
+    "aria-hidden": "true"
+  });
+  const color = getShipVfxColor(owner?.color);
+  const visual = playerPieceVisualDefaults.ship;
+  const time = getShipVfxTime();
+
+  anchors.coils.forEach((coil, index) => {
+    const point = getShipVfxWorldPoint(anchors, visual, pose, coil.x, coil.y, pop);
+    const pulse = coilState.active
+      ? 0.72 + Math.sin(time / 210 + index * 0.9) * 0.22
+      : 0.36;
+    const opacity = coilState.opacity * pulse;
+    const radius = (coilState.active ? 4.4 : 2.8) * (0.9 + pulse * 0.22);
+    group.append(
+      createSvgElement("circle", {
+        class: "ship-coil-vfx__halo",
+        cx: point.x,
+        cy: point.y,
+        r: radius * 2.2,
+        fill: color,
+        opacity: opacity * 0.25,
+        filter: "url(#ship-coil-glow)"
+      }),
+      createSvgElement("circle", {
+        class: "ship-coil-vfx__core",
+        cx: point.x,
+        cy: point.y,
+        r: radius,
+        fill: color,
+        opacity
+      })
+    );
+  });
+
+  return group;
+}
+
+function getShipCoilVfxState(ship) {
+  const activePlayer = getActivePlayer();
+  const relevantFlightPhase = state.gameState?.phase === "flight"
+    && state.gameState.hasRolledFlightSpeed
+    && !state.gameState.activeEncounter;
+  const isActivePlayerShip = ship.ownerPlayerId === activePlayer?.id;
+  const isFlying = isShipFlightAnimating(ship.id);
+  if (isFlying) return { visible: true, active: true, opacity: 0.95 };
+  if (relevantFlightPhase && isActivePlayerShip) {
+    const hasMovementLeft = getShipRemainingMovement(ship.id) > 0;
+    return {
+      visible: true,
+      active: hasMovementLeft,
+      opacity: hasMovementLeft ? 0.82 : 0.2
+    };
+  }
+  return { visible: true, active: false, opacity: 0.12 };
+}
+
 function renderShipsLayer() {
   const group = createSvgElement("g", { class: "board-ships-layer" });
   const pointsById = new Map((boardLayout.points ?? []).map((point) => [point.id, point]));
@@ -4332,6 +4669,7 @@ function renderShipsLayer() {
     const visual = playerPieceVisualDefaults.ship;
     const pop = getPlacementAssetPop("ship", ship.id);
     const pose = getShipRenderPose(ship, point);
+    const anchors = getShipVfxAnchors(owner?.color, ship.id);
     const transform = [
       createPlacementTransform(pose.x, pose.y, 0, pop),
       `rotate(${(pose.angle * 180) / Math.PI} ${pose.x} ${pose.y})`
@@ -4353,6 +4691,8 @@ function renderShipsLayer() {
       transform,
       preserveAspectRatio: "xMidYMid meet"
     }));
+    const coilVfx = renderShipCoilVfx(owner, ship, anchors, pose, pop);
+    if (coilVfx) shipGroup.append(coilVfx);
     group.append(shipGroup);
   }
 
@@ -4627,7 +4967,9 @@ function render() {
   const renderedModal = renderModal();
 
   app.replaceChildren(...[renderedView, renderedModal].filter(Boolean));
+  drawShipEngineVfxOverlays();
   drawDiceRollOverlay();
+  syncShipVfxLoop();
 }
 
 render();
