@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Star Odyssey - Mutterschiff Speed Debug</title>
+    <link rel="stylesheet" href="./src/debug-outposts.css">
+    <link rel="stylesheet" href="./src/debug-mothership-speed.css">
+  </head>
+  <body>
+    <header class="debug-header">
+      <div>
+        <p class="eyebrow">Star Odyssey Debug</p>
+        <h1>Mutterschiff Speed Debug</h1>
+        <p class="debug-subtitle">Schüttelbewegung, Kugel-Slot und Maskenbereich ausrichten</p>
+      </div>
+      <nav>
+        <a href="./debug-upgrades.html">Upgrade Debug</a>
+        <a href="./debug-outposts.html">Outpost Debug</a>
+        <a href="./debug-colonies.html">Kolonien Debug</a>
+        <a href="./debug-spaceports.html">Raumhäfen Debug</a>
+        <a href="./debug-ship-vfx.html">Schiff VFX Debug</a>
+        <a href="./debug-mothership-speed.html" aria-current="page">Mutterschiff Speed Debug</a>
+        <a href="./debug-friendship-cards.html">Freundschaftskarten Debug</a>
+        <a href="./debug-encounter-cards.html">Begegnungskarten Debug</a>
+      </nav>
+    </header>
+
+    <main class="debug-shell debug-shell--mothership-speed">
+      <section class="debug-stage-card">
+        <div class="debug-tabs" role="tablist" aria-label="Mutterschiff Speed Debug Tabs">
+          <button class="debug-tab is-active" type="button" data-tab="shake" role="tab" aria-selected="true">Schüttelanimation</button>
+          <button class="debug-tab" type="button" data-tab="slot" role="tab" aria-selected="false">Kugeln / Slot</button>
+        </div>
+        <canvas id="mothership-speed-canvas" width="1040" height="760" aria-label="Mutterschiff Speed Animation Preview"></canvas>
+        <p id="debug-selection-hint" class="debug-hint">Drehpunkt oder Hebelarm direkt in der Vorschau ziehen.</p>
+      </section>
+
+      <aside class="debug-panel">
+        <section class="panel-tab is-active" data-panel="shake">
+          <h2>Schüttelanimation</h2>
+          <label>Preview
+            <select id="playback-mode">
+              <option value="play">Play</option>
+              <option value="pause">Pause</option>
+            </select>
+          </label>
+          <label>Zoom <input id="preview-zoom" type="range" min="0.55" max="1.45" step="0.01"></label>
+          <div class="selection-box">
+            <h3>Drehpunkt / Hebelarm</h3>
+            <label>Pivot X <input id="pivot-x" type="number" step="0.1"></label>
+            <label>Pivot Y <input id="pivot-y" type="number" step="0.1"></label>
+            <label>Hebel X <input id="lever-x" type="number" step="0.1"></label>
+            <label>Hebel Y <input id="lever-y" type="number" step="0.1"></label>
+          </div>
+          <div class="selection-box">
+            <h3>Bewegung</h3>
+            <label>Geschwindigkeit <input id="shake-speed" type="number" min="0.2" max="4" step="0.05"></label>
+            <label>Amplitude <input id="shake-amplitude" type="number" min="0" max="40" step="0.5"></label>
+            <label>Rotationswinkel <input id="shake-rotation" type="number" min="0" max="12" step="0.1"></label>
+            <label>Sekundärvibration <input id="shake-secondary" type="number" min="0" max="6" step="0.1"></label>
+          </div>
+          <div class="button-row">
+            <button id="reset-shake" type="button">Schütteln resetten</button>
+          </div>
+        </section>
+
+        <section class="panel-tab" data-panel="slot">
+          <h2>Kugeln / Slot</h2>
+          <label>Testkombination
+            <select id="ball-combination">
+              <option value="blue,yellow">blau + gelb</option>
+              <option value="yellow,yellow">gelb + gelb</option>
+              <option value="blue,red">blau + rot</option>
+              <option value="yellow,red">gelb + rot</option>
+              <option value="black,blue">schwarz + blau</option>
+              <option value="black,yellow">schwarz + gelb</option>
+              <option value="black,red">schwarz + rot</option>
+            </select>
+          </label>
+          <label>Kugelgröße <input id="ball-size" type="number" min="1" max="12" step="0.1"></label>
+          <label>Rutschdauer ms <input id="fall-duration" type="number" min="120" max="2000" step="10"></label>
+          <div class="selection-box">
+            <h3>Kugel 1</h3>
+            <label>Start X <input id="ball1-start-x" type="number" step="0.1"></label>
+            <label>Start Y <input id="ball1-start-y" type="number" step="0.1"></label>
+            <label>Ende X <input id="ball1-end-x" type="number" step="0.1"></label>
+            <label>Ende Y <input id="ball1-end-y" type="number" step="0.1"></label>
+          </div>
+          <div class="selection-box">
+            <h3>Kugel 2</h3>
+            <label>Start X <input id="ball2-start-x" type="number" step="0.1"></label>
+            <label>Start Y <input id="ball2-start-y" type="number" step="0.1"></label>
+            <label>Ende X <input id="ball2-end-x" type="number" step="0.1"></label>
+            <label>Ende Y <input id="ball2-end-y" type="number" step="0.1"></label>
+          </div>
+          <div class="selection-box">
+            <h3>Slot / Maske</h3>
+            <label>Maske X <input id="mask-x" type="number" step="0.1"></label>
+            <label>Maske Y <input id="mask-y" type="number" step="0.1"></label>
+            <label>Maske Breite <input id="mask-width" type="number" step="0.1"></label>
+            <label>Maske Höhe <input id="mask-height" type="number" step="0.1"></label>
+          </div>
+          <div class="button-row">
+            <button id="reset-slot" type="button">Slot resetten</button>
+          </div>
+        </section>
+
+        <div class="button-row">
+          <button id="export-config" type="button">Animation-Konfiguration exportieren</button>
+          <button id="copy-config" type="button">Kopieren</button>
+          <button id="download-config" type="button">JSON herunterladen</button>
+          <button id="reset-all" type="button">Alles resetten</button>
+        </div>
+        <textarea id="export-output" readonly aria-label="Exportierte Mutterschiff Speed Konfiguration"></textarea>
+      </aside>
+    </main>
+
+    <script type="module" src="./src/debug-mothership-speed.js"></script>
+  </body>
+</html>
