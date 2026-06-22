@@ -1,14 +1,18 @@
 .debug-shell--ship-vfx {
-  grid-template-columns: minmax(0, 1fr) 24rem;
+  grid-template-columns: minmax(0, 1fr) 22rem;
 }
 
 #ship-vfx-canvas {
   display: block;
   width: 100%;
-  min-height: 34rem;
+  min-height: 40rem;
   border: 1px solid rgba(178, 215, 255, 0.28);
   background: #020817;
   touch-action: none;
+}
+
+#ship-vfx-canvas.is-template-tab {
+  min-height: min(74vh, 52rem);
 }
 
 .debug-tabs {
@@ -39,7 +43,8 @@
   display: block;
 }
 
-#zoom-control {
+#zoom-control,
+#template-zoom-control {
   padding: 0;
 }
 

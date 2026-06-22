@@ -21,6 +21,7 @@ const templateNameInput = document.querySelector("#template-name");
 const templateBackgroundModeSelect = document.querySelector("#template-background-mode");
 const templateMotionModeSelect = document.querySelector("#template-motion-mode");
 const templatePreviewModeSelect = document.querySelector("#template-preview-mode");
+const templateZoomControl = document.querySelector("#template-zoom-control");
 const emitterList = document.querySelector("#emitter-list");
 const importInput = document.querySelector("#import-vfx-data");
 const anchorInputs = {
@@ -203,18 +204,18 @@ function normalizeEmitter(emitter, index) {
   return {
     id: normalizeId(emitter?.id, `emitter-${index + 1}`),
     type,
-    x: Number(emitter?.x ?? 0),
-    y: Number(emitter?.y ?? 0),
-    direction: Number(emitter?.direction ?? 180),
-    size: Number(emitter?.size ?? preset.size),
-    length: Number(emitter?.length ?? preset.length),
+    x: finiteNumber(emitter?.x, 0),
+    y: finiteNumber(emitter?.y, 0),
+    direction: finiteNumber(emitter?.direction, 180),
+    size: finiteNumber(emitter?.size, preset.size),
+    length: finiteNumber(emitter?.length, preset.length),
     color: normalizeHexColor(emitter?.color, preset.color),
     layer: normalizeEngineLayer(emitter?.layer),
-    intensity: clamp(Number(emitter?.intensity ?? preset.intensity), 0, 2),
-    spread: clamp(Number(emitter?.spread ?? preset.spread), 0, 120),
-    count: clamp(Math.round(Number(emitter?.count ?? preset.count)), 0, 120),
-    speed: clamp(Number(emitter?.speed ?? preset.speed), 0, 4),
-    jitter: clamp(Number(emitter?.jitter ?? preset.jitter), 0, 1)
+    intensity: clamp(finiteNumber(emitter?.intensity, preset.intensity), 0, 2),
+    spread: clamp(finiteNumber(emitter?.spread, preset.spread), 0, 120),
+    count: clamp(Math.round(finiteNumber(emitter?.count, preset.count)), 0, 120),
+    speed: clamp(finiteNumber(emitter?.speed, preset.speed), 0, 4),
+    jitter: clamp(finiteNumber(emitter?.jitter, preset.jitter), 0, 1)
   };
 }
 
@@ -294,8 +295,8 @@ function getShipImage(option = getSelectedOption()) {
     const image = new Image();
     image.src = option.assetPath;
     imageCache.set(option.id, image);
-    image.addEventListener("load", render);
-    image.addEventListener("error", render);
+    image.addEventListener("load", () => render());
+    image.addEventListener("error", () => render());
   }
   return imageCache.get(option.id);
 }
@@ -314,7 +315,21 @@ function getCanvasSize() {
 
 function getImageTransform(image) {
   const { width, height } = getCanvasSize();
-  const zoom = Number(zoomControl.value);
+  const zoom = finiteNumber(zoomControl.value, 0.68);
+  return {
+    scale: zoom,
+    x: width / 2 - (image.naturalWidth * zoom) / 2,
+    y: height / 2 - (image.naturalHeight * zoom) / 2
+  };
+}
+
+function getTemplateZoom() {
+  return finiteNumber(templateZoomControl.value, 1);
+}
+
+function getTemplateShipTransform(image) {
+  const { width, height } = getCanvasSize();
+  const zoom = getTemplateZoom();
   return {
     scale: zoom,
     x: width / 2 - (image.naturalWidth * zoom) / 2,
@@ -325,17 +340,17 @@ function getImageTransform(image) {
 function getTemplateTransform(image = null) {
   const { width, height } = getCanvasSize();
   if (templatePreviewModeSelect.value === "ship" && image?.complete && image.naturalWidth > 0) {
-    const shipTransform = getImageTransform(image);
+    const shipTransform = getTemplateShipTransform(image);
     const engine = getSelectedAnchors().engines[selectedAnchor.type === "engine" ? selectedAnchor.index : 0] ?? { x: 112, y: 510 };
     const point = assetToCanvasPoint(engine, shipTransform);
     return { x: point.x, y: point.y, scale: shipTransform.scale };
   }
   const ratio = window.devicePixelRatio || 1;
-  return { x: width / 2, y: height / 2, scale: ratio };
+  return { x: width / 2, y: height / 2, scale: ratio * getTemplateZoom() };
 }
 
 function render(time = performance.now()) {
-  lastFrameTime = time;
+  lastFrameTime = finiteNumber(time, performance.now());
   const { width, height } = getCanvasSize();
   context.clearRect(0, 0, width, height);
   drawBackground(width, height, activeTab === "template" ? templateBackgroundModeSelect.value : backgroundModeSelect.value);
@@ -378,8 +393,8 @@ function renderTemplateTab(width, height) {
   }
 
   if (showShip) {
-    const shipTransform = getImageTransform(image);
-    drawMaskedBehindEnginePreview(image, transform, width, height, getTemplateEmitters("behind"));
+    const shipTransform = getTemplateShipTransform(image);
+    drawMaskedBehindEnginePreview(image, transform, width, height, getTemplateEmitters("behind"), shipTransform);
     drawShipImage(context, image, shipTransform);
     drawEngineEmitters(getTemplateEmitters("inline"), transform, moving, context);
     drawEngineEmitters(getTemplateEmitters("front"), transform, moving, context);
@@ -453,14 +468,14 @@ function drawCoilPreview(transform, option) {
   }
 }
 
-function drawMaskedBehindEnginePreview(image, transform, width, height, emitters) {
+function drawMaskedBehindEnginePreview(image, transform, width, height, emitters, maskTransform = getImageTransform(image)) {
   engineLayerCanvas.width = width;
   engineLayerCanvas.height = height;
   engineLayerContext.clearRect(0, 0, width, height);
   drawEngineEmitters(emitters, transform, getMotionModeForActiveTab() === "moving", engineLayerContext);
   engineLayerContext.save();
   engineLayerContext.globalCompositeOperation = "destination-out";
-  drawShipImage(engineLayerContext, image, getImageTransform(image));
+  drawShipImage(engineLayerContext, image, maskTransform);
   engineLayerContext.restore();
   context.drawImage(engineLayerCanvas, 0, 0);
 }
@@ -497,9 +512,9 @@ function mergeEngineAndEmitter(engine, emitter, engineIndex, emitterIndex) {
   return {
     ...emitter,
     id: `${engine.id}-${emitter.id}`,
-    x: Number(engine.x) + Number(emitter.x),
-    y: Number(engine.y) + Number(emitter.y),
-    direction: Number(engine.direction) + Number(emitter.direction),
+    x: finiteNumber(engine.x, 0) + finiteNumber(emitter.x, 0),
+    y: finiteNumber(engine.y, 0) + finiteNumber(emitter.y, 0),
+    direction: finiteNumber(engine.direction, 180) + finiteNumber(emitter.direction, 180),
     seed: engineIndex * 101 + emitterIndex * 17
   };
 }
@@ -530,12 +545,14 @@ function drawEngineEmitters(emitters, transform, moving, targetContext = context
 
 function drawEmitterEffect(emitter, transform, moving, targetContext) {
   const point = assetToCanvasPoint(emitter, transform);
-  const direction = (emitter.direction * Math.PI) / 180;
+  const direction = (finiteNumber(emitter.direction, 180) * Math.PI) / 180;
   const color = normalizeHexColor(emitter.color, emitterPresets[emitter.type]?.color ?? "#38bdf8");
-  const intensity = moving ? emitter.intensity : emitter.intensity * 0.18;
-  const flicker = 1 - emitter.jitter * 0.35 + seededNoise((emitter.seed ?? 0) + emitter.x + emitter.y, lastFrameTime / 120) * emitter.jitter * 0.7;
-  const size = Math.max(0.5, emitter.size * transform.scale * flicker);
-  const length = emitter.length * transform.scale;
+  const emitterIntensity = finiteNumber(emitter.intensity, 0.8);
+  const emitterJitter = finiteNumber(emitter.jitter, 0);
+  const intensity = moving ? emitterIntensity : emitterIntensity * 0.18;
+  const flicker = 1 - emitterJitter * 0.35 + seededNoise((emitter.seed ?? 0) + finiteNumber(emitter.x, 0) + finiteNumber(emitter.y, 0), lastFrameTime / 120) * emitterJitter * 0.7;
+  const size = Math.max(0.5, finiteNumber(emitter.size, 8) * finiteNumber(transform.scale, 1) * flicker);
+  const length = finiteNumber(emitter.length, 60) * finiteNumber(transform.scale, 1);
   const gradient = targetContext.createRadialGradient(point.x, point.y, 0, point.x, point.y, size * getGlowMultiplier(emitter.type));
   gradient.addColorStop(0, getEmitterCoreColor(emitter.type, color));
   gradient.addColorStop(0.32, hexToRgba(color, 0.68 * intensity));
@@ -548,18 +565,25 @@ function drawEmitterEffect(emitter, transform, moving, targetContext) {
   targetContext.fill();
   targetContext.restore();
 
-  if (!moving || emitter.count <= 0 || emitter.type === "glow") return;
-  for (let index = 0; index < emitter.count; index += 1) {
+  const count = Math.max(0, Math.round(finiteNumber(emitter.count, 0)));
+  if (!moving || count <= 0 || emitter.type === "glow") return;
+  for (let index = 0; index < count; index += 1) {
     drawEmitterParticle(targetContext, emitter, point, direction, length, transform.scale, color, intensity, index);
   }
 }
 
 function drawEmitterParticle(targetContext, emitter, origin, direction, length, scale, color, intensity, index) {
-  const phase = (lastFrameTime / (620 / Math.max(0.2, emitter.speed)) + index * 47.13 + (emitter.seed ?? 0) * 19) % 1000;
-  const life = (phase / 1000) % 1;
-  const spreadNoise = seededNoise(index + (emitter.seed ?? 0), emitter.x + emitter.y) - 0.5;
-  const drift = life * length;
-  const spread = spreadNoise * emitter.spread * life * scale;
+  const speed = Math.max(0.05, finiteNumber(emitter.speed, 0.05));
+  const seed = (emitter.seed ?? 0) + index * 17;
+  const cycleMs = 840 / speed;
+  const phaseOffset = seededNoise(seed, finiteNumber(emitter.x, 0) + finiteNumber(emitter.y, 0));
+  const life = ((lastFrameTime / cycleMs) + phaseOffset) % 1;
+  const jitter = finiteNumber(emitter.jitter, 0);
+  const wobble = Math.sin((lastFrameTime / 95) + seed) * jitter;
+  const spreadNoise = seededNoise(seed + 11, lastFrameTime / 180) - 0.5;
+  const driftNoise = (seededNoise(seed + 23, lastFrameTime / 240) - 0.5) * jitter * 0.18;
+  const drift = clamp01(life + driftNoise) * length;
+  const spread = (spreadNoise + wobble * 0.35) * finiteNumber(emitter.spread, 0) * Math.sin(life * Math.PI) * scale;
   const sideAngle = direction + Math.PI / 2;
   const particleX = origin.x + Math.cos(direction) * drift + Math.cos(sideAngle) * spread;
   const particleY = origin.y + Math.sin(direction) * drift + Math.sin(sideAngle) * spread;
@@ -637,8 +661,8 @@ function drawHandles(points, transform, type, color) {
 
 function assetToCanvasPoint(point, transform) {
   return {
-    x: transform.x + point.x * transform.scale,
-    y: transform.y + point.y * transform.scale
+    x: finiteNumber(transform.x, 0) + finiteNumber(point.x, 0) * finiteNumber(transform.scale, 1),
+    y: finiteNumber(transform.y, 0) + finiteNumber(point.y, 0) * finiteNumber(transform.scale, 1)
   };
 }
 
@@ -1107,6 +1131,7 @@ function getMotionModeForActiveTab() {
 
 function setActiveTab(tab) {
   activeTab = tab;
+  canvas.classList.toggle("is-template-tab", tab === "template");
   for (const button of tabButtons) {
     const selected = button.dataset.tab === tab;
     button.classList.toggle("is-active", selected);
@@ -1120,6 +1145,15 @@ function setActiveTab(tab) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function clamp01(value) {
+  return clamp(value, 0, 1);
+}
+
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
 }
 
 function hexToRgba(hex, alpha) {
@@ -1171,7 +1205,7 @@ shipSelect.addEventListener("change", (event) => {
 for (const element of [backgroundModeSelect, zoomControl, motionModeSelect, coilPreviewModeSelect]) {
   element.addEventListener("input", render);
 }
-for (const element of [templateBackgroundModeSelect, templateMotionModeSelect, templatePreviewModeSelect]) {
+for (const element of [templateBackgroundModeSelect, templateMotionModeSelect, templatePreviewModeSelect, templateZoomControl]) {
   element.addEventListener("input", render);
 }
 for (const button of tabButtons) {
