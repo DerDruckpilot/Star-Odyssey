@@ -84,19 +84,19 @@ const colorAliases = {
   white: "green"
 };
 
-export function getPlayerShipAssetPath(playerColor, shipId = "") {
+export function getPlayerShipAssetPath(playerColor, shipRef = "") {
   const assets = playerShipAssetPaths[normalizePlayerPieceColor(playerColor)] ?? playerShipAssetPaths.red;
-  return assets[getShipVariantIndex(shipId, assets.length)] ?? assets[0];
+  return assets[getShipVariantIndex(shipRef, assets.length)] ?? assets[0];
 }
 
-export function getColonyShipAssetPath(playerColor, shipId = "") {
+export function getColonyShipAssetPath(playerColor, shipRef = "") {
   const assets = colonyShipAssetPaths[normalizePlayerPieceColor(playerColor)] ?? colonyShipAssetPaths.red;
-  return assets[getShipVariantIndex(shipId, assets.length)] ?? assets[0];
+  return assets[getShipVariantIndex(shipRef, assets.length)] ?? assets[0];
 }
 
-export function getTradeShipAssetPath(playerColor, shipId = "") {
+export function getTradeShipAssetPath(playerColor, shipRef = "") {
   const assets = tradeShipAssetPaths[normalizePlayerPieceColor(playerColor)] ?? tradeShipAssetPaths.red;
-  return assets[getShipVariantIndex(shipId, assets.length)] ?? assets[0];
+  return assets[getShipVariantIndex(shipRef, assets.length)] ?? assets[0];
 }
 
 export function getPlayerColonyAssetPath(playerColor) {
@@ -113,7 +113,13 @@ export function normalizePlayerPieceColor(playerColor) {
     : colorAliases[playerColor] ?? "red";
 }
 
-function getShipVariantIndex(shipId, variantCount) {
+function getShipVariantIndex(shipRef, variantCount) {
+  const explicitVariant = Number(shipRef?.shipVariant ?? shipRef?.coilCount ?? shipRef?.variant);
+  if (Number.isInteger(explicitVariant) && explicitVariant > 0) {
+    return (explicitVariant - 1) % variantCount;
+  }
+
+  const shipId = typeof shipRef === "string" ? shipRef : shipRef?.id ?? "";
   const numericSuffix = String(shipId).match(/-(\d+)$/);
   if (numericSuffix) {
     return (Number(numericSuffix[1]) - 1) % variantCount;

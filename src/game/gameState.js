@@ -1102,10 +1102,46 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
 }
 
 function getPlayerShipOrdinal(ships, ship) {
-  const playerShips = ships
-    .filter((candidate) => candidate.ownerPlayerId === ship.ownerPlayerId);
+  const playerShips = sortPlayerShipsForOrdinal(ships
+    .filter((candidate) => candidate.ownerPlayerId === ship.ownerPlayerId));
   const index = playerShips.findIndex((candidate) => candidate.id === ship.id);
   return index === 1 ? "second" : index === 2 ? "third" : "first";
+}
+
+function sortPlayerShipsForOrdinal(ships) {
+  return [...ships].sort(compareShipsForOrdinal);
+}
+
+function compareShipsForOrdinal(left, right) {
+  const leftVariant = getShipVariant(left);
+  const rightVariant = getShipVariant(right);
+  if (leftVariant !== rightVariant) return leftVariant - rightVariant;
+  return left.id.localeCompare(right.id);
+}
+
+function getShipVariant(ship) {
+  const explicitVariant = Number(ship?.shipVariant ?? ship?.coilCount ?? ship?.variant);
+  if (Number.isInteger(explicitVariant) && explicitVariant >= 1 && explicitVariant <= playerFigureLimits.transporter) {
+    return explicitVariant;
+  }
+
+  const numericSuffix = String(ship?.id ?? "").match(/-(\d+)$/);
+  if (numericSuffix) {
+    return ((Number(numericSuffix[1]) - 1) % playerFigureLimits.transporter) + 1;
+  }
+
+  return 1;
+}
+
+function getNextAvailableShipVariant(ships, playerId) {
+  const usedVariants = new Set(normalizeShips(ships)
+    .filter((ship) => ship.ownerPlayerId === playerId)
+    .map((ship) => getShipVariant(ship)));
+
+  for (let variant = 1; variant <= playerFigureLimits.transporter; variant += 1) {
+    if (!usedVariants.has(variant)) return variant;
+  }
+  return null;
 }
 
 export function foundColony(gameState, boardLayout, shipId) {
@@ -1173,6 +1209,7 @@ export function foundTradeStation(gameState, boardLayout, shipId) {
   const outpost = getDockingOutpost(gameState, boardLayout, ship?.locationId);
   const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout);
   const availableDocks = getAvailableOutpostDocks(gameState, boardLayout, outpost?.id, structures);
+  const selectedDock = availableDocks[0] ?? null;
   const existingOutpostStations = structures
     .filter((structure) => structure.type === "tradeStation" && structure.outpostId === outpost?.id);
   const requiredCargo = existingOutpostStations.length + 1;
@@ -1182,31 +1219,19 @@ export function foundTradeStation(gameState, boardLayout, shipId) {
     ship.ownerPlayerId !== activePlayer.id ||
     ship.type !== "tradeShip" ||
     !outpost ||
-    availableDocks.length === 0 ||
+    !selectedDock ||
     getCargoValueForPlayer(gameState, activePlayer.id) < requiredCargo
   ) {
     return gameState;
   }
 
-  return updateGameState(gameState, {
-    board: {
-      ...gameState.board,
-      selectedElement: { type: "outpost", id: outpost.id },
-      pendingTradeStationPlacement: {
-        shipId: ship.id,
-        ownerPlayerId: activePlayer.id,
-        outpostId: outpost.id,
-        requiredCargo,
-        availableDockIds: availableDocks.map((dock) => dock.id)
-      }
-    },
-    logEntry: {
-      type: "founding",
-      messageKey: "logTradeStationSelectionStarted",
-      messageParams: {
-        player: activePlayer.name
-      }
-    }
+  return placeTradeStationAtDock(gameState, boardLayout, {
+    activePlayer,
+    ship,
+    outpost,
+    selectedDock,
+    ships,
+    structures
   });
 }
 
@@ -1241,6 +1266,24 @@ export function confirmPendingTradeStationPlacement(gameState, boardLayout, targ
     return gameState;
   }
 
+  return placeTradeStationAtDock(gameState, boardLayout, {
+    activePlayer,
+    ship,
+    outpost,
+    selectedDock,
+    ships,
+    structures
+  });
+}
+
+function placeTradeStationAtDock(gameState, boardLayout, {
+  activePlayer,
+  ship,
+  outpost,
+  selectedDock,
+  ships,
+  structures
+}) {
   const structure = {
     id: createId("trade-station"),
     ownerPlayerId: activePlayer.id,
@@ -1287,7 +1330,7 @@ export function confirmPendingTradeStationPlacement(gameState, boardLayout, targ
       messageKey: "logFriendshipMarkerGranted",
       messageParams: {
         player: getPlayerNameById(friendshipResult.players, friendshipResult.markerChange.nextHolderPlayerId),
-        outpost: getOutpostName(outpost)
+        outpost: getOutpostName(outpost, gameState.language)
       }
     });
   } else if (friendshipResult.markerChange?.type === "transferred") {
@@ -1296,7 +1339,7 @@ export function confirmPendingTradeStationPlacement(gameState, boardLayout, targ
       messageKey: "logFriendshipMarkerTransferred",
       messageParams: {
         player: getPlayerNameById(friendshipResult.players, friendshipResult.markerChange.nextHolderPlayerId),
-        outpost: getOutpostName(outpost)
+        outpost: getOutpostName(outpost, gameState.language)
       }
     });
   }
@@ -1902,10 +1945,11 @@ export function buildShip(gameState, boardLayout, shipType) {
   const definition = buildActionDefinitions.find((action) => action.id === shipType);
   const inventory = getPlayerInventory(gameState, activePlayer?.id);
   const launchPoint = findFreeLaunchPoint(gameState, boardLayout, activePlayer?.id);
+  const nextShipVariant = getNextAvailableShipVariant(gameState.board?.ships, activePlayer?.id);
   const hasRequiredFigure = shipType === "colonyShip"
     ? (inventory.colony.available > 0 && inventory.transporter.available > 0)
     : (inventory.tradeStation.available > 0 && inventory.transporter.available > 0);
-  if (!activePlayer || !definition || !launchPoint || !hasRequiredFigure || !canPay(activePlayer.resources, definition.cost)) {
+  if (!activePlayer || !definition || !launchPoint || !nextShipVariant || !hasRequiredFigure || !canPay(activePlayer.resources, definition.cost)) {
     return gameState;
   }
 
@@ -1931,6 +1975,7 @@ export function placePendingShip(gameState, boardLayout, targetNodeId) {
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const definition = buildActionDefinitions.find((action) => action.id === pending?.shipType);
   const inventory = getPlayerInventory(gameState, activePlayer?.id);
+  const shipVariant = getNextAvailableShipVariant(gameState.board?.ships, activePlayer?.id);
   const launchPoint = getAvailableShipLaunchPoints(gameState, boardLayout, activePlayer?.id)
     .find((point) => point.id === targetNodeId);
   const hasRequiredFigure = pending?.shipType === "colonyShip"
@@ -1939,6 +1984,7 @@ export function placePendingShip(gameState, boardLayout, targetNodeId) {
   if (
     !pending ||
     !activePlayer ||
+    !shipVariant ||
     pending.ownerPlayerId !== activePlayer.id ||
     !definition ||
     !launchPoint ||
@@ -1952,6 +1998,8 @@ export function placePendingShip(gameState, boardLayout, targetNodeId) {
     id: createId(pending.shipType),
     ownerPlayerId: activePlayer.id,
     type: pending.shipType,
+    shipVariant,
+    coilCount: shipVariant,
     locationId: targetNodeId,
     status: "docked"
   };
@@ -3616,7 +3664,8 @@ function applyEncounterShipGift(gameState, state, activePlayerId, shipType) {
   };
   const inventory = getPlayerInventory(tempGameState, activePlayerId);
   const stockKey = shipType === "tradeShip" ? "tradeStation" : "colony";
-  if ((inventory.transporter?.available ?? 0) <= 0 || (inventory[stockKey]?.available ?? 0) <= 0) {
+  const shipVariant = getNextAvailableShipVariant(state.board?.ships, activePlayerId);
+  if (!shipVariant || (inventory.transporter?.available ?? 0) <= 0 || (inventory[stockKey]?.available ?? 0) <= 0) {
     return {
       state,
       logEntries: [createEncounterLog("logEncounterShipGiftFailed", {
@@ -3641,6 +3690,8 @@ function applyEncounterShipGift(gameState, state, activePlayerId, shipType) {
     id: createId(shipType === "tradeShip" ? "trade-ship" : "colony-ship"),
     ownerPlayerId: activePlayerId,
     type: shipType,
+    shipVariant,
+    coilCount: shipVariant,
     locationId: launchPoint.id,
     status: "docked"
   };
@@ -3667,7 +3718,7 @@ function applyEncounterShipGift(gameState, state, activePlayerId, shipType) {
 function applyEncounterShipBlock(state, activePlayerId) {
   const ships = normalizeShips(state.board?.ships)
     .filter((ship) => ship.ownerPlayerId === activePlayerId)
-    .sort((left, right) => left.id.localeCompare(right.id));
+    .sort(compareShipsForOrdinal);
   const blockedShip = ships[0];
   if (!blockedShip) {
     return {
@@ -3696,7 +3747,7 @@ function applyEncounterShipBlock(state, activePlayerId) {
 function getEncounterShipForJump(state, activePlayerId) {
   return normalizeShips(state.board?.ships)
     .filter((ship) => ship.ownerPlayerId === activePlayerId)
-    .sort((left, right) => left.id.localeCompare(right.id))[0] ?? null;
+    .sort(compareShipsForOrdinal)[0] ?? null;
 }
 
 function getEncounterJumpTargets(gameState, shipId, boardLayout) {
@@ -4002,6 +4053,8 @@ function createStartingShips(playerCount, boardLayout, structures) {
       id: `${ownerPlayerId}-colony-ship-1`,
       ownerPlayerId,
       type: "colonyShip",
+      shipVariant: 1,
+      coilCount: 1,
       locationId: launchPoint.id,
       status: "docked"
     });
@@ -4142,13 +4195,18 @@ function normalizeShips(ships = []) {
   return Array.isArray(ships)
     ? ships
       .filter((ship) => ship && ship.id && ship.ownerPlayerId && ship.locationId)
-      .map((ship) => ({
-        id: ship.id,
-        ownerPlayerId: ship.ownerPlayerId,
-        type: ship.type === "tradeShip" ? "tradeShip" : "colonyShip",
-        locationId: ship.locationId,
-        status: ship.status === "active" ? "active" : "docked"
-      }))
+      .map((ship) => {
+        const shipVariant = getShipVariant(ship);
+        return {
+          id: ship.id,
+          ownerPlayerId: ship.ownerPlayerId,
+          type: ship.type === "tradeShip" ? "tradeShip" : "colonyShip",
+          shipVariant,
+          coilCount: shipVariant,
+          locationId: ship.locationId,
+          status: ship.status === "active" ? "active" : "docked"
+        };
+      })
     : [];
 }
 
@@ -4476,8 +4534,27 @@ function getPlayerNameById(players, playerId) {
   return players.find((player) => player.id === playerId)?.name ?? playerId;
 }
 
-function getOutpostName(outpost) {
-  return outpost?.name ?? outpost?.id ?? "outpost";
+function getOutpostName(outpost, language = "de") {
+  const labels = {
+    de: {
+      greenPeople: "Grünes Volk",
+      diplomats: "Diplomaten",
+      traders: "Händler",
+      wisePeople: "Wissendes Volk"
+    },
+    en: {
+      greenPeople: "Green People",
+      diplomats: "Diplomats",
+      traders: "Traders",
+      wisePeople: "Wise People"
+    }
+  };
+
+  return labels[language]?.[outpost?.outpostType]
+    ?? labels.de[outpost?.outpostType]
+    ?? outpost?.name
+    ?? outpost?.id
+    ?? "outpost";
 }
 
 function mergeResources(resources, additions) {

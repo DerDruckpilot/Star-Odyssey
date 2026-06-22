@@ -37,9 +37,9 @@ export const shipVfxData = {
   shipVfxAnchors: colonyShipVfxAnchors
 };
 
-export function getShipVfxAnchors(playerColor, shipId) {
+export function getShipVfxAnchors(playerColor, shipRef) {
   const color = normalizePlayerPieceColor(playerColor);
-  const variant = getShipVariantIndex(shipId, 3) + 1;
+  const variant = getShipVariantIndex(shipRef, 3) + 1;
   return shipVfxData.colonyShipVfxAnchors[`${color}-ship-${variant}`] ?? null;
 }
 
@@ -88,7 +88,13 @@ function createShipAnchors(color, variant, assetWidth, assetHeight, coils, engin
   };
 }
 
-function getShipVariantIndex(shipId, variantCount) {
+function getShipVariantIndex(shipRef, variantCount) {
+  const explicitVariant = Number(shipRef?.shipVariant ?? shipRef?.coilCount ?? shipRef?.variant);
+  if (Number.isInteger(explicitVariant) && explicitVariant > 0) {
+    return (explicitVariant - 1) % variantCount;
+  }
+
+  const shipId = typeof shipRef === "string" ? shipRef : shipRef?.id ?? "";
   const numericSuffix = String(shipId).match(/-(\d+)$/);
   if (numericSuffix) {
     return (Number(numericSuffix[1]) - 1) % variantCount;

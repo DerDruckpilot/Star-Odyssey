@@ -375,7 +375,12 @@ function determineSpeedForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "flight") return;
 
   state.gameState = determineFlightSpeed(state.gameState);
-  state.hudPlayerId = null;
+  if (state.gameState.activeEncounter) {
+    state.hudPlayerId = getActivePlayer()?.id ?? state.hudPlayerId;
+    state.hudTab = "turn";
+  } else {
+    state.hudPlayerId = null;
+  }
   saveCurrentGameState();
   render();
 }
@@ -422,6 +427,7 @@ function finishActiveEncounter() {
   if (!state.gameState?.activeEncounter) return;
 
   state.gameState = finishEncounter(state.gameState);
+  state.hudPlayerId = null;
   saveCurrentGameState();
   render();
 }
@@ -2155,6 +2161,12 @@ function renderTradeTargetSelect() {
   select.addEventListener("change", (event) => {
     setTradeOfferTarget(event.target.value || null);
   });
+  select.addEventListener("input", (event) => {
+    setTradeOfferTarget(event.target.value || null);
+  });
+  select.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
 
   label.append(caption, select);
   return label;
@@ -2590,7 +2602,7 @@ function getOutpostById(outpostId) {
 
 function formatOutpostLabel(outpost) {
   if (!outpost) return t("none");
-  return `${outpost.name} · ${getOutpostTypeLabel(outpost.outpostType)}`;
+  return getOutpostTypeLabel(outpost.outpostType);
 }
 
 function formatStationsByPlayer(outpostId) {
@@ -3671,12 +3683,12 @@ function getShipTypeLabel(type) {
 
 function getShipAssetPath(owner, ship) {
   return ship.type === "tradeShip"
-    ? getTradeShipAssetPath(owner?.color, ship.id)
-    : getPlayerShipAssetPath(owner?.color, ship.id);
+    ? getTradeShipAssetPath(owner?.color, ship)
+    : getPlayerShipAssetPath(owner?.color, ship);
 }
 
 function getShipVfxAnchorsForRender(owner, ship) {
-  return ship.type === "tradeShip" ? null : getShipVfxAnchors(owner?.color, ship.id);
+  return ship.type === "tradeShip" ? null : getShipVfxAnchors(owner?.color, ship);
 }
 
 function getShipStatusLabel(status) {
@@ -4170,8 +4182,9 @@ function renderBoardSvg() {
     renderSystemsLayer(),
     renderPointsLayer(),
     renderPlacementVfxLayer(),
+    renderShipsLayer(),
     renderStructuresLayer(),
-    renderShipsLayer()
+    renderOutpostsLayer()
   );
   return svg;
 }
@@ -4409,6 +4422,12 @@ function renderSystemsLayer() {
     const explored = isSystemExplored(system.id);
     group.append(renderPlanetSystem(system, explored ? "planet-system" : "hidden-system", explored));
   }
+
+  return group;
+}
+
+function renderOutpostsLayer() {
+  const group = createSvgElement("g", { class: "board-outposts-layer" });
 
   for (const outpost of [...getVisibleOutposts()].sort((left, right) => getOutpostRenderZ(left) - getOutpostRenderZ(right))) {
     group.append(renderOutpost(outpost));
@@ -4660,7 +4679,7 @@ function renderShipCoilVfx(owner, ship, anchors, pose, pop) {
   if (!coilState.visible || !anchors?.coils?.length) return null;
 
   const group = createSvgElement("g", {
-    class: "ship-coil-vfx",
+    class: `ship-coil-vfx${coilState.active ? " ship-coil-vfx--active" : ""}`,
     "aria-hidden": "true"
   });
   const color = getShipVfxColor(owner?.color);

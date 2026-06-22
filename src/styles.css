@@ -1167,6 +1167,14 @@ h1 {
   stroke: none;
 }
 
+.outpost-hit-area {
+  pointer-events: none;
+}
+
+.outpost-ring {
+  pointer-events: stroke;
+}
+
 .outpost-image,
 .trade-station-image,
 .colony-image,
@@ -1174,6 +1182,34 @@ h1 {
 .ship-image {
   pointer-events: none;
   filter: drop-shadow(0 4px 7px rgba(2, 6, 23, 0.62));
+}
+
+.ship-coil-vfx {
+  pointer-events: none;
+}
+
+.ship-coil-vfx--active .ship-coil-vfx__halo,
+.ship-coil-vfx--active .ship-coil-vfx__core {
+  animation: ship-coil-pulse 1.25s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.ship-coil-vfx--active .ship-coil-vfx__core {
+  animation-delay: -0.25s;
+}
+
+@keyframes ship-coil-pulse {
+  0%,
+  100% {
+    opacity: 0.58;
+    transform: scale(0.92);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
 }
 
 .placement-vfx-layer {

@@ -4,9 +4,7 @@ import {
   calculateVictoryPoints,
   buildShip,
   cancelPendingSpaceportUpgrade,
-  cancelPendingTradeStationPlacement,
   cancelTradeOffer,
-  confirmPendingTradeStationPlacement,
   confirmPendingSpaceportUpgrade,
   createTradeOffer,
   createGameState,
@@ -421,8 +419,7 @@ if (outpostUnderTest) {
   const playerTwoPointsBeforeMarker = calculateVictoryPoints(game, "player-2");
 
   game = foundTradeStation(game, boardLayout, "player-1-trade-ship-a");
-  assert(game.board.pendingTradeStationPlacement?.availableDockIds?.length >= 3, "Trade station founding should start with a pending dock selection.");
-  game = confirmPendingTradeStationPlacement(game, boardLayout, firstDockNodeId);
+  assert(!game.board.pendingTradeStationPlacement, "Trade station founding should choose a dock automatically.");
   assert((game.board.pendingFriendshipCardSelection?.availableCardIds?.length ?? 0) > 1, "Founding a trade station should start a friendship card choice when multiple cards are available.");
   const selectedFriendshipCardId = game.board.pendingFriendshipCardSelection?.availableCardIds?.[0];
   assert(Boolean(selectedFriendshipCardId), "A valid friendship card should be selectable.");
@@ -461,7 +458,7 @@ if (outpostUnderTest) {
   };
 
   game = foundTradeStation(game, boardLayout, "player-2-trade-ship-a");
-  game = confirmPendingTradeStationPlacement(game, boardLayout, secondDockNodeId);
+  assert(game.board.structures.some((structure) => structure.type === "tradeStation" && structure.locationId === secondDockNodeId), "The second trade station should occupy the next free dock.");
   assert(game.board.placedOutposts.find((outpost) => outpost.id === outpostUnderTest.id)?.friendshipHolderPlayerId === "player-1", "A tie on trade stations must not transfer the friendship marker.");
 
   game = {
@@ -485,7 +482,7 @@ if (outpostUnderTest) {
   };
 
   game = foundTradeStation(game, boardLayout, "player-2-trade-ship-b");
-  game = confirmPendingTradeStationPlacement(game, boardLayout, thirdDockNodeId);
+  assert(game.board.structures.some((structure) => structure.type === "tradeStation" && structure.locationId === thirdDockNodeId), "The third trade station should occupy the next free dock.");
   const updatedOutpost = game.board.placedOutposts.find((outpost) => outpost.id === outpostUnderTest.id);
   assert(updatedOutpost?.friendshipHolderPlayerId === "player-2", "Friendship marker should move only when another player gains a clear majority.");
   assert(game.players[0].victoryPoints === playerOnePointsBeforeMarker, "Previous friendship holder should lose 2 victory points on marker transfer.");
@@ -528,9 +525,8 @@ if (outpostUnderTest) {
       ]
     }
   }, boardLayout, "player-2-trade-ship-c");
-  assert(Boolean(pendingCancelState.board.pendingTradeStationPlacement), "Trade station founding should remain cancellable while a dock selection is pending.");
-  const cancelledPendingState = cancelPendingTradeStationPlacement(pendingCancelState);
-  assert(!cancelledPendingState.board.pendingTradeStationPlacement, "Cancelling a pending trade station placement should clear the pending state.");
+  assert(!pendingCancelState.board.pendingTradeStationPlacement, "Automatic trade station founding should not leave a pending dock selection.");
+  assert(!pendingCancelState.board.ships.some((ship) => ship.id === "player-2-trade-ship-c"), "Automatic trade station founding should consume the trade ship immediately.");
 }
 
 let friendshipEffectGame = createGameState({
