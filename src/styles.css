@@ -1202,12 +1202,10 @@ h1 {
 @keyframes ship-coil-pulse {
   0%,
   100% {
-    opacity: 0.58;
     transform: scale(0.92);
   }
 
   50% {
-    opacity: 1;
     transform: scale(1.18);
   }
 }

@@ -440,12 +440,15 @@ export function placeInitialColonyShip(gameState, boardLayout, nodeId) {
   const site = getStartColonySite(boardLayout, placement.selectedSpaceportSiteId);
   const ships = normalizeShips(gameState.board?.ships);
   const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout, { useFallback: false });
-  if (!activePlayer || !site || !site.launchNodeIds?.includes(nodeId) || isNodeOccupied(ships, structures, nodeId)) return gameState;
+  const shipVariant = getNextAvailableShipVariant(ships, activePlayer?.id);
+  if (!activePlayer || !shipVariant || !site || !site.launchNodeIds?.includes(nodeId) || isNodeOccupied(ships, structures, nodeId)) return gameState;
 
   const ship = {
     id: createId("colony-ship"),
     ownerPlayerId: activePlayer.id,
     type: "colonyShip",
+    shipVariant,
+    coilCount: shipVariant,
     locationId: nodeId,
     status: "docked"
   };

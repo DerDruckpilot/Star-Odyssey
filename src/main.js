@@ -2111,10 +2111,13 @@ function renderActiveTradeOffer(player, activeTradeOffer) {
   title.textContent = t("openTradeOffer");
   const summary = document.createElement("p");
   summary.textContent = `${fromPlayer?.name ?? activeTradeOffer.fromPlayerId} -> ${toPlayer?.name ?? activeTradeOffer.toPlayerId}`;
+  const isRecipientView = player?.id === activeTradeOffer.toPlayerId;
+  const giveResources = isRecipientView ? activeTradeOffer.requestedResources : activeTradeOffer.offeredResources;
+  const receiveResources = isRecipientView ? activeTradeOffer.offeredResources : activeTradeOffer.requestedResources;
   const offered = document.createElement("p");
-  offered.textContent = `${t("youGive")}: ${formatResourceSelection(activeTradeOffer.offeredResources)}`;
+  offered.textContent = `${t("youGive")}: ${formatResourceSelection(giveResources)}`;
   const requested = document.createElement("p");
-  requested.textContent = `${t("youReceive")}: ${formatResourceSelection(activeTradeOffer.requestedResources)}`;
+  requested.textContent = `${t("youReceive")}: ${formatResourceSelection(receiveResources)}`;
   wrapper.append(title, summary, offered, requested);
 
   if (player?.id === activeTradeOffer.toPlayerId) {
@@ -2143,7 +2146,6 @@ function renderTradeTargetSelect() {
   caption.textContent = t("targetPlayer");
 
   const select = document.createElement("select");
-  select.value = state.tradeOfferTargetPlayerId ?? "";
 
   const emptyOption = document.createElement("option");
   emptyOption.value = "";
@@ -2157,6 +2159,7 @@ function renderTradeTargetSelect() {
     option.textContent = player.name;
     select.append(option);
   }
+  select.value = state.tradeOfferTargetPlayerId ?? "";
 
   select.addEventListener("change", (event) => {
     setTradeOfferTarget(event.target.value || null);
@@ -3322,7 +3325,7 @@ function queueShipFlightAnimation(ship, fromPoint, toPoint) {
   const distance = getDistance(fromPoint, toPoint);
   const startAngle = getShipVisualAngle(ship.id);
   const targetAngle = Math.atan2(toPoint.y - fromPoint.y, toPoint.x - fromPoint.x);
-  const duration = Math.max(600, Math.min(2200, 460 + distance * 6.4));
+  const duration = Math.max(1500, Math.min(5800, (460 + distance * 6.4) * 2.65));
   const noseDistance = Math.max(56, Math.min(170, distance * 0.42));
   const controlDistance = Math.max(48, Math.min(150, distance * 0.34));
   const controlPoint1 = {
@@ -4692,24 +4695,34 @@ function renderShipCoilVfx(owner, ship, anchors, pose, pop) {
       ? 0.72 + Math.sin(time / 210 + index * 0.9) * 0.22
       : 0.36;
     const opacity = coilState.opacity * pulse;
-    const radius = (coilState.active ? 4.4 : 2.8) * (0.9 + pulse * 0.22);
+    const radius = (coilState.active ? 4.2 : 2.6) * (0.9 + pulse * 0.22);
     group.append(
       createSvgElement("circle", {
-        class: "ship-coil-vfx__halo",
+        class: "ship-coil-vfx__halo ship-coil-vfx__halo--outer",
+        cx: point.x,
+        cy: point.y,
+        r: radius * 4.2,
+        fill: color,
+        opacity: opacity * 0.06,
+        filter: "url(#ship-coil-glow)"
+      }),
+      createSvgElement("circle", {
+        class: "ship-coil-vfx__halo ship-coil-vfx__halo--middle",
         cx: point.x,
         cy: point.y,
         r: radius * 2.2,
         fill: color,
-        opacity: opacity * 0.25,
+        opacity: opacity * 0.16,
         filter: "url(#ship-coil-glow)"
       }),
       createSvgElement("circle", {
         class: "ship-coil-vfx__core",
         cx: point.x,
         cy: point.y,
-        r: radius,
+        r: radius * 0.55,
         fill: color,
-        opacity
+        opacity: opacity * 0.42,
+        filter: "url(#ship-coil-glow)"
       })
     );
   });
