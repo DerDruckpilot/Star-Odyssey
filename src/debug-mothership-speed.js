@@ -10,6 +10,7 @@ const panelTabs = [...document.querySelectorAll(".panel-tab")];
 const inputs = {
   playbackMode: document.querySelector("#playback-mode"),
   zoom: document.querySelector("#preview-zoom"),
+  slotZoom: document.querySelector("#slot-preview-zoom"),
   pivotX: document.querySelector("#pivot-x"),
   pivotY: document.querySelector("#pivot-y"),
   leverX: document.querySelector("#lever-x"),
@@ -33,6 +34,10 @@ const inputs = {
   maskY: document.querySelector("#mask-y"),
   maskWidth: document.querySelector("#mask-width"),
   maskHeight: document.querySelector("#mask-height")
+};
+
+const outputs = {
+  slotZoom: document.querySelector("#slot-preview-zoom-value")
 };
 
 const defaultConfig = {
@@ -66,6 +71,10 @@ const ballColors = {
 
 const imageCache = new Map();
 let config = loadConfig();
+let previewState = {
+  shakeZoom: 1,
+  slotZoom: 1
+};
 let activeTab = "shake";
 let isPlaying = true;
 let selectedHandle = null;
@@ -150,7 +159,8 @@ function updateExport() {
 
 function syncInputs() {
   inputs.playbackMode.value = isPlaying ? "play" : "pause";
-  inputs.zoom.value = String(getZoom());
+  inputs.zoom.value = String(previewState.shakeZoom);
+  inputs.slotZoom.value = String(previewState.slotZoom);
   inputs.pivotX.value = config.shake.pivot.x;
   inputs.pivotY.value = config.shake.pivot.y;
   inputs.leverX.value = config.shake.lever.x;
@@ -174,11 +184,16 @@ function syncInputs() {
   inputs.maskY.value = config.balls.mask.y;
   inputs.maskWidth.value = config.balls.mask.width;
   inputs.maskHeight.value = config.balls.mask.height;
+  updateZoomLabels();
   updateExport();
 }
 
 function getZoom() {
-  return finiteNumber(inputs.zoom.value, 1);
+  return activeTab === "slot" ? previewState.slotZoom : previewState.shakeZoom;
+}
+
+function updateZoomLabels() {
+  outputs.slotZoom.textContent = `${previewState.slotZoom.toFixed(2)}x`;
 }
 
 function getShipRect() {
@@ -487,6 +502,8 @@ function onPointerEnd(event) {
 
 function updateFromInputs() {
   isPlaying = inputs.playbackMode.value === "play";
+  previewState.shakeZoom = finiteNumber(inputs.zoom.value, previewState.shakeZoom);
+  previewState.slotZoom = finiteNumber(inputs.slotZoom.value, previewState.slotZoom);
   config.shake.pivot.x = finiteNumber(inputs.pivotX.value, config.shake.pivot.x);
   config.shake.pivot.y = finiteNumber(inputs.pivotY.value, config.shake.pivot.y);
   config.shake.lever.x = finiteNumber(inputs.leverX.value, config.shake.lever.x);
@@ -513,7 +530,9 @@ function updateFromInputs() {
     height: inputs.maskHeight.value
   }, config.balls.mask);
   saveConfig();
+  updateZoomLabels();
   updateExport();
+  render();
 }
 
 function setActiveTab(tabId) {
@@ -527,6 +546,7 @@ function setActiveTab(tabId) {
   panelTabs.forEach((panel) => {
     panel.classList.toggle("is-active", panel.dataset.panel === tabId);
   });
+  render();
 }
 
 function resetShake() {

@@ -64,6 +64,12 @@
   grid-column: 1 / -1;
 }
 
+.debug-shell--mothership-speed output {
+  color: #cbd5e1;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .debug-shell--mothership-speed textarea {
   min-height: 14rem;
 }
