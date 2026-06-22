@@ -4,6 +4,7 @@ const storageKey = "star-odyssey-ship-vfx-anchors";
 const legacyMisnamedTradeShipStorageKey = "star-odyssey-colony-ship-vfx-anchors";
 const tradeShipStorageKey = "star-odyssey-trade-ship-vfx-anchors";
 const tradeShipPreviewScale = 0.43;
+const tradeShipVfxReferenceScale = 1 / tradeShipPreviewScale;
 const canvas = document.querySelector("#ship-vfx-canvas");
 const context = canvas.getContext("2d");
 const engineLayerCanvas = document.createElement("canvas");
@@ -318,6 +319,10 @@ function getAssetPreviewScale() {
   return activeTab === "trade" ? tradeShipPreviewScale : 1;
 }
 
+function getAssetVfxReferenceScale() {
+  return activeTab === "trade" ? tradeShipVfxReferenceScale : 1;
+}
+
 function setSelectedAssetId(value) {
   if (activeTab === "trade") {
     selectedTradeShipId = value;
@@ -382,6 +387,7 @@ function getImageTransform(image) {
   const zoom = finiteNumber(zoomControl.value, 0.68) * getAssetPreviewScale();
   return {
     scale: zoom,
+    vfxScale: zoom * getAssetVfxReferenceScale(),
     x: width / 2 - (image.naturalWidth * zoom) / 2,
     y: height / 2 - (image.naturalHeight * zoom) / 2
   };
@@ -513,9 +519,10 @@ function drawCoilPreview(transform, option) {
   const active = coilPreviewModeSelect.value === "active";
   const color = glowColors[option.color] ?? glowColors.red;
   const pulse = active ? 0.5 + Math.sin(lastFrameTime / 210) * 0.5 : 0;
+  const vfxScale = finiteNumber(transform.vfxScale, transform.scale);
   for (const coil of getSelectedAnchors().coils) {
     const point = assetToCanvasPoint(coil, transform);
-    const radius = (active ? 18 + pulse * 8 : 10) * transform.scale;
+    const radius = (active ? 18 + pulse * 8 : 10) * vfxScale;
     const alpha = active ? 0.48 + pulse * 0.22 : 0.14;
     const gradient = context.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius * 1.8);
     gradient.addColorStop(0, color);
@@ -527,7 +534,7 @@ function drawCoilPreview(transform, option) {
     context.fill();
     context.fillStyle = active ? "#f8fafc" : hexToRgba(color, 0.36);
     context.beginPath();
-    context.arc(point.x, point.y, Math.max(2.2, 4.5 * transform.scale), 0, Math.PI * 2);
+    context.arc(point.x, point.y, Math.max(2.2, 4.5 * vfxScale), 0, Math.PI * 2);
     context.fill();
   }
 }
@@ -615,8 +622,9 @@ function drawEmitterEffect(emitter, transform, moving, targetContext) {
   const emitterJitter = finiteNumber(emitter.jitter, 0);
   const intensity = moving ? emitterIntensity : emitterIntensity * 0.18;
   const flicker = 1 - emitterJitter * 0.35 + seededNoise((emitter.seed ?? 0) + finiteNumber(emitter.x, 0) + finiteNumber(emitter.y, 0), lastFrameTime / 120) * emitterJitter * 0.7;
-  const size = Math.max(0.5, finiteNumber(emitter.size, 8) * finiteNumber(transform.scale, 1) * flicker);
-  const length = finiteNumber(emitter.length, 60) * finiteNumber(transform.scale, 1);
+  const vfxScale = finiteNumber(transform.vfxScale, transform.scale);
+  const size = Math.max(0.5, finiteNumber(emitter.size, 8) * vfxScale * flicker);
+  const length = finiteNumber(emitter.length, 60) * vfxScale;
   const gradient = targetContext.createRadialGradient(point.x, point.y, 0, point.x, point.y, size * getGlowMultiplier(emitter.type));
   gradient.addColorStop(0, getEmitterCoreColor(emitter.type, color));
   gradient.addColorStop(0.32, hexToRgba(color, 0.68 * intensity));
@@ -632,7 +640,7 @@ function drawEmitterEffect(emitter, transform, moving, targetContext) {
   const count = Math.max(0, Math.round(finiteNumber(emitter.count, 0)));
   if (!moving || count <= 0 || emitter.type === "glow") return;
   for (let index = 0; index < count; index += 1) {
-    drawEmitterParticle(targetContext, emitter, point, direction, length, transform.scale, color, intensity, index);
+    drawEmitterParticle(targetContext, emitter, point, direction, length, vfxScale, color, intensity, index);
   }
 }
 

@@ -317,6 +317,7 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  pointer-events: none;
 }
 
 .victory-point-list {
@@ -408,6 +409,7 @@ h1 {
   place-items: center;
   padding: 0.75rem;
   background: rgba(2, 6, 23, 0.55);
+  pointer-events: none;
 }
 
 .player-hud-panel {
@@ -418,6 +420,7 @@ h1 {
   border: 1px solid rgba(148, 163, 184, 0.46);
   background: rgba(15, 23, 42, 0.96);
   box-shadow: 0 22px 70px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
 }
 
 .player-hud-panel--upgrades {

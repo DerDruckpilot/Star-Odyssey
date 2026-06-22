@@ -2998,7 +2998,7 @@ function updateDiceRollAnimation(now) {
     render();
     return;
   }
-  render();
+  updateDice3dOverlayDom();
   diceRollAnimation.frameRequestId = requestAnimationFrame(updateDiceRollAnimation);
 }
 
@@ -3070,6 +3070,26 @@ function renderDice3dOverlay() {
   }
   overlay.append(scene);
   return overlay;
+}
+
+function updateDice3dOverlayDom() {
+  const overlay = document.querySelector(".dice3d-overlay");
+  const item = diceRollAnimation.item;
+  if (!overlay || !item || state.view !== "board") return;
+
+  const elapsed = getDiceRollTime() - item.startTime;
+  const rollingProgress = clamp01(elapsed / item.duration);
+  const fadeElapsed = Math.max(0, elapsed - item.duration - item.holdDuration);
+  const fadeProgress = clamp01(fadeElapsed / item.fadeDuration);
+  const fade = 1 - easeOutCubic(fadeProgress);
+  overlay.style.opacity = fade.toFixed(3);
+
+  const scene = overlay.querySelector(".dice3d-scene");
+  if (!scene) return;
+  scene.replaceChildren(
+    renderDice3dDie(item, 0, rollingProgress),
+    renderDice3dDie(item, 1, rollingProgress)
+  );
 }
 
 function renderDice3dDie(item, index, progress) {
@@ -3410,7 +3430,12 @@ function stopShipVfxLoop() {
 function updateShipVfxAnimation(now) {
   shipVfxAnimation.currentTime = now;
   shipVfxAnimation.frameRequestId = null;
-  render();
+  drawShipEngineVfxOverlays();
+  if (shouldRunShipVfxLoop()) {
+    startShipVfxLoop();
+  } else {
+    shipVfxAnimation.currentTime = 0;
+  }
 }
 
 function syncShipVfxLoop() {
