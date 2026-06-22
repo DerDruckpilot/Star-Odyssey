@@ -1091,35 +1091,33 @@ h1 {
 
 .mothership-speed-ball-pocket {
   position: absolute;
-  left: 50.5%;
-  top: 79.5%;
+  left: 48.3%;
+  top: 84.3%;
   z-index: 230;
-  width: 2.2rem;
-  height: 4.2rem;
-  transform: translate(-50%, -50%);
+  width: 3.5%;
+  height: 9.7%;
+  transform: none;
+  overflow: hidden;
+  border-radius: 5%;
   pointer-events: none;
 }
 
 .mothership-speed-ball-pocket::before {
   content: "";
   position: absolute;
-  left: 50%;
-  top: 47%;
-  width: 1.7rem;
-  height: 4.1rem;
-  border-radius: 999px;
+  inset: 0;
+  border-radius: inherit;
   background:
     linear-gradient(90deg, rgba(2, 6, 23, 0.72), rgba(15, 23, 42, 0.18) 50%, rgba(2, 6, 23, 0.62)),
     radial-gradient(ellipse at center, rgba(2, 6, 23, 0.68), rgba(2, 6, 23, 0.1) 74%, transparent);
   filter: blur(0.1rem);
-  transform: translate(-50%, -50%);
 }
 
 .mothership-speed-ball {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: clamp(0.82rem, 2.05vw, 1.28rem);
+  width: 54%;
   aspect-ratio: 1;
   border: 1px solid rgba(255, 255, 255, 0.32);
   border-radius: 999px;

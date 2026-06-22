@@ -1,4 +1,8 @@
 import { upgradeMenuAssetPaths } from "./data/upgradeVisuals.js";
+import {
+  toMothershipSpeedAnimationConfig,
+  toMothershipSpeedDebugConfig
+} from "./data/mothershipSpeedAnimationConfig.js";
 
 const storageKey = "star-odyssey-mothership-speed-debug";
 const canvas = document.querySelector("#mothership-speed-canvas");
@@ -42,27 +46,7 @@ const outputs = {
   slotZoom: document.querySelector("#slot-preview-zoom-value")
 };
 
-const defaultConfig = {
-  version: 1,
-  shake: {
-    pivot: { x: 58, y: 84 },
-    lever: { x: 50, y: 30 },
-    speed: 1.05,
-    amplitude: 18,
-    rotation: 4.2,
-    secondaryVibration: 0.8
-  },
-  balls: {
-    size: 3.6,
-    fallDurationMs: 420,
-    combination: ["blue", "yellow"],
-    slots: [
-      { id: "ball-1", start: { x: 50.5, y: 62 }, end: { x: 50.5, y: 75.5 } },
-      { id: "ball-2", start: { x: 50.5, y: 66 }, end: { x: 50.5, y: 82.5 } }
-    ],
-    mask: { x: 47.7, y: 73.2, width: 5.7, height: 13.5, cornerRadius: 1.4 }
-  }
-};
+const defaultConfig = toMothershipSpeedDebugConfig();
 
 const ballColors = {
   yellow: { fill: "#fde047", light: "#fef08a", dark: "#ca8a04" },
@@ -152,12 +136,12 @@ function saveConfig() {
 
 function getExportData() {
   return {
-    MOTHERSHIP_SPEED_ANIMATION_CONFIG: config
+    MOTHERSHIP_SPEED_ANIMATION_CONFIG: toMothershipSpeedAnimationConfig(config)
   };
 }
 
 function updateExport() {
-  exportOutput.value = `export const MOTHERSHIP_SPEED_ANIMATION_CONFIG = ${JSON.stringify(config, null, 2)};\n`;
+  exportOutput.value = `export const MOTHERSHIP_SPEED_ANIMATION_CONFIG = ${JSON.stringify(toMothershipSpeedAnimationConfig(config), null, 2)};\n`;
 }
 
 function syncInputs() {
@@ -283,10 +267,32 @@ function getShakePose(progress) {
   const secondaryPhase = progress * Math.PI * 18;
   const arc = Math.sin(phase);
   const lift = Math.cos(phase);
+  const leverAxis = getLeverAxis();
+  const tangent = { x: -leverAxis.y, y: leverAxis.x };
+  const primary = arc * config.shake.amplitude;
+  const secondary = -lift * config.shake.amplitude * 0.62;
   return {
-    x: (arc * config.shake.amplitude + Math.sin(secondaryPhase) * config.shake.secondaryVibration) * falloff,
-    y: (-lift * config.shake.amplitude * 0.62 + Math.cos(secondaryPhase) * config.shake.secondaryVibration * 0.55) * falloff,
+    x: (
+      tangent.x * primary
+      + leverAxis.x * secondary
+      + Math.sin(secondaryPhase) * config.shake.secondaryVibration
+    ) * falloff,
+    y: (
+      tangent.y * primary
+      + leverAxis.y * secondary
+      + Math.cos(secondaryPhase) * config.shake.secondaryVibration * 0.55
+    ) * falloff,
     rotation: (arc * config.shake.rotation + Math.sin(secondaryPhase + 0.7) * config.shake.secondaryVibration * 0.18) * falloff
+  };
+}
+
+function getLeverAxis() {
+  const dx = config.shake.lever.x - config.shake.pivot.x;
+  const dy = config.shake.lever.y - config.shake.pivot.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return {
+    x: dx / length,
+    y: dy / length
   };
 }
 

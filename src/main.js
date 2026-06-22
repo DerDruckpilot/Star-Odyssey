@@ -25,6 +25,7 @@ import {
   playerPieceVisualDefaults
 } from "./data/playerPieceVisuals.js";
 import { getShipEngineTemplate, getShipVfxAnchors } from "./data/shipVfxData.js";
+import { MOTHERSHIP_SPEED_ANIMATION_CONFIG } from "./data/mothershipSpeedAnimationConfig.js";
 import {
   applyDebugLayoutTransform,
   getStructureVisualPosition,
@@ -148,7 +149,7 @@ const mothershipSpeedAnimation = {
 };
 const MOTHERSHIP_SPEED_APPEAR_MS = 220;
 const MOTHERSHIP_SPEED_SHAKE_MS = 980;
-const MOTHERSHIP_SPEED_REVEAL_MS = 420;
+const MOTHERSHIP_SPEED_REVEAL_MS = MOTHERSHIP_SPEED_ANIMATION_CONFIG.balls.slideDurationMs;
 const MOTHERSHIP_SPEED_HOLD_MS = 2000;
 const MOTHERSHIP_SPEED_FADE_MS = 360;
 const mothershipBallVisuals = {
@@ -3135,12 +3136,14 @@ function renderMothershipSpeedOverlay() {
 
   const visualWrap = document.createElement("div");
   visualWrap.className = "mothership-speed-visual-wrap";
+  visualWrap.style.transformOrigin = `${MOTHERSHIP_SPEED_ANIMATION_CONFIG.shake.pivot.x}% ${MOTHERSHIP_SPEED_ANIMATION_CONFIG.shake.pivot.y}%`;
   visualWrap.style.transform = getMothershipSpeedVisualTransform(metrics);
 
   const visual = renderMothershipUpgradeVisual(player);
   visual.classList.add("mothership-speed-visual");
   const pocket = document.createElement("div");
   pocket.className = "mothership-speed-ball-pocket";
+  applyMothershipSpeedSlotStyle(pocket);
   item.balls.forEach((ball, index) => {
     pocket.append(renderMothershipSpeedBall(ball, index, metrics.revealProgress));
   });
@@ -3171,8 +3174,11 @@ function updateMothershipSpeedOverlayDom() {
   overlay.style.opacity = metrics.opacity.toFixed(3);
   const visualWrap = overlay.querySelector(".mothership-speed-visual-wrap");
   if (visualWrap) {
+    visualWrap.style.transformOrigin = `${MOTHERSHIP_SPEED_ANIMATION_CONFIG.shake.pivot.x}% ${MOTHERSHIP_SPEED_ANIMATION_CONFIG.shake.pivot.y}%`;
     visualWrap.style.transform = getMothershipSpeedVisualTransform(metrics);
   }
+  const pocket = overlay.querySelector(".mothership-speed-ball-pocket");
+  if (pocket) applyMothershipSpeedSlotStyle(pocket);
   const balls = overlay.querySelectorAll(".mothership-speed-ball");
   balls.forEach((ballElement, index) => {
     applyMothershipSpeedBallStyle(ballElement, index, metrics.revealProgress);
@@ -3212,16 +3218,48 @@ function getMothershipSpeedShake(item, elapsed) {
   const shakeProgress = clamp01((elapsed - MOTHERSHIP_SPEED_APPEAR_MS) / MOTHERSHIP_SPEED_SHAKE_MS);
   if (shakeProgress <= 0 || shakeProgress >= 1) return { x: 0, y: 0, rotation: 0 };
 
+  const config = MOTHERSHIP_SPEED_ANIMATION_CONFIG.shake;
   const falloff = Math.sin(shakeProgress * Math.PI);
-  const phase = shakeProgress * Math.PI * 5.2;
+  const phase = shakeProgress * Math.PI * 5.2 * config.speed;
   const secondaryPhase = shakeProgress * Math.PI * 18;
   const arc = Math.sin(phase);
   const lift = Math.cos(phase);
+  const leverAxis = getMothershipSpeedLeverAxis(config);
+  const tangent = { x: -leverAxis.y, y: leverAxis.x };
+  const primary = arc * config.amplitude;
+  const secondary = -lift * config.amplitude * 0.62;
   return {
-    x: (arc * 14 + Math.sin(secondaryPhase + item.seed) * 1.4) * falloff,
-    y: (-lift * 9 + Math.cos(secondaryPhase) * 0.9) * falloff,
-    rotation: (arc * 4.2 + Math.sin(secondaryPhase + 0.7) * 0.35) * falloff
+    x: (
+      tangent.x * primary
+      + leverAxis.x * secondary
+      + Math.sin(secondaryPhase + item.seed) * config.secondaryVibration
+    ) * falloff,
+    y: (
+      tangent.y * primary
+      + leverAxis.y * secondary
+      + Math.cos(secondaryPhase) * config.secondaryVibration * 0.55
+    ) * falloff,
+    rotation: (arc * config.rotationAngle + Math.sin(secondaryPhase + 0.7) * config.secondaryVibration * 0.18) * falloff
   };
+}
+
+function getMothershipSpeedLeverAxis(config) {
+  const dx = config.lever.x - config.pivot.x;
+  const dy = config.lever.y - config.pivot.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return {
+    x: dx / length,
+    y: dy / length
+  };
+}
+
+function applyMothershipSpeedSlotStyle(pocket) {
+  const slot = MOTHERSHIP_SPEED_ANIMATION_CONFIG.slot;
+  pocket.style.left = `${slot.x}%`;
+  pocket.style.top = `${slot.y}%`;
+  pocket.style.width = `${slot.width}%`;
+  pocket.style.height = `${slot.height}%`;
+  pocket.style.borderRadius = `${slot.radius}%`;
 }
 
 function renderMothershipSpeedBall(ball, index, revealProgress) {
@@ -3236,15 +3274,21 @@ function renderMothershipSpeedBall(ball, index, revealProgress) {
 }
 
 function applyMothershipSpeedBallStyle(ballElement, index, revealProgress) {
-  const delay = index * 0.18;
-  const progress = easeOutCubic(clamp01((revealProgress - delay) / (1 - delay)));
-  const targetY = index === 0 ? -118 : 18;
-  const settle = Math.sin(progress * Math.PI) * (index === 0 ? -6 : 5);
+  const progress = easeOutCubic(clamp01(revealProgress));
+  const slot = MOTHERSHIP_SPEED_ANIMATION_CONFIG.slot;
+  const ballConfig = index === 0
+    ? MOTHERSHIP_SPEED_ANIMATION_CONFIG.balls.ball1
+    : MOTHERSHIP_SPEED_ANIMATION_CONFIG.balls.ball2;
+  const x = lerp(ballConfig.start.x, ballConfig.end.x, progress);
+  const y = lerp(ballConfig.start.y, ballConfig.end.y, progress);
+  const localX = ((x - slot.x) / slot.width) * 100;
+  const localY = ((y - slot.y) / slot.height) * 100;
+  const ballSize = (MOTHERSHIP_SPEED_ANIMATION_CONFIG.balls.size / slot.width) * 100;
+  ballElement.style.left = `${localX.toFixed(3)}%`;
+  ballElement.style.top = `${localY.toFixed(3)}%`;
+  ballElement.style.width = `${ballSize.toFixed(3)}%`;
   ballElement.style.opacity = progress.toFixed(3);
-  ballElement.style.transform = [
-    `translate(-50%, ${(targetY - (1 - progress) * 90 + settle).toFixed(2)}%)`,
-    `scale(${(0.58 + progress * 0.42).toFixed(3)})`
-  ].join(" ");
+  ballElement.style.transform = "translate(-50%, -50%)";
 }
 
 function drawShipEngineVfxLayer(layerName) {
