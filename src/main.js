@@ -3142,7 +3142,7 @@ function renderMothershipSpeedOverlay() {
   const pocket = document.createElement("div");
   pocket.className = "mothership-speed-ball-pocket";
   item.balls.forEach((ball, index) => {
-    pocket.append(renderMothershipSpeedBall(ball, index, metrics.revealProgress, item.seed));
+    pocket.append(renderMothershipSpeedBall(ball, index, metrics.revealProgress));
   });
   visual.append(pocket);
   visualWrap.append(visual);
@@ -3175,7 +3175,7 @@ function updateMothershipSpeedOverlayDom() {
   }
   const balls = overlay.querySelectorAll(".mothership-speed-ball");
   balls.forEach((ballElement, index) => {
-    applyMothershipSpeedBallStyle(ballElement, index, metrics.revealProgress, item.seed);
+    applyMothershipSpeedBallStyle(ballElement, index, metrics.revealProgress);
   });
   const status = overlay.querySelector(".mothership-speed-result");
   if (status) {
@@ -3213,32 +3213,36 @@ function getMothershipSpeedShake(item, elapsed) {
   if (shakeProgress <= 0 || shakeProgress >= 1) return { x: 0, y: 0, rotation: 0 };
 
   const falloff = Math.sin(shakeProgress * Math.PI);
-  const frequency = 18 + seededRandom(item.seed, 3) * 5;
+  const phase = shakeProgress * Math.PI * 5.2;
+  const secondaryPhase = shakeProgress * Math.PI * 18;
+  const arc = Math.sin(phase);
+  const lift = Math.cos(phase);
   return {
-    x: Math.sin(shakeProgress * frequency * Math.PI + item.seed) * falloff * 13,
-    y: Math.cos(shakeProgress * (frequency + 2) * Math.PI) * falloff * 7,
-    rotation: Math.sin(shakeProgress * (frequency - 3) * Math.PI + 1.2) * falloff * 3.4
+    x: (arc * 14 + Math.sin(secondaryPhase + item.seed) * 1.4) * falloff,
+    y: (-lift * 9 + Math.cos(secondaryPhase) * 0.9) * falloff,
+    rotation: (arc * 4.2 + Math.sin(secondaryPhase + 0.7) * 0.35) * falloff
   };
 }
 
-function renderMothershipSpeedBall(ball, index, revealProgress, seed) {
+function renderMothershipSpeedBall(ball, index, revealProgress) {
   const visual = mothershipBallVisuals[ball] ?? mothershipBallVisuals.yellow;
   const ballElement = document.createElement("span");
   ballElement.className = `mothership-speed-ball mothership-speed-ball--${ball}`;
   ballElement.style.setProperty("--ball-color", visual.color);
   ballElement.style.setProperty("--ball-light", visual.light);
   ballElement.style.setProperty("--ball-dark", visual.dark);
-  applyMothershipSpeedBallStyle(ballElement, index, revealProgress, seed);
+  applyMothershipSpeedBallStyle(ballElement, index, revealProgress);
   return ballElement;
 }
 
-function applyMothershipSpeedBallStyle(ballElement, index, revealProgress, seed) {
+function applyMothershipSpeedBallStyle(ballElement, index, revealProgress) {
   const delay = index * 0.18;
   const progress = easeOutCubic(clamp01((revealProgress - delay) / (1 - delay)));
-  const jitter = (seededRandom(seed, 22 + index) - 0.5) * 8;
+  const targetY = index === 0 ? -118 : 18;
+  const settle = Math.sin(progress * Math.PI) * (index === 0 ? -6 : 5);
   ballElement.style.opacity = progress.toFixed(3);
   ballElement.style.transform = [
-    `translate(${(-50 + index * 100 + jitter).toFixed(2)}%, ${(-38 - (1 - progress) * 160).toFixed(2)}%)`,
+    `translate(-50%, ${(targetY - (1 - progress) * 90 + settle).toFixed(2)}%)`,
     `scale(${(0.58 + progress * 0.42).toFixed(3)})`
   ].join(" ");
 }
