@@ -3,6 +3,7 @@ import { colonyShipAssetPaths, playerPieceColors, tradeShipAssetPaths } from "./
 const storageKey = "star-odyssey-ship-vfx-anchors";
 const legacyMisnamedTradeShipStorageKey = "star-odyssey-colony-ship-vfx-anchors";
 const tradeShipStorageKey = "star-odyssey-trade-ship-vfx-anchors";
+const tradeShipPreviewScale = 0.43;
 const canvas = document.querySelector("#ship-vfx-canvas");
 const context = canvas.getContext("2d");
 const engineLayerCanvas = document.createElement("canvas");
@@ -313,6 +314,10 @@ function getSelectedAssetId() {
   return activeTab === "trade" ? selectedTradeShipId : selectedShipId;
 }
 
+function getAssetPreviewScale() {
+  return activeTab === "trade" ? tradeShipPreviewScale : 1;
+}
+
 function setSelectedAssetId(value) {
   if (activeTab === "trade") {
     selectedTradeShipId = value;
@@ -374,7 +379,7 @@ function getCanvasSize() {
 
 function getImageTransform(image) {
   const { width, height } = getCanvasSize();
-  const zoom = finiteNumber(zoomControl.value, 0.68);
+  const zoom = finiteNumber(zoomControl.value, 0.68) * getAssetPreviewScale();
   return {
     scale: zoom,
     x: width / 2 - (image.naturalWidth * zoom) / 2,

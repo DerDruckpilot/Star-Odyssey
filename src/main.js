@@ -21,6 +21,7 @@ import {
   getPlayerColonyAssetPath,
   getPlayerShipAssetPath,
   getPlayerSpaceportAssetPath,
+  getTradeShipAssetPath,
   playerPieceVisualDefaults
 } from "./data/playerPieceVisuals.js";
 import { getShipEngineTemplate, getShipVfxAnchors } from "./data/shipVfxData.js";
@@ -3041,7 +3042,7 @@ function drawShipEngineVfxLayer(layerName) {
     if (!isShipFlightAnimating(ship.id)) continue;
     const point = pointsById.get(ship.locationId);
     const owner = state.gameState?.players?.find((player) => player.id === ship.ownerPlayerId);
-    const anchors = getShipVfxAnchors(owner?.color, ship.id);
+    const anchors = getShipVfxAnchorsForRender(owner, ship);
     if (!point || !anchors) continue;
     drawShipEngineVfx(targetContext, ship, owner, anchors, getShipRenderPose(ship, point), layerName, time);
   }
@@ -3061,8 +3062,6 @@ function renderDice3dOverlay() {
   overlay.className = "dice3d-overlay";
   overlay.style.opacity = fade.toFixed(3);
   overlay.setAttribute("aria-hidden", "true");
-  overlay.addEventListener("click", (event) => event.stopPropagation());
-  overlay.addEventListener("pointerdown", (event) => event.stopPropagation());
 
   const scene = document.createElement("div");
   scene.className = "dice3d-scene";
@@ -3643,6 +3642,16 @@ function getBuildActionLabel(action) {
 
 function getShipTypeLabel(type) {
   return type === "tradeShip" ? t("tradeShip") : t("colonyShip");
+}
+
+function getShipAssetPath(owner, ship) {
+  return ship.type === "tradeShip"
+    ? getTradeShipAssetPath(owner?.color, ship.id)
+    : getPlayerShipAssetPath(owner?.color, ship.id);
+}
+
+function getShipVfxAnchorsForRender(owner, ship) {
+  return ship.type === "tradeShip" ? null : getShipVfxAnchors(owner?.color, ship.id);
 }
 
 function getShipStatusLabel(status) {
@@ -4701,7 +4710,7 @@ function renderShipsLayer() {
     const visual = playerPieceVisualDefaults.ship;
     const pop = getPlacementAssetPop("ship", ship.id);
     const pose = getShipRenderPose(ship, point);
-    const anchors = getShipVfxAnchors(owner?.color, ship.id);
+    const anchors = getShipVfxAnchorsForRender(owner, ship);
     const transform = [
       createPlacementTransform(pose.x, pose.y, 0, pop),
       `rotate(${(pose.angle * 180) / Math.PI} ${pose.x} ${pose.y})`
@@ -4714,7 +4723,7 @@ function renderShipsLayer() {
     }));
     shipGroup.append(createSvgElement("image", {
       class: `ship-image player-color-${ownerIndex}`,
-      href: getPlayerShipAssetPath(owner?.color, ship.id),
+      href: getShipAssetPath(owner, ship),
       x: pose.x - visual.width / 2,
       y: pose.y - visual.height / 2,
       width: visual.width,
