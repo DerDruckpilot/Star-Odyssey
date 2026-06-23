@@ -500,7 +500,16 @@ function confirmEncounterTargetAt(nodeId) {
   if (pendingStep?.type !== "boardTargetSelection") return false;
   if (!pendingStep.validNodeIds?.includes(nodeId)) return false;
 
+  const previousGameState = state.gameState;
+  const jumpShip = previousGameState.board?.ships?.find((ship) => ship.id === pendingStep.shipId);
+  if (jumpShip) {
+    queuePlacementVfx("ship", jumpShip);
+  }
   state.gameState = submitEncounterPending(state.gameState, { targetNodeId: nodeId });
+  const shiftedShip = state.gameState.board?.ships?.find((ship) => ship.id === pendingStep.shipId);
+  if (shiftedShip) {
+    queuePlacementVfx("ship", shiftedShip);
+  }
   saveCurrentGameState();
   render();
   return true;
@@ -1904,7 +1913,11 @@ function renderEncounterActions(player) {
     return wrapper;
   }
 
-  if (player?.id !== activePlayer?.id) {
+  const pendingOwnerPlayerId = encounter.pendingStep?.type === "opponentResourceGiftSelection"
+    ? encounter.pendingStep.currentGiverPlayerId
+    : activePlayer?.id;
+
+  if (player?.id !== pendingOwnerPlayerId) {
     const waiting = document.createElement("p");
     waiting.textContent = t("notYourTurn");
     wrapper.append(waiting);
@@ -1925,8 +1938,18 @@ function renderEncounterActions(player) {
     return wrapper;
   }
 
+  if (encounter.pendingStep?.type === "shipJumpSelection") {
+    wrapper.append(renderEncounterShipJumpSelection(encounter.pendingStep));
+    return wrapper;
+  }
+
   if (encounter.pendingStep?.type === "boardTargetSelection") {
     wrapper.append(renderEncounterTargetSelection(encounter.pendingStep));
+    return wrapper;
+  }
+
+  if (encounter.pendingStep?.type === "opponentResourceGiftSelection") {
+    wrapper.append(renderEncounterOpponentGiftSelection(encounter.pendingStep));
     return wrapper;
   }
 
@@ -2028,6 +2051,29 @@ function renderEncounterUpgradeSelection(pendingStep) {
   return wrapper;
 }
 
+function renderEncounterShipJumpSelection(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  const ships = state.gameState?.board?.ships ?? [];
+
+  const hint = document.createElement("p");
+  hint.textContent = getLocalizedEncounterText(pendingStep.hint) || t("encounterSelectJumpShip");
+  wrapper.append(hint);
+
+  for (const shipId of pendingStep.shipIds ?? []) {
+    const ship = ships.find((candidate) => candidate.id === shipId);
+    const button = createButton(
+      `${getShipTypeLabel(ship?.type)} · ${ship?.coilCount ?? ship?.shipVariant ?? ""}`,
+      () => submitEncounterPendingAction({ shipId }),
+      "small-button"
+    );
+    button.disabled = !ship;
+    wrapper.append(button);
+  }
+
+  return wrapper;
+}
+
 function renderEncounterTargetSelection(pendingStep) {
   const wrapper = document.createElement("div");
   wrapper.className = "encounter-choice-list";
@@ -2039,6 +2085,38 @@ function renderEncounterTargetSelection(pendingStep) {
   const selection = document.createElement("p");
   selection.textContent = t("encounterChooseBoardTarget");
   wrapper.append(selection);
+  return wrapper;
+}
+
+function renderEncounterOpponentGiftSelection(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  const giver = state.gameState?.players?.find((player) => player.id === pendingStep.currentGiverPlayerId);
+  const receiver = state.gameState?.players?.find((player) => player.id === pendingStep.receiverPlayerId);
+
+  const hint = document.createElement("p");
+  hint.textContent = t("encounterResourceGiftHint")
+    .replace("{player}", giver?.name ?? t("none"))
+    .replace("{target}", receiver?.name ?? t("none"));
+  wrapper.append(hint);
+
+  let hasResource = false;
+  for (const resource of resourceTypes) {
+    const owned = giver?.resources?.[resource] ?? 0;
+    const button = createButton(
+      `${getResourceLabel(resource)} (${owned})`,
+      () => submitEncounterPendingAction({ resource }),
+      "small-button"
+    );
+    button.disabled = owned <= 0;
+    if (owned > 0) hasResource = true;
+    wrapper.append(button);
+  }
+
+  if (!hasResource) {
+    wrapper.append(createButton(t("continue"), () => submitEncounterPendingAction({ skip: true }), "small-button"));
+  }
+
   return wrapper;
 }
 

@@ -188,6 +188,7 @@ export function createGameState({ language, playerCount, boardLayout, playerSetu
     encounterDiscard: [],
     activeEncounter: null,
     encounterStep: null,
+    pendingGiftedTradeShips: [],
     remainingMovementByShipId: {},
     hasRolledFlightSpeed: false,
     supplyDeck: createSupplyDeck(),
@@ -815,7 +816,7 @@ export function distributeSevenSupply(gameState) {
 
 export function advanceToFlightPhase(gameState) {
   if (isGameOverState(gameState)) return gameState;
-  return updateGameState(gameState, {
+  const nextState = updateGameState(gameState, {
     phase: "flight",
     activeTradeOffer: null,
     flightRoll: null,
@@ -841,6 +842,7 @@ export function advanceToFlightPhase(gameState) {
       }
     }
   });
+  return placePendingGiftedShips(nextState, defaultBoardLayout);
 }
 
 export function determineFlightSpeed(gameState, forcedRoll = null) {
@@ -1036,7 +1038,7 @@ export function finishEncounter(gameState) {
     });
   }
 
-  return updateGameState(gameState, {
+  const nextState = updateGameState(gameState, {
     activeEncounter: null,
     encounterStep: null,
     encounterTriggered: false,
@@ -1049,6 +1051,7 @@ export function finishEncounter(gameState) {
       : {}),
     logEntries
   });
+  return placePendingGiftedShips(nextState, defaultBoardLayout);
 }
 
 export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
@@ -1214,7 +1217,7 @@ export function foundColony(gameState, boardLayout, shipId) {
   delete remainingMovementByShipId[ship.id];
   const players = syncPlayersWithBoardAssets(gameState.players, structures, updatedShips);
 
-  return updateGameState(gameState, {
+  const nextState = updateGameState(gameState, {
     players,
     remainingMovementByShipId,
     board: {
@@ -1232,6 +1235,7 @@ export function foundColony(gameState, boardLayout, shipId) {
       }
     }
   });
+  return placePendingGiftedShips(nextState, boardLayout);
 }
 
 export function foundTradeStation(gameState, boardLayout, shipId) {
@@ -1391,7 +1395,7 @@ function placeTradeStationAtDock(gameState, boardLayout, {
     ? removeFriendshipCardFromOutposts(friendshipResult.outposts, outpost.id, grantedCardId)
     : friendshipResult.outposts;
 
-  return updateGameState(gameState, {
+  const nextState = updateGameState(gameState, {
     players: finalPlayers,
     remainingMovementByShipId,
     board: {
@@ -1416,6 +1420,7 @@ function placeTradeStationAtDock(gameState, boardLayout, {
       ? [...logEntries, createFriendshipCardGainLogEntry(activePlayer.name, grantedCardId)]
       : logEntries
   });
+  return placePendingGiftedShips(nextState, boardLayout);
 }
 
 export function selectPendingFriendshipCard(gameState, cardId) {
@@ -2295,6 +2300,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     encounterDiscard: normalizeEncounterDeck(gameState.encounterDiscard, { allowEmpty: true }),
     activeEncounter: normalizedPhase === "flight" ? normalizeActiveEncounter(gameState.activeEncounter) : null,
     encounterStep: normalizedPhase === "flight" && typeof gameState.encounterStep === "string" ? gameState.encounterStep : null,
+    pendingGiftedTradeShips: normalizePendingGiftedTradeShips(gameState.pendingGiftedTradeShips, normalizedPlayers),
     remainingMovementByShipId: normalizedPhase === "flight" ? normalizeRemainingMovement(gameState.remainingMovementByShipId) : {},
     hasRolledFlightSpeed: normalizedPhase === "flight" && Boolean(gameState.hasRolledFlightSpeed),
     supplyDeck: normalizeSupplyDeck(gameState.supplyDeck),
@@ -2580,6 +2586,20 @@ function normalizeActiveEncounter(activeEncounter) {
   };
 }
 
+function normalizePendingGiftedTradeShips(pendingGiftedTradeShips, players = []) {
+  const validPlayerIds = new Set(players.map((player) => player.id));
+  if (!Array.isArray(pendingGiftedTradeShips)) return [];
+
+  return pendingGiftedTradeShips
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry, index) => ({
+      id: typeof entry.id === "string" ? entry.id : `pending-gifted-trade-ship-${index + 1}`,
+      ownerPlayerId: typeof entry.ownerPlayerId === "string" ? entry.ownerPlayerId : null,
+      shipType: entry.shipType === "colonyShip" ? "colonyShip" : "tradeShip"
+    }))
+    .filter((entry) => validPlayerIds.size === 0 || validPlayerIds.has(entry.ownerPlayerId));
+}
+
 function normalizeEncounterCombat(combat) {
   if (!combat || typeof combat !== "object") return null;
   return {
@@ -2634,6 +2654,30 @@ function normalizePendingEncounterStep(pendingStep) {
         ? pendingStep.validNodeIds.filter((nodeId) => typeof nodeId === "string")
         : [],
       hint: normalizeLocalizedText(pendingStep.hint),
+      remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
+    };
+  }
+
+  if (pendingStep.type === "shipJumpSelection") {
+    return {
+      type: "shipJumpSelection",
+      shipIds: Array.isArray(pendingStep.shipIds)
+        ? pendingStep.shipIds.filter((shipId) => typeof shipId === "string")
+        : [],
+      hint: normalizeLocalizedText(pendingStep.hint),
+      remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
+    };
+  }
+
+  if (pendingStep.type === "opponentResourceGiftSelection") {
+    return {
+      type: "opponentResourceGiftSelection",
+      amount: Number.isInteger(pendingStep.amount) ? Math.max(1, pendingStep.amount) : 1,
+      receiverPlayerId: typeof pendingStep.receiverPlayerId === "string" ? pendingStep.receiverPlayerId : null,
+      currentGiverPlayerId: typeof pendingStep.currentGiverPlayerId === "string" ? pendingStep.currentGiverPlayerId : null,
+      giverPlayerIds: Array.isArray(pendingStep.giverPlayerIds)
+        ? pendingStep.giverPlayerIds.filter((playerId) => typeof playerId === "string")
+        : [],
       remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
     };
   }
@@ -2820,6 +2864,7 @@ function createEncounterWorkingState(gameState) {
       ships: normalizeShips(gameState.board?.ships),
       structures: normalizeStructures(gameState.board?.structures, gameState.playerCount, defaultBoardLayout, { useFallback: false })
     },
+    pendingGiftedTradeShips: normalizePendingGiftedTradeShips(gameState.pendingGiftedTradeShips, gameState.players),
     remainingMovementByShipId: { ...(gameState.remainingMovementByShipId ?? {}) }
   };
 }
@@ -2829,6 +2874,10 @@ function applyEncounterResolution(gameState, encounter, resolution, metadata = {
   const baseUpdate = {
     players: resolution.players ?? gameState.players,
     board: resolution.board ? { ...gameState.board, ...resolution.board } : gameState.board,
+    pendingGiftedTradeShips: normalizePendingGiftedTradeShips(
+      resolution.pendingGiftedTradeShips ?? gameState.pendingGiftedTradeShips,
+      resolution.players ?? gameState.players
+    ),
     remainingMovementByShipId: resolution.remainingMovementByShipId ?? gameState.remainingMovementByShipId,
     logEntries: resolution.logEntries ?? []
   };
@@ -2914,6 +2963,7 @@ function runEncounterEffectSequence(gameState, state, activePlayerId, effects, c
       return {
         players: workingState.players,
         board: workingState.board,
+        pendingGiftedTradeShips: workingState.pendingGiftedTradeShips,
         remainingMovementByShipId: workingState.remainingMovementByShipId,
         logEntries,
         combat,
@@ -2933,6 +2983,7 @@ function runEncounterEffectSequence(gameState, state, activePlayerId, effects, c
       return {
         players: workingState.players,
         board: workingState.board,
+        pendingGiftedTradeShips: workingState.pendingGiftedTradeShips,
         remainingMovementByShipId: workingState.remainingMovementByShipId,
         logEntries,
         combat,
@@ -2947,6 +2998,7 @@ function runEncounterEffectSequence(gameState, state, activePlayerId, effects, c
   return {
     players: workingState.players,
     board: workingState.board,
+    pendingGiftedTradeShips: workingState.pendingGiftedTradeShips,
     remainingMovementByShipId: workingState.remainingMovementByShipId,
     logEntries,
     combat,
@@ -3051,6 +3103,56 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
           player: activePlayer.name,
           resources: formatResourceSelectionForLog(selectedResources)
         })]
+      };
+    }
+    case "gainSelectedResources": {
+      const selectedResources = normalizeResources(payload.lastSelectedResources);
+      if (countResources(selectedResources) === 0) {
+        return { state };
+      }
+
+      let nextState = state;
+      for (const resource of supplyResourceTypes) {
+        const amount = selectedResources[resource] ?? 0;
+        if (amount <= 0) continue;
+        nextState = updateEncounterWorkingPlayer(
+          nextState,
+          activePlayerId,
+          (player) => withResourceDelta(player, resource, amount)
+        );
+      }
+
+      return {
+        state: nextState,
+        logEntries: [createEncounterLog("logEncounterResourceSelectionGain", {
+          player: activePlayer.name,
+          resources: formatResourceSelectionForLog(selectedResources)
+        })]
+      };
+    }
+    case "collectGiftsFromOpponents": {
+      const giverPlayerIds = state.players
+        .filter((player) => player.id !== activePlayerId && countResources(player.resources) > 0)
+        .map((player) => player.id);
+      if (giverPlayerIds.length === 0) {
+        return {
+          state,
+          logEntries: [createEncounterLog("logEncounterNoResourceGift", {
+            player: activePlayer.name
+          })]
+        };
+      }
+
+      return {
+        state,
+        pendingStep: {
+          type: "opponentResourceGiftSelection",
+          amount: effect.amount ?? 1,
+          receiverPlayerId: activePlayerId,
+          currentGiverPlayerId: giverPlayerIds[0],
+          giverPlayerIds,
+          remainingEffects: []
+        }
       };
     }
     case "gainHalfMedal": {
@@ -3206,6 +3308,7 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         state: {
           players: followUp.players,
           board: followUp.board,
+          pendingGiftedTradeShips: followUp.pendingGiftedTradeShips,
           remainingMovementByShipId: followUp.remainingMovementByShipId
         },
         logEntries: [comparisonLog, ...(followUp.logEntries ?? [])],
@@ -3247,6 +3350,7 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         state: {
           players: followUp.players,
           board: followUp.board,
+          pendingGiftedTradeShips: followUp.pendingGiftedTradeShips,
           remainingMovementByShipId: followUp.remainingMovementByShipId
         },
         logEntries: [combatLog, ...(followUp.logEntries ?? [])],
@@ -3287,6 +3391,7 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         state: {
           players: followUp.players,
           board: followUp.board,
+          pendingGiftedTradeShips: followUp.pendingGiftedTradeShips,
           remainingMovementByShipId: followUp.remainingMovementByShipId
         },
         logEntries: [outcomeLog, ...(followUp.logEntries ?? [])],
@@ -3297,26 +3402,8 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
       };
     }
     case "jumpFirstShip": {
-      const ship = getEncounterShipForJump(state, activePlayerId);
-      if (!ship) {
-        return {
-          state,
-          logEntries: [createEncounterLog("logEncounterNoJumpShip", {
-            player: activePlayer.name
-          })]
-        };
-      }
-
-      const validNodeIds = getEncounterJumpTargets(
-        {
-          ...gameState,
-          players: state.players,
-          board: state.board
-        },
-        ship.id,
-        defaultBoardLayout
-      );
-      if (validNodeIds.length === 0) {
+      const shipIds = getEncounterJumpShips(state, activePlayerId).map((ship) => ship.id);
+      if (shipIds.length === 0) {
         return {
           state,
           logEntries: [createEncounterLog("logEncounterNoJumpShip", {
@@ -3328,12 +3415,35 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
       return {
         state,
         pendingStep: {
-          type: "boardTargetSelection",
-          shipId: ship.id,
-          validNodeIds,
+          type: "shipJumpSelection",
+          shipIds,
           hint: {
-            de: "Waehle einen gueltigen Zielpunkt fuer den Raumsprung.",
-            en: "Choose a valid destination for the spatial jump."
+            de: "Waehle ein eigenes Schiff fuer den Raumsprung.",
+            en: "Choose one of your ships for the spatial jump."
+          },
+          remainingEffects: []
+        }
+      };
+    }
+    case "jumpShip": {
+      const shipIds = getEncounterJumpShips(state, activePlayerId).map((ship) => ship.id);
+      if (shipIds.length === 0) {
+        return {
+          state,
+          logEntries: [createEncounterLog("logEncounterNoJumpShip", {
+            player: activePlayer.name
+          })]
+        };
+      }
+
+      return {
+        state,
+        pendingStep: {
+          type: "shipJumpSelection",
+          shipIds,
+          hint: {
+            de: "Waehle ein eigenes Schiff fuer den Raumsprung.",
+            en: "Choose one of your ships for the spatial jump."
           },
           remainingEffects: []
         }
@@ -3482,6 +3592,57 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
     };
   }
 
+  if (pendingStep.type === "shipJumpSelection") {
+    const shipId = payload.shipId;
+    if (typeof shipId !== "string" || !pendingStep.shipIds?.includes(shipId)) return null;
+
+    const ship = normalizeShips(state.board?.ships)
+      .find((candidate) => candidate.id === shipId && candidate.ownerPlayerId === activePlayer.id);
+    if (!ship) return null;
+
+    const validNodeIds = getEncounterJumpTargets(
+      {
+        ...gameState,
+        players: state.players,
+        board: state.board
+      },
+      ship.id,
+      defaultBoardLayout
+    );
+    if (validNodeIds.length === 0) {
+      const followUp = runEncounterEffectSequence(gameState, state, activePlayer.id, remainingEffects, card, payload, {});
+      if (!followUp) return null;
+      return {
+        ...followUp,
+        logEntries: [
+          createEncounterLog("logEncounterNoJumpShip", { player: activePlayer.name }),
+          ...(followUp.logEntries ?? [])
+        ]
+      };
+    }
+
+    return {
+      players: state.players,
+      board: state.board,
+      pendingGiftedTradeShips: state.pendingGiftedTradeShips,
+      remainingMovementByShipId: state.remainingMovementByShipId,
+      logEntries: [],
+      combat: encounter.combat ?? null,
+      resultText: encounter.resultText ?? null,
+      status: "pending",
+      pendingStep: {
+        type: "boardTargetSelection",
+        shipId,
+        validNodeIds,
+        hint: {
+          de: "Waehle einen gueltigen Zielpunkt fuer den Raumsprung.",
+          en: "Choose a valid destination for the spatial jump."
+        },
+        remainingEffects
+      }
+    };
+  }
+
   if (pendingStep.type === "boardTargetSelection") {
     const targetNodeId = payload.targetNodeId;
     if (typeof targetNodeId !== "string" || !pendingStep.validNodeIds?.includes(targetNodeId)) {
@@ -3521,6 +3682,85 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
     };
   }
 
+  if (pendingStep.type === "opponentResourceGiftSelection") {
+    const giverPlayerId = pendingStep.currentGiverPlayerId;
+    const receiverPlayerId = pendingStep.receiverPlayerId;
+    const giver = state.players.find((candidate) => candidate.id === giverPlayerId);
+    const receiver = state.players.find((candidate) => candidate.id === receiverPlayerId);
+    if (!giver || !receiver) return null;
+
+    if (payload.skip && countResources(giver.resources) === 0) {
+      const nextGiverPlayerIds = (pendingStep.giverPlayerIds ?? []).filter((playerId) => playerId !== giverPlayerId);
+      if (nextGiverPlayerIds.length > 0) {
+        return {
+          players: state.players,
+          board: state.board,
+          pendingGiftedTradeShips: state.pendingGiftedTradeShips,
+          remainingMovementByShipId: state.remainingMovementByShipId,
+          logEntries: [],
+          combat: encounter.combat ?? null,
+          resultText: encounter.resultText ?? null,
+          status: "pending",
+          pendingStep: {
+            ...pendingStep,
+            currentGiverPlayerId: nextGiverPlayerIds[0],
+            giverPlayerIds: nextGiverPlayerIds
+          }
+        };
+      }
+
+      return runEncounterEffectSequence(gameState, state, activePlayer.id, remainingEffects, card, payload, {});
+    }
+
+    const resource = payload.resource;
+    if (!supplyResourceTypes.includes(resource) || (giver.resources?.[resource] ?? 0) <= 0) {
+      return null;
+    }
+
+    let nextState = updateEncounterWorkingPlayer(
+      state,
+      giverPlayerId,
+      (player) => withResourceDelta(player, resource, -1)
+    );
+    nextState = updateEncounterWorkingPlayer(
+      nextState,
+      receiverPlayerId,
+      (player) => withResourceDelta(player, resource, 1)
+    );
+
+    const nextGiverPlayerIds = (pendingStep.giverPlayerIds ?? []).filter((playerId) => playerId !== giverPlayerId);
+    const baseLog = createEncounterLog("logEncounterResourceGift", {
+      player: giver.name,
+      target: receiver.name
+    });
+
+    if (nextGiverPlayerIds.length > 0) {
+      return {
+        players: nextState.players,
+        board: nextState.board,
+        pendingGiftedTradeShips: nextState.pendingGiftedTradeShips,
+        remainingMovementByShipId: nextState.remainingMovementByShipId,
+        logEntries: [baseLog],
+        combat: encounter.combat ?? null,
+        resultText: encounter.resultText ?? null,
+        status: "pending",
+        pendingStep: {
+          ...pendingStep,
+          currentGiverPlayerId: nextGiverPlayerIds[0],
+          giverPlayerIds: nextGiverPlayerIds
+        }
+      };
+    }
+
+    const followUp = runEncounterEffectSequence(gameState, nextState, activePlayer.id, remainingEffects, card, payload, {});
+    if (!followUp) return null;
+
+    return {
+      ...followUp,
+      logEntries: [baseLog, ...(followUp.logEntries ?? [])]
+    };
+  }
+
   if (pendingStep.type === "globalUpgradeLossSelection") {
     const currentTargetPlayerId = pendingStep.currentTargetPlayerId;
     const targetPlayer = state.players.find((candidate) => candidate.id === currentTargetPlayerId);
@@ -3535,6 +3775,7 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
         return {
           players: state.players,
           board: state.board,
+          pendingGiftedTradeShips: state.pendingGiftedTradeShips,
           remainingMovementByShipId: state.remainingMovementByShipId,
           logEntries: [],
           combat: encounter.combat ?? null,
@@ -3568,6 +3809,7 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
       return {
         players: nextState.players,
         board: nextState.board,
+        pendingGiftedTradeShips: nextState.pendingGiftedTradeShips,
         remainingMovementByShipId: nextState.remainingMovementByShipId,
         logEntries: [baseLog],
         combat: encounter.combat ?? null,
@@ -3606,7 +3848,7 @@ function resolveEncounterComparison(gameState, activePlayer, effect, payload = {
       metric: "speed",
       ownValue,
       otherValue,
-      success: otherValue > ownValue,
+      success: ownValue >= otherValue,
       targetPlayerId: targetPlayer.id,
       targetName: targetPlayer.name
     };
@@ -3618,7 +3860,7 @@ function resolveEncounterComparison(gameState, activePlayer, effect, payload = {
     metric: "drive",
     ownValue,
     otherValue,
-    success: otherValue > ownValue,
+    success: ownValue >= otherValue,
     targetPlayerId: targetPlayer.id,
     targetName: targetPlayer.name
   };
@@ -3727,8 +3969,8 @@ function applyEncounterShipGift(gameState, state, activePlayerId, shipType) {
   const shipVariant = getNextAvailableShipVariant(state.board?.ships, activePlayerId);
   if (!shipVariant || (inventory.transporter?.available ?? 0) <= 0 || (inventory[stockKey]?.available ?? 0) <= 0) {
     return {
-      state,
-      logEntries: [createEncounterLog("logEncounterShipGiftFailed", {
+      state: addPendingGiftedShip(state, activePlayerId, shipType),
+      logEntries: [createEncounterLog("logEncounterShipGiftPending", {
         player: getPlayerNameById(state.players, activePlayerId),
         ship: shipType
       })]
@@ -3738,8 +3980,8 @@ function applyEncounterShipGift(gameState, state, activePlayerId, shipType) {
   const launchPoint = findFreeLaunchPoint(tempGameState, defaultBoardLayout, activePlayerId);
   if (!launchPoint) {
     return {
-      state,
-      logEntries: [createEncounterLog("logEncounterShipGiftFailed", {
+      state: addPendingGiftedShip(state, activePlayerId, shipType),
+      logEntries: [createEncounterLog("logEncounterShipGiftPending", {
         player: getPlayerNameById(state.players, activePlayerId),
         ship: shipType
       })]
@@ -3775,6 +4017,92 @@ function applyEncounterShipGift(gameState, state, activePlayerId, shipType) {
   };
 }
 
+function addPendingGiftedShip(state, ownerPlayerId, shipType) {
+  return {
+    ...state,
+    pendingGiftedTradeShips: [
+      ...(state.pendingGiftedTradeShips ?? []),
+      {
+        id: createId("pending-gifted-ship"),
+        ownerPlayerId,
+        shipType: shipType === "colonyShip" ? "colonyShip" : "tradeShip"
+      }
+    ]
+  };
+}
+
+function placePendingGiftedShips(gameState, boardLayout) {
+  const pendingShips = normalizePendingGiftedTradeShips(gameState.pendingGiftedTradeShips, gameState.players);
+  if (pendingShips.length === 0) return gameState;
+
+  let workingState = {
+    ...gameState,
+    board: {
+      ...gameState.board,
+      ships: normalizeShips(gameState.board?.ships)
+    }
+  };
+  const remainingPendingShips = [];
+  const logEntries = [];
+
+  for (const pendingShip of pendingShips) {
+    const playerName = getPlayerNameById(workingState.players, pendingShip.ownerPlayerId);
+    const inventory = getPlayerInventory(workingState, pendingShip.ownerPlayerId);
+    const stockKey = pendingShip.shipType === "tradeShip" ? "tradeStation" : "colony";
+    const shipVariant = getNextAvailableShipVariant(workingState.board?.ships, pendingShip.ownerPlayerId);
+    const launchPoint = findFreeLaunchPoint(workingState, boardLayout, pendingShip.ownerPlayerId);
+
+    if (
+      !shipVariant ||
+      !launchPoint ||
+      (inventory.transporter?.available ?? 0) <= 0 ||
+      (inventory[stockKey]?.available ?? 0) <= 0
+    ) {
+      remainingPendingShips.push(pendingShip);
+      continue;
+    }
+
+    const ship = {
+      id: createId(pendingShip.shipType === "tradeShip" ? "trade-ship" : "colony-ship"),
+      ownerPlayerId: pendingShip.ownerPlayerId,
+      type: pendingShip.shipType,
+      shipVariant,
+      coilCount: shipVariant,
+      locationId: launchPoint.id,
+      status: "docked"
+    };
+    workingState = {
+      ...workingState,
+      board: {
+        ...workingState.board,
+        ships: [...normalizeShips(workingState.board?.ships), ship]
+      },
+      remainingMovementByShipId: {
+        ...(workingState.remainingMovementByShipId ?? {}),
+        [ship.id]: 0
+      }
+    };
+    logEntries.push(createEncounterLog("logEncounterShipGift", {
+      player: playerName,
+      ship: pendingShip.shipType
+    }));
+  }
+
+  if (remainingPendingShips.length === pendingShips.length && logEntries.length === 0) {
+    return {
+      ...gameState,
+      pendingGiftedTradeShips: remainingPendingShips
+    };
+  }
+
+  return updateGameState(workingState, {
+    pendingGiftedTradeShips: remainingPendingShips,
+    board: workingState.board,
+    remainingMovementByShipId: workingState.remainingMovementByShipId,
+    logEntries
+  });
+}
+
 function applyEncounterShipBlock(state, activePlayerId) {
   const ships = normalizeShips(state.board?.ships)
     .filter((ship) => ship.ownerPlayerId === activePlayerId)
@@ -3804,10 +4132,10 @@ function applyEncounterShipBlock(state, activePlayerId) {
   };
 }
 
-function getEncounterShipForJump(state, activePlayerId) {
+function getEncounterJumpShips(state, activePlayerId) {
   return normalizeShips(state.board?.ships)
     .filter((ship) => ship.ownerPlayerId === activePlayerId)
-    .sort(compareShipsForOrdinal)[0] ?? null;
+    .sort(compareShipsForOrdinal);
 }
 
 function getEncounterJumpTargets(gameState, shipId, boardLayout) {
@@ -3838,6 +4166,9 @@ function getNeighborPlayer(gameState, playerId, offset) {
   if (playerIndex < 0) return null;
 
   const normalizedOffset = Number.isInteger(offset) ? offset : 1;
+  if (players.length === 2 && normalizedOffset !== 0) {
+    return players.find((player) => player.id !== playerId) ?? null;
+  }
   const targetIndex = (playerIndex + normalizedOffset + players.length * 10) % players.length;
   return players[targetIndex] ?? null;
 }
@@ -3851,9 +4182,7 @@ function createEncounterLog(messageKey, messageParams) {
 }
 
 function formatResourceSelectionForLog(resources) {
-  return supplyResourceTypes
-    .flatMap((resource) => Array.from({ length: resources?.[resource] ?? 0 }, () => resource))
-    .join(", ");
+  return String(countResources(resources));
 }
 
 function formatResourceList(resources) {

@@ -752,9 +752,9 @@ assert(!nonEncounterFlightState.activeEncounter, "Colored mothership balls shoul
 
 encounterGame = determineFlightSpeed(encounterGame, {
   balls: ["black", "yellow"],
-  encounterCardId: "honor-medal"
+  encounterCardId: "spreadsheet-14"
 });
-assert(encounterGame.activeEncounter?.cardId === "honor-medal", "A black mothership ball should start an encounter.");
+assert(encounterGame.activeEncounter?.cardId === "spreadsheet-14", "A black mothership ball should start an encounter.");
 assert(encounterGame.flightSpeedBase === 3, "A black mothership ball should force base speed 3.");
 assert(Object.keys(encounterGame.remainingMovementByShipId ?? {}).length === 0, "Encounter flight rolls should wait to assign movement until the encounter is finished.");
 const encounterPointsBeforeMedal = calculateVictoryPoints(encounterGame, "player-1");
@@ -768,7 +768,7 @@ assert(
   blockedMoveState.board.ships[0].locationId === encounterGame.board.ships[0].locationId,
   "Ship movement should be blocked while an encounter is active."
 );
-encounterGame = resolveEncounterChoice(encounterGame, { choiceId: "accept" });
+encounterGame = resolveEncounterChoice(encounterGame, { choiceId: "decline" });
 assert(encounterGame.activeEncounter?.status === "resolved", "Simple encounter choices should resolve immediately.");
 assert(encounterGame.players[0].halfMedals === 2, "Encounter reward should add a half medal.");
 assert(calculateVictoryPoints(encounterGame, "player-1") === encounterPointsBeforeMedal + 1, "Two half medals should count as one victory point.");
@@ -777,10 +777,10 @@ const normalizedEncounterState = normalizeGameState(JSON.parse(JSON.stringify(en
   playerCount: 2,
   boardLayout
 });
-assert(normalizedEncounterState.activeEncounter?.cardId === "honor-medal", "Save/load normalization should preserve the active encounter.");
+assert(normalizedEncounterState.activeEncounter?.cardId === "spreadsheet-14", "Save/load normalization should preserve the active encounter.");
 encounterGame = finishEncounter(encounterGame);
 assert(!encounterGame.activeEncounter, "Encounter should clear after finishing.");
-assert(encounterGame.encounterDiscard.includes("honor-medal"), "Finished encounters should move to the discard pile.");
+assert(encounterGame.encounterDiscard.includes("spreadsheet-14"), "Finished encounters should move to the discard pile.");
 assert(encounterGame.flightSpeedTotal === 4, "Finished encounters should initialize movement from the current drive value.");
 assert(encounterGame.remainingMovementByShipId?.[encounterShipId] === 4, "Ship movement should be available only after finishing an encounter.");
 const postEncounterMoveState = moveShip(
@@ -793,9 +793,9 @@ assert(postEncounterMoveState !== null, "Game state should remain usable after f
 
 let driveGainEncounterGame = determineFlightSpeed(encounterBaseState, {
   balls: ["black", "yellow"],
-  encounterCardId: "honor-medal"
+  encounterCardId: "spreadsheet-14"
 });
-driveGainEncounterGame = resolveEncounterChoice(driveGainEncounterGame, { choiceId: "accept" });
+driveGainEncounterGame = resolveEncounterChoice(driveGainEncounterGame, { choiceId: "decline" });
 driveGainEncounterGame = {
   ...driveGainEncounterGame,
   players: driveGainEncounterGame.players.map((player, index) => index === 0
@@ -819,9 +819,9 @@ let driveLossEncounterGame = {
 };
 driveLossEncounterGame = determineFlightSpeed(driveLossEncounterGame, {
   balls: ["black", "yellow"],
-  encounterCardId: "honor-medal"
+  encounterCardId: "spreadsheet-14"
 });
-driveLossEncounterGame = resolveEncounterChoice(driveLossEncounterGame, { choiceId: "accept" });
+driveLossEncounterGame = resolveEncounterChoice(driveLossEncounterGame, { choiceId: "decline" });
 driveLossEncounterGame = {
   ...driveLossEncounterGame,
   players: driveLossEncounterGame.players.map((player, index) => index === 0
@@ -855,7 +855,7 @@ pendingEncounterGame = {
 };
 pendingEncounterGame = determineFlightSpeed(pendingEncounterGame, {
   balls: ["black", "yellow"],
-  encounterCardId: "merchant-gift-upgrade"
+  encounterCardId: "spreadsheet-02"
 });
 pendingEncounterGame = resolveEncounterChoice(pendingEncounterGame, { choiceId: "gift-3" });
 assert(pendingEncounterGame.activeEncounter?.pendingStep?.type === "resourceSelection", "Merchant encounters should pause for resource loss selection.");
@@ -876,7 +876,7 @@ assert(pendingEncounterGame.players[0].resources.ore === 0, "Encounter resource 
 assert(pendingEncounterGame.players[0].upgrades.cargo === 1, "Encounter upgrade rewards should apply after selection.");
 assert(pendingEncounterGame.players[0].halfMedals === 2, "Encounter medal rewards should still apply after pending steps.");
 pendingEncounterGame = finishEncounter(pendingEncounterGame);
-assert(pendingEncounterGame.encounterDiscard.includes("merchant-gift-upgrade"), "Completed pending encounters should also move to the discard pile.");
+assert(pendingEncounterGame.encounterDiscard.includes("spreadsheet-02"), "Completed pending encounters should also move to the discard pile.");
 
 let combatEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
@@ -901,7 +901,7 @@ combatEncounterGame = {
 };
 combatEncounterGame = determineFlightSpeed(combatEncounterGame, {
   balls: ["black", "yellow"],
-  encounterCardId: "help-green-prince"
+  encounterCardId: "spreadsheet-23"
 });
 combatEncounterGame = resolveEncounterChoice(combatEncounterGame, {
   choiceId: "help",
@@ -916,10 +916,16 @@ assert(combatEncounterGame.activeEncounter?.status === "resolved", "Combat encou
 assert(combatEncounterGame.players[0].resources.ore === 1 && combatEncounterGame.players[0].resources.fuel === 1, "Combat reward selection should grant the chosen resources.");
 assert(combatEncounterGame.players[0].halfMedals === 2, "Combat encounter success should grant a half medal.");
 combatEncounterGame = finishEncounter(combatEncounterGame);
-assert(combatEncounterGame.encounterDiscard.includes("help-green-prince"), "Combat encounters should move to the discard pile after finishing.");
+assert(combatEncounterGame.encounterDiscard.includes("spreadsheet-23"), "Combat encounters should move to the discard pile after finishing.");
 
 const encounterDeckIds = getEncounterDeckIds();
 assert(encounterDeckIds.length === 32, "Encounter deck should expose the full active 32-card set.");
+assert(
+  encounterDeckIds
+    .map((cardId) => getEncounterCardById(cardId)?.number)
+    .every((number, index) => number === index + 1),
+  "Encounter deck should be normalized as cards 1 through 32 in order."
+);
 assert(
   encounterDeckIds.every((cardId) => getEncounterCardById(cardId)?.implemented === true),
   "Encounter deck should only contain implemented cards."
@@ -937,22 +943,28 @@ distortionEncounterGame = {
   players: distortionEncounterGame.players.map((player, index) => ({
     ...player,
     upgrades: index === 0
-      ? { drive: 2, cargo: 0, cannon: 0 }
-      : { drive: 3, cargo: 0, cannon: 0 },
+      ? { drive: 3, cargo: 0, cannon: 0 }
+      : { drive: 2, cargo: 0, cannon: 0 },
     friendshipCards: [],
     resources: { ore: 0, fuel: 0, carbon: 0, food: 0, goods: 0 }
   }))
 };
 distortionEncounterGame = determineFlightSpeed(distortionEncounterGame, {
   balls: ["black", "yellow"],
-  encounterCardId: "space-distortion-right"
+  encounterCardId: "spreadsheet-26"
 });
 distortionEncounterGame = resolveEncounterChoice(distortionEncounterGame, {
   choiceId: "attempt",
   forcedRoll: { balls: ["yellow", "yellow"] },
   forcedOpponentRoll: { balls: ["yellow", "yellow"] }
 });
-assert(distortionEncounterGame.activeEncounter?.pendingStep?.type === "boardTargetSelection", "Space distortion encounters should request a board target.");
+assert(distortionEncounterGame.activeEncounter?.pendingStep?.type === "shipJumpSelection", "Space distortion encounters should request a ship first.");
+const distortionShipId = distortionEncounterGame.activeEncounter?.pendingStep?.shipIds?.[0];
+assert(Boolean(distortionShipId), "Space distortion encounters should expose at least one ship for jumping.");
+if (distortionShipId) {
+  distortionEncounterGame = submitEncounterPending(distortionEncounterGame, { shipId: distortionShipId });
+}
+assert(distortionEncounterGame.activeEncounter?.pendingStep?.type === "boardTargetSelection", "Space distortion encounters should request a board target after the ship selection.");
 const distortionTarget = distortionEncounterGame.activeEncounter?.pendingStep?.validNodeIds?.[0];
 assert(Boolean(distortionTarget), "Space distortion encounters should expose at least one valid jump target.");
 if (distortionTarget) {
@@ -979,15 +991,13 @@ chainedEncounterGame = {
 };
 chainedEncounterGame = determineFlightSpeed(chainedEncounterGame, {
   balls: ["black", "yellow"],
-  encounterCardId: "space-distortion-right"
+  encounterCardId: "spreadsheet-26"
 });
 chainedEncounterGame = resolveEncounterChoice(chainedEncounterGame, {
-  choiceId: "attempt",
-  forcedRoll: { balls: ["blue", "yellow"] },
-  forcedOpponentRoll: { balls: ["blue", "yellow"] }
+  choiceId: "decline"
 });
-assert(chainedEncounterGame.activeEncounter?.cardId !== "space-distortion-right", "Follow-up encounter effects should immediately draw the next card.");
-assert(chainedEncounterGame.encounterDiscard.includes("space-distortion-right"), "Encounter chains without full reshuffle should discard the resolved card.");
+assert(chainedEncounterGame.activeEncounter?.cardId !== "spreadsheet-26", "Follow-up encounter effects should immediately draw the next card.");
+assert(chainedEncounterGame.encounterDiscard.includes("spreadsheet-26"), "Encounter chains without full reshuffle should discard the resolved card.");
 
 let toothEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
@@ -1009,7 +1019,7 @@ toothEncounterGame = {
 };
 toothEncounterGame = determineFlightSpeed(toothEncounterGame, {
   balls: ["black", "yellow"],
-  encounterCardId: "tooth-of-time-cargo"
+  encounterCardId: "spreadsheet-32"
 });
 toothEncounterGame = resolveEncounterChoice(toothEncounterGame, { choiceId: "continue" });
 assert(toothEncounterGame.activeEncounter?.pendingStep?.type === "globalUpgradeLossSelection", "Global encounter cards should enter a multi-player upgrade loss step.");
@@ -1019,7 +1029,7 @@ assert(getFriendshipUpgradeBonus(toothEncounterGame, "player-1", "drive") === 2,
 assert(getEffectiveUpgradeValue(toothEncounterGame, "player-1", "drive") === 7, "Effective drives should keep remaining real upgrades plus friendship bonuses after global loss.");
 toothEncounterGame = submitEncounterPending(toothEncounterGame, { upgrade: "drive" });
 assert(Boolean(toothEncounterGame.activeEncounter?.cardId), "Global follow-up cards should draw a new encounter immediately.");
-assert(toothEncounterGame.activeEncounter?.cardId !== "tooth-of-time-cargo", "Global cards should transition into a new encounter after resolving.");
+assert(toothEncounterGame.activeEncounter?.cardId !== "spreadsheet-32", "Global cards should transition into a new encounter after resolving.");
 
 assert(calculateVictoryPoints(game, "player-1") >= 4, "Central scoring should count starting colonies and spaceports.");
 

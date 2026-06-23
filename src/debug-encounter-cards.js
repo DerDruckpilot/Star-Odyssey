@@ -111,7 +111,7 @@ function renderCard(card) {
 
   const summary = document.createElement("summary");
   summary.append(
-    renderTitle(card.id, card.titleDe, card.titleEn),
+    renderTitle(`${card.number ?? "?"}. ${card.id}`, card.titleDe, card.titleEn),
     renderPill(card.type),
     renderPill(activeDeckIds.has(card.id) ? "deck" : "reserve", activeDeckIds.has(card.id) ? "debug-pill--ok" : "")
   );
@@ -121,6 +121,7 @@ function renderCard(card) {
   body.append(
     renderFieldGrid([
       ["Karten-ID", card.id],
+      ["Nummer", card.number ?? "-"],
       ["Typ / Kategorie", card.type],
       ["Titel DE", card.titleDe],
       ["Titel EN", card.titleEn],
