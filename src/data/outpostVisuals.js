@@ -15,9 +15,9 @@ export const tradeStationAssetPaths = {
 
 export const outpostVisualDefaults = {
   outpost: {
-    width: 124,
-    height: 124,
-    hitRadius: 54
+    width: 99,
+    height: 99,
+    hitRadius: 43
   },
   tradeStation: {
     width: 42,

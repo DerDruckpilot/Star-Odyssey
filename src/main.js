@@ -154,7 +154,7 @@ const MOTHERSHIP_SPEED_HOLD_MS = 2000;
 const MOTHERSHIP_SPEED_FADE_MS = 360;
 const MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES = 1;
 const MOTHERSHIP_SPEED_MAX_SHAKE_CYCLES = 3;
-const MOTHERSHIP_SPEED_GAME_BALL_SCALE = 1.5;
+const MOTHERSHIP_SPEED_GAME_BALL_SCALE = 1.725;
 const mothershipBallVisuals = {
   yellow: { color: "#fde047", light: "#fff176", dark: "#ca8a04" },
   blue: { color: "#38bdf8", light: "#7dd3fc", dark: "#0369a1" },
@@ -3114,10 +3114,7 @@ function getMothershipSpeedTotalDuration(item = mothershipSpeedAnimation.item) {
 }
 
 function getMothershipSpeedShakeDuration(item = mothershipSpeedAnimation.item) {
-  const cycles = Number.isInteger(item?.shakeCycles)
-    ? Math.max(MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES, Math.min(MOTHERSHIP_SPEED_MAX_SHAKE_CYCLES, item.shakeCycles))
-    : MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES;
-  return MOTHERSHIP_SPEED_SHAKE_MS * cycles;
+  return MOTHERSHIP_SPEED_SHAKE_MS * getMothershipSpeedShakeCycles(item);
 }
 
 function getMothershipSpeedTime() {
@@ -3224,12 +3221,13 @@ function getMothershipSpeedShake(item, elapsed) {
   const shakeElapsed = elapsed - MOTHERSHIP_SPEED_APPEAR_MS;
   const shakeDuration = getMothershipSpeedShakeDuration(item);
   if (shakeElapsed <= 0 || shakeElapsed >= shakeDuration) return { x: 0, y: 0, rotation: 0 };
-  const shakeProgress = (shakeElapsed % MOTHERSHIP_SPEED_SHAKE_MS) / MOTHERSHIP_SPEED_SHAKE_MS;
+  const cycles = getMothershipSpeedShakeCycles(item);
+  const shakeProgress = clamp01(shakeElapsed / shakeDuration);
 
   const config = MOTHERSHIP_SPEED_ANIMATION_CONFIG.shake;
   const falloff = Math.sin(shakeProgress * Math.PI);
-  const phase = shakeProgress * Math.PI * 5.2 * config.speed;
-  const secondaryPhase = shakeProgress * Math.PI * 18;
+  const phase = shakeProgress * Math.PI * 5.2 * config.speed * cycles;
+  const secondaryPhase = shakeProgress * Math.PI * 18 * cycles;
   const arc = Math.sin(phase);
   const lift = Math.cos(phase);
   const leverAxis = getMothershipSpeedLeverAxis(config);
@@ -3259,6 +3257,12 @@ function getMothershipSpeedLeverAxis(config) {
     x: dx / length,
     y: dy / length
   };
+}
+
+function getMothershipSpeedShakeCycles(item) {
+  return Number.isInteger(item?.shakeCycles)
+    ? Math.max(MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES, Math.min(MOTHERSHIP_SPEED_MAX_SHAKE_CYCLES, item.shakeCycles))
+    : MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES;
 }
 
 function applyMothershipSpeedSlotStyle(pocket) {
