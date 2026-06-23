@@ -152,6 +152,9 @@ const MOTHERSHIP_SPEED_SHAKE_MS = 980;
 const MOTHERSHIP_SPEED_REVEAL_MS = MOTHERSHIP_SPEED_ANIMATION_CONFIG.balls.slideDurationMs;
 const MOTHERSHIP_SPEED_HOLD_MS = 2000;
 const MOTHERSHIP_SPEED_FADE_MS = 360;
+const MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES = 1;
+const MOTHERSHIP_SPEED_MAX_SHAKE_CYCLES = 3;
+const MOTHERSHIP_SPEED_GAME_BALL_SCALE = 1.5;
 const mothershipBallVisuals = {
   yellow: { color: "#fde047", light: "#fff176", dark: "#ca8a04" },
   blue: { color: "#38bdf8", light: "#7dd3fc", dark: "#0369a1" },
@@ -3057,6 +3060,8 @@ function queueMothershipSpeedAnimation(player, flightRoll) {
 
   const now = getAnimationNow();
   const seed = createMothershipSpeedSeed(player.id, flightRoll.balls, now);
+  const shakeCycles = MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES
+    + Math.floor(Math.random() * (MOTHERSHIP_SPEED_MAX_SHAKE_CYCLES - MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES + 1));
   mothershipSpeedAnimation.currentTime = now;
   mothershipSpeedAnimation.item = {
     playerId: player.id,
@@ -3065,7 +3070,8 @@ function queueMothershipSpeedAnimation(player, flightRoll) {
     totalSpeed: state.gameState?.flightSpeedTotal ?? flightRoll.baseSpeed,
     encounterTriggered: Boolean(flightRoll.encounterTriggered),
     startTime: now,
-    seed
+    seed,
+    shakeCycles
   };
   startMothershipSpeedLoop();
 }
@@ -3073,7 +3079,7 @@ function queueMothershipSpeedAnimation(player, flightRoll) {
 function isMothershipSpeedAnimating() {
   const item = mothershipSpeedAnimation.item;
   if (!item) return false;
-  return getAnimationNow() - item.startTime < getMothershipSpeedTotalDuration();
+  return getAnimationNow() - item.startTime < getMothershipSpeedTotalDuration(item);
 }
 
 function startMothershipSpeedLoop() {
@@ -3085,7 +3091,7 @@ function updateMothershipSpeedAnimation(now) {
   mothershipSpeedAnimation.currentTime = now;
   const item = mothershipSpeedAnimation.item;
   mothershipSpeedAnimation.frameRequestId = null;
-  if (!item || now - item.startTime >= getMothershipSpeedTotalDuration()) {
+  if (!item || now - item.startTime >= getMothershipSpeedTotalDuration(item)) {
     mothershipSpeedAnimation.item = null;
     mothershipSpeedAnimation.currentTime = 0;
     if (state.gameState?.phase === "flight" && state.gameState.activeEncounter) {
@@ -3099,12 +3105,19 @@ function updateMothershipSpeedAnimation(now) {
   mothershipSpeedAnimation.frameRequestId = requestAnimationFrame(updateMothershipSpeedAnimation);
 }
 
-function getMothershipSpeedTotalDuration() {
+function getMothershipSpeedTotalDuration(item = mothershipSpeedAnimation.item) {
   return MOTHERSHIP_SPEED_APPEAR_MS
-    + MOTHERSHIP_SPEED_SHAKE_MS
+    + getMothershipSpeedShakeDuration(item)
     + MOTHERSHIP_SPEED_REVEAL_MS
     + MOTHERSHIP_SPEED_HOLD_MS
     + MOTHERSHIP_SPEED_FADE_MS;
+}
+
+function getMothershipSpeedShakeDuration(item = mothershipSpeedAnimation.item) {
+  const cycles = Number.isInteger(item?.shakeCycles)
+    ? Math.max(MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES, Math.min(MOTHERSHIP_SPEED_MAX_SHAKE_CYCLES, item.shakeCycles))
+    : MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES;
+  return MOTHERSHIP_SPEED_SHAKE_MS * cycles;
 }
 
 function getMothershipSpeedTime() {
@@ -3150,14 +3163,7 @@ function renderMothershipSpeedOverlay() {
   visual.append(pocket);
   visualWrap.append(visual);
 
-  const status = document.createElement("p");
-  status.className = "mothership-speed-result";
-  status.hidden = metrics.revealProgress <= 0;
-  status.textContent = item.encounterTriggered
-    ? `${t("encounter")} · ${t("flightSpeed")}: ${item.totalSpeed}`
-    : `${t("flightSpeed")}: ${item.totalSpeed}`;
-
-  panel.append(visualWrap, status);
+  panel.append(visualWrap);
   overlay.append(panel);
   return overlay;
 }
@@ -3193,7 +3199,7 @@ function getMothershipSpeedMetrics(item) {
   const elapsed = getMothershipSpeedTime() - item.startTime;
   const appearProgress = easeOutCubic(clamp01(elapsed / MOTHERSHIP_SPEED_APPEAR_MS));
   const shakeStart = MOTHERSHIP_SPEED_APPEAR_MS;
-  const revealStart = shakeStart + MOTHERSHIP_SPEED_SHAKE_MS;
+  const revealStart = shakeStart + getMothershipSpeedShakeDuration(item);
   const fadeStart = revealStart + MOTHERSHIP_SPEED_REVEAL_MS + MOTHERSHIP_SPEED_HOLD_MS;
   const revealProgress = clamp01((elapsed - revealStart) / MOTHERSHIP_SPEED_REVEAL_MS);
   const fadeProgress = clamp01((elapsed - fadeStart) / MOTHERSHIP_SPEED_FADE_MS);
@@ -3215,8 +3221,10 @@ function getMothershipSpeedVisualTransform(metrics) {
 }
 
 function getMothershipSpeedShake(item, elapsed) {
-  const shakeProgress = clamp01((elapsed - MOTHERSHIP_SPEED_APPEAR_MS) / MOTHERSHIP_SPEED_SHAKE_MS);
-  if (shakeProgress <= 0 || shakeProgress >= 1) return { x: 0, y: 0, rotation: 0 };
+  const shakeElapsed = elapsed - MOTHERSHIP_SPEED_APPEAR_MS;
+  const shakeDuration = getMothershipSpeedShakeDuration(item);
+  if (shakeElapsed <= 0 || shakeElapsed >= shakeDuration) return { x: 0, y: 0, rotation: 0 };
+  const shakeProgress = (shakeElapsed % MOTHERSHIP_SPEED_SHAKE_MS) / MOTHERSHIP_SPEED_SHAKE_MS;
 
   const config = MOTHERSHIP_SPEED_ANIMATION_CONFIG.shake;
   const falloff = Math.sin(shakeProgress * Math.PI);
@@ -3283,7 +3291,7 @@ function applyMothershipSpeedBallStyle(ballElement, index, revealProgress) {
   const y = lerp(ballConfig.start.y, ballConfig.end.y, progress);
   const localX = ((x - slot.x) / slot.width) * 100;
   const localY = ((y - slot.y) / slot.height) * 100;
-  const ballSize = (MOTHERSHIP_SPEED_ANIMATION_CONFIG.balls.size / slot.width) * 100;
+  const ballSize = (MOTHERSHIP_SPEED_ANIMATION_CONFIG.balls.size * MOTHERSHIP_SPEED_GAME_BALL_SCALE / slot.width) * 100;
   ballElement.style.left = `${localX.toFixed(3)}%`;
   ballElement.style.top = `${localY.toFixed(3)}%`;
   ballElement.style.width = `${ballSize.toFixed(3)}%`;
