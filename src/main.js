@@ -921,7 +921,7 @@ function renderBoardShell() {
 
   const controls = document.createElement("div");
   controls.className = "board-overlay-controls";
-  controls.append(renderLanguageToggle(), createButton("⚙", () => openModal("settings"), "icon-button"));
+  controls.append(createButton("⚙", () => openModal("settings"), "icon-button"));
 
   const board = document.createElement("div");
   board.className = "board-placeholder";
@@ -5177,6 +5177,12 @@ function renderSettingsMenu() {
   modalNotice.textContent = state.notice;
   modalNotice.hidden = state.notice.length === 0;
 
+  const languageSection = document.createElement("section");
+  languageSection.className = "settings-language";
+  const languageTitle = document.createElement("strong");
+  languageTitle.textContent = t("language");
+  languageSection.append(languageTitle, renderLanguageToggle());
+
   const actions = document.createElement("div");
   actions.className = "modal-actions";
   actions.append(
@@ -5186,7 +5192,7 @@ function renderSettingsMenu() {
     createButton(t("close"), closeModal, "secondary-button")
   );
 
-  wrapper.append(title, modalNotice, actions);
+  wrapper.append(title, modalNotice, languageSection, actions);
   return wrapper;
 }
 
