@@ -873,10 +873,10 @@ export function determineFlightSpeed(gameState, forcedRoll = null) {
   const driveLevel = getPlayerFlightBonus(gameState, activePlayer.id);
   const baseSpeed = flightRoll.baseSpeed;
   const totalSpeed = baseSpeed + driveLevel;
-  const remainingMovementByShipId = Object.fromEntries(
-    activeShips.map((ship) => [ship.id, totalSpeed])
-  );
   const encounterTrigger = flightRoll.encounterTriggered;
+  const remainingMovementByShipId = encounterTrigger
+    ? {}
+    : createRemainingMovementForActiveShips(gameState, totalSpeed);
   const encounterStart = encounterTrigger
     ? startEncounter(gameState, forcedRoll?.encounterCardId)
     : {
@@ -1017,19 +1017,37 @@ export function finishEncounter(gameState) {
   }
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const speedUpdate = createPostEncounterFlightSpeedUpdate(gameState);
+  const logEntries = [{
+    type: "encounter",
+    messageKey: "logEncounterFinished",
+    messageParams: {
+      player: activePlayer?.name ?? ""
+    }
+  }];
+
+  if (speedUpdate && speedUpdate.totalSpeed !== gameState.flightSpeedTotal) {
+    logEntries.push({
+      type: "flight",
+      messageKey: "logFlightSpeedAfterEncounterUpdated",
+      messageParams: {
+        total: speedUpdate.totalSpeed
+      }
+    });
+  }
 
   return updateGameState(gameState, {
     activeEncounter: null,
     encounterStep: null,
     encounterTriggered: false,
     encounterDiscard: [...(gameState.encounterDiscard ?? []), gameState.activeEncounter.cardId],
-    logEntry: {
-      type: "encounter",
-      messageKey: "logEncounterFinished",
-      messageParams: {
-        player: activePlayer?.name ?? ""
+    ...(speedUpdate
+      ? {
+        flightSpeedTotal: speedUpdate.totalSpeed,
+        remainingMovementByShipId: speedUpdate.remainingMovementByShipId
       }
-    }
+      : {}),
+    logEntries
   });
 }
 
@@ -3977,6 +3995,38 @@ function isValidUpgradeId(upgrade) {
 
 function getPlayerFlightBonus(gameState, playerId) {
   return getEffectiveUpgradeValue(gameState, playerId, "drive");
+}
+
+function createRemainingMovementForActiveShips(gameState, totalSpeed, movementOverrides = null) {
+  const activePlayer = gameState.players?.[gameState.currentPlayerIndex];
+  if (!activePlayer || !Number.isFinite(totalSpeed)) return {};
+
+  return Object.fromEntries(
+    normalizeShips(gameState.board?.ships)
+      .filter((ship) => ship.ownerPlayerId === activePlayer.id)
+      .map((ship) => [
+        ship.id,
+        movementOverrides?.[ship.id] === 0 ? 0 : totalSpeed
+      ])
+  );
+}
+
+function createPostEncounterFlightSpeedUpdate(gameState) {
+  const activePlayer = gameState.players?.[gameState.currentPlayerIndex];
+  const baseSpeed = Number(gameState.flightSpeedBase);
+  if (!activePlayer || !Number.isFinite(baseSpeed)) return null;
+
+  const driveLevel = getPlayerFlightBonus(gameState, activePlayer.id);
+  const totalSpeed = baseSpeed + driveLevel;
+  return {
+    driveLevel,
+    totalSpeed,
+    remainingMovementByShipId: createRemainingMovementForActiveShips(
+      gameState,
+      totalSpeed,
+      gameState.remainingMovementByShipId
+    )
+  };
 }
 
 function getPlayerCombatBonus(gameState, playerId) {

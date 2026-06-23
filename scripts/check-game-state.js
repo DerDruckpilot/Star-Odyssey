@@ -719,6 +719,8 @@ encounterGame = {
       }]
   }
 };
+const encounterBaseState = encounterGame;
+const encounterShipId = encounterGame.board.ships[0].id;
 
 const nonEncounterFlightState = determineFlightSpeed(encounterGame, {
   balls: ["blue", "red"]
@@ -733,6 +735,7 @@ encounterGame = determineFlightSpeed(encounterGame, {
 });
 assert(encounterGame.activeEncounter?.cardId === "honor-medal", "A black mothership ball should start an encounter.");
 assert(encounterGame.flightSpeedBase === 3, "A black mothership ball should force base speed 3.");
+assert(Object.keys(encounterGame.remainingMovementByShipId ?? {}).length === 0, "Encounter flight rolls should wait to assign movement until the encounter is finished.");
 const encounterPointsBeforeMedal = calculateVictoryPoints(encounterGame, "player-1");
 const blockedMoveState = moveShip(
   encounterGame,
@@ -757,6 +760,8 @@ assert(normalizedEncounterState.activeEncounter?.cardId === "honor-medal", "Save
 encounterGame = finishEncounter(encounterGame);
 assert(!encounterGame.activeEncounter, "Encounter should clear after finishing.");
 assert(encounterGame.encounterDiscard.includes("honor-medal"), "Finished encounters should move to the discard pile.");
+assert(encounterGame.flightSpeedTotal === 4, "Finished encounters should initialize movement from the current drive value.");
+assert(encounterGame.remainingMovementByShipId?.[encounterShipId] === 4, "Ship movement should be available only after finishing an encounter.");
 const postEncounterMoveState = moveShip(
   encounterGame,
   boardLayout,
@@ -764,6 +769,47 @@ const postEncounterMoveState = moveShip(
   encounterGame.board.ships[0].locationId
 );
 assert(postEncounterMoveState !== null, "Game state should remain usable after finishing an encounter.");
+
+let driveGainEncounterGame = determineFlightSpeed(encounterBaseState, {
+  balls: ["black", "yellow"],
+  encounterCardId: "honor-medal"
+});
+driveGainEncounterGame = resolveEncounterChoice(driveGainEncounterGame, { choiceId: "accept" });
+driveGainEncounterGame = {
+  ...driveGainEncounterGame,
+  players: driveGainEncounterGame.players.map((player, index) => index === 0
+    ? { ...player, upgrades: { ...player.upgrades, drive: 2 } }
+    : player)
+};
+driveGainEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(driveGainEncounterGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+driveGainEncounterGame = finishEncounter(driveGainEncounterGame);
+assert(driveGainEncounterGame.flightSpeedTotal === 5, "Encounter drive gains should increase movement before ships can move.");
+assert(driveGainEncounterGame.remainingMovementByShipId?.[encounterShipId] === 5, "Remaining movement should use the post-encounter drive gain.");
+
+let driveLossEncounterGame = {
+  ...encounterBaseState,
+  players: encounterBaseState.players.map((player, index) => index === 0
+    ? { ...player, upgrades: { ...player.upgrades, drive: 2 }, friendshipCards: ["wise-drive-boost"] }
+    : player)
+};
+driveLossEncounterGame = determineFlightSpeed(driveLossEncounterGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "honor-medal"
+});
+driveLossEncounterGame = resolveEncounterChoice(driveLossEncounterGame, { choiceId: "accept" });
+driveLossEncounterGame = {
+  ...driveLossEncounterGame,
+  players: driveLossEncounterGame.players.map((player, index) => index === 0
+    ? { ...player, upgrades: { ...player.upgrades, drive: 1 } }
+    : player)
+};
+driveLossEncounterGame = finishEncounter(driveLossEncounterGame);
+assert(driveLossEncounterGame.flightSpeedTotal === 6, "Encounter drive losses should recalculate speed while preserving friendship drive bonuses.");
+assert(driveLossEncounterGame.remainingMovementByShipId?.[encounterShipId] === 6, "Remaining movement should use post-encounter real drives plus friendship bonuses.");
 
 let pendingEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
