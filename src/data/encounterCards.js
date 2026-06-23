@@ -521,13 +521,20 @@ function applySpreadsheetChoiceLabels(choices, spreadsheetText) {
 
   return choices.map((choice, index) => {
     const labelDe = getSpreadsheetChoiceLabel(choice, index, spreadsheetText) ?? choice.labelDe;
+    const resultDe = getSpreadsheetChoiceResultText(choice, index, spreadsheetText);
     return {
       ...choice,
       labelDe,
       label: {
         ...choice.label,
         de: labelDe
-      }
+      },
+      resultText: resultDe
+        ? {
+          ...(choice.resultText ?? {}),
+          de: resultDe
+        }
+        : choice.resultText ?? null
     };
   });
 }
@@ -561,6 +568,66 @@ function getFirstYesNoLabels(spreadsheetText) {
     }
   }
   return [];
+}
+
+function getSpreadsheetChoiceResultText(choice, index, spreadsheetText) {
+  const donationMatch = choice.id.match(/(?:gift|donate)-(\d+)/);
+  if (donationMatch) {
+    return findSpreadsheetResultForChoiceKey(spreadsheetText, donationMatch[1]);
+  }
+
+  const yesNoKey = getSpreadsheetYesNoChoiceKey(choice, index);
+  if (yesNoKey) {
+    return findSpreadsheetResultForChoiceKey(spreadsheetText, yesNoKey);
+  }
+
+  if (choice.id === "continue") {
+    return spreadsheetText.linesDe?.[0] ?? null;
+  }
+
+  return null;
+}
+
+function getSpreadsheetYesNoChoiceKey(choice, index) {
+  if (["accept", "help", "attempt", "pay", "flee"].includes(choice.id)) return "Ja";
+  if (["decline", "fight"].includes(choice.id)) return "Nein";
+  return index === 0 ? "Ja" : index === 1 ? "Nein" : null;
+}
+
+function findSpreadsheetResultForChoiceKey(spreadsheetText, key) {
+  const rows = spreadsheetText.rows ?? [];
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const cells = rows[rowIndex].cells ?? [];
+    for (let cellIndex = 0; cellIndex < cells.length; cellIndex += 1) {
+      if (!spreadsheetChoiceCellMatches(cells[cellIndex], key)) continue;
+      const sameRowResult = cells.slice(cellIndex + 1).find((cell) => isSpreadsheetResultText(cell));
+      if (sameRowResult) return sameRowResult;
+      const nextRowResult = rows[rowIndex + 1]?.cells?.[cellIndex];
+      if (isSpreadsheetResultText(nextRowResult)) return nextRowResult;
+      const nextRowFallback = rows[rowIndex + 1]?.cells?.find((cell) => isSpreadsheetResultText(cell));
+      if (nextRowFallback) return nextRowFallback;
+    }
+  }
+  return null;
+}
+
+function spreadsheetChoiceCellMatches(cell, key) {
+  if (typeof cell !== "string") return false;
+  const normalized = cell.trim();
+  if (normalized === key) return true;
+  if (!/^\d+$/.test(key)) return false;
+  return normalized
+    .split(",")
+    .map((entry) => entry.trim())
+    .includes(key);
+}
+
+function isSpreadsheetResultText(cell) {
+  return typeof cell === "string"
+    && cell.trim().length > 0
+    && cell !== "Ja"
+    && cell !== "Nein"
+    && !/^\d+(?:\s*,\s*\d+)*$/.test(cell.trim());
 }
 
 function createChoice(id, labelDe, labelEn, effects = []) {

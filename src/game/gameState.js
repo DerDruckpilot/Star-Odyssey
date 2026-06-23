@@ -184,6 +184,7 @@ export function createGameState({ language, playerCount, boardLayout, playerSetu
     flightSpeedBase: null,
     flightSpeedTotal: null,
     encounterTriggered: false,
+    pendingFlightEncounter: null,
     encounterDeck: createEncounterDeck(),
     encounterDiscard: [],
     activeEncounter: null,
@@ -823,6 +824,7 @@ export function advanceToFlightPhase(gameState) {
     flightSpeedBase: null,
     flightSpeedTotal: null,
     encounterTriggered: false,
+    pendingFlightEncounter: null,
     activeEncounter: null,
     encounterStep: null,
     remainingMovementByShipId: {},
@@ -861,6 +863,7 @@ export function determineFlightSpeed(gameState, forcedRoll = null) {
       activeEncounter: null,
       encounterStep: null,
       encounterTriggered: false,
+      pendingFlightEncounter: null,
       logEntry: {
         type: "flight",
         messageKey: "logNoShipsInSpace",
@@ -879,45 +882,58 @@ export function determineFlightSpeed(gameState, forcedRoll = null) {
   const remainingMovementByShipId = encounterTrigger
     ? {}
     : createRemainingMovementForActiveShips(gameState, totalSpeed);
-  const encounterStart = encounterTrigger
-    ? startEncounter(gameState, forcedRoll?.encounterCardId)
-    : {
-      encounterDeck: gameState.encounterDeck,
-      encounterDiscard: gameState.encounterDiscard,
-      activeEncounter: null,
-      encounterStep: null
-    };
-
   return updateGameState(gameState, {
     flightRoll,
     flightSpeedBase: baseSpeed,
     flightSpeedTotal: totalSpeed,
     encounterTriggered: encounterTrigger,
+    pendingFlightEncounter: encounterTrigger
+      ? { forcedEncounterCardId: typeof forcedRoll?.encounterCardId === "string" ? forcedRoll.encounterCardId : null }
+      : null,
+    activeEncounter: null,
+    encounterStep: null,
+    remainingMovementByShipId,
+    hasRolledFlightSpeed: true,
+    logEntry: {
+      type: "flight",
+      messageKey: "logFlightSpeedDetermined",
+      messageParams: {
+        player: activePlayer.name,
+        base: baseSpeed,
+        drive: driveLevel,
+        total: totalSpeed
+      }
+    }
+  });
+}
+
+export function startPendingFlightEncounter(gameState) {
+  if (isGameOverState(gameState)) return gameState;
+  if (
+    gameState.phase !== "flight" ||
+    !gameState.hasRolledFlightSpeed ||
+    !gameState.encounterTriggered ||
+    gameState.activeEncounter ||
+    !gameState.pendingFlightEncounter
+  ) {
+    return gameState;
+  }
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const encounterStart = startEncounter(gameState, gameState.pendingFlightEncounter.forcedEncounterCardId);
+  return updateGameState(gameState, {
     encounterDeck: encounterStart.encounterDeck,
     encounterDiscard: encounterStart.encounterDiscard,
     activeEncounter: encounterStart.activeEncounter,
     encounterStep: encounterStart.encounterStep,
-    remainingMovementByShipId,
-    hasRolledFlightSpeed: true,
-    logEntries: [
-      {
-        type: "flight",
-        messageKey: "logFlightSpeedDetermined",
-        messageParams: {
-          player: activePlayer.name,
-          base: baseSpeed,
-          drive: driveLevel,
-          total: totalSpeed
-        }
-      },
-      ...(encounterTrigger ? [{
-        type: "encounter",
-        messageKey: "logEncounterTriggered",
-        messageParams: {
-          player: activePlayer.name
-        }
-      }] : [])
-    ]
+    pendingFlightEncounter: null,
+    logEntry: {
+      type: "encounter",
+      messageKey: "logEncounterTriggered",
+      messageParams: {
+        player: activePlayer?.name ?? ""
+      }
+    }
   });
 }
 
@@ -942,7 +958,7 @@ export function resolveEncounterChoice(gameState, payload = {}) {
     payload,
     {
       choiceId: choice.id,
-      resultText: null
+      resultText: choice.resultText ?? null
     }
   );
   if (!resolution) return gameState;
@@ -1041,6 +1057,7 @@ export function finishEncounter(gameState) {
     activeEncounter: null,
     encounterStep: null,
     encounterTriggered: false,
+    pendingFlightEncounter: null,
     encounterDiscard: [...(gameState.encounterDiscard ?? []), gameState.activeEncounter.cardId],
     ...(speedUpdate
       ? {
@@ -2295,6 +2312,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     flightSpeedBase: normalizedPhase === "flight" && Number.isInteger(gameState.flightSpeedBase) ? gameState.flightSpeedBase : null,
     flightSpeedTotal: normalizedPhase === "flight" && Number.isInteger(gameState.flightSpeedTotal) ? gameState.flightSpeedTotal : null,
     encounterTriggered: normalizedPhase === "flight" && Boolean(gameState.encounterTriggered),
+    pendingFlightEncounter: normalizedPhase === "flight" ? normalizePendingFlightEncounter(gameState.pendingFlightEncounter) : null,
     encounterDeck: normalizeEncounterDeck(gameState.encounterDeck, { allowEmpty: true }),
     encounterDiscard: normalizeEncounterDeck(gameState.encounterDiscard, { allowEmpty: true }),
     activeEncounter: normalizedPhase === "flight" ? normalizeActiveEncounter(gameState.activeEncounter) : null,
@@ -2565,6 +2583,15 @@ function normalizeFlightRoll(flightRoll) {
     balls: flightRoll.balls.filter((ball) => Object.hasOwn(mothershipBallValues, ball)).slice(0, 2),
     baseSpeed: Number.isInteger(flightRoll.baseSpeed) ? flightRoll.baseSpeed : 3,
     encounterTriggered: Boolean(flightRoll.encounterTriggered)
+  };
+}
+
+function normalizePendingFlightEncounter(pendingFlightEncounter) {
+  if (!pendingFlightEncounter || typeof pendingFlightEncounter !== "object") return null;
+  return {
+    forcedEncounterCardId: typeof pendingFlightEncounter.forcedEncounterCardId === "string"
+      ? pendingFlightEncounter.forcedEncounterCardId
+      : null
   };
 }
 

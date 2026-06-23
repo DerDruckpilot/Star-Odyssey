@@ -76,6 +76,7 @@ import {
   rollPlacementStart,
   selectPendingFriendshipCard,
   setSevenStealTarget,
+  startPendingFlightEncounter,
   startPendingSpaceportUpgrade,
   submitSevenDiscard,
   touchGameState,
@@ -116,6 +117,7 @@ const state = {
   modal: null,
   hudPlayerId: null,
   hudTab: "turn",
+  encounterBoardSelectionActive: false,
   notice: ""
 };
 
@@ -464,6 +466,7 @@ function determineSpeedForActivePlayer() {
   state.gameState = determineFlightSpeed(state.gameState);
   state.hudPlayerId = null;
   state.hudTab = "turn";
+  state.encounterBoardSelectionActive = false;
   queueMothershipSpeedAnimation(getActivePlayer(), state.gameState.flightRoll);
   saveCurrentGameState();
   render();
@@ -471,6 +474,8 @@ function determineSpeedForActivePlayer() {
 
 function resolveActiveEncounterChoice(choiceId, payload = {}) {
   if (!state.gameState?.activeEncounter) return;
+  state.hudPlayerId = null;
+  state.encounterBoardSelectionActive = false;
 
   state.gameState = resolveEncounterChoice(state.gameState, {
     choiceId,
@@ -490,6 +495,7 @@ function updateEncounterPendingResourceChoice(resource, delta) {
 
 function submitEncounterPendingAction(payload = {}) {
   if (!state.gameState?.activeEncounter) return;
+  state.encounterBoardSelectionActive = false;
 
   state.gameState = submitEncounterPending(state.gameState, payload);
   saveCurrentGameState();
@@ -498,9 +504,16 @@ function submitEncounterPendingAction(payload = {}) {
 
 function confirmEncounterJumpShip(shipId) {
   const pendingStep = state.gameState?.activeEncounter?.pendingStep;
-  if (pendingStep?.type !== "shipJumpSelection" || !pendingStep.shipIds?.includes(shipId)) return false;
+  if (
+    !state.encounterBoardSelectionActive ||
+    pendingStep?.type !== "shipJumpSelection" ||
+    !pendingStep.shipIds?.includes(shipId)
+  ) {
+    return false;
+  }
 
   state.gameState = submitEncounterPending(state.gameState, { shipId });
+  state.encounterBoardSelectionActive = true;
   state.gameState = touchGameState({
     ...state.gameState,
     board: {
@@ -515,7 +528,7 @@ function confirmEncounterJumpShip(shipId) {
 
 function confirmEncounterTargetAt(nodeId) {
   const pendingStep = state.gameState?.activeEncounter?.pendingStep;
-  if (pendingStep?.type !== "boardTargetSelection") return false;
+  if (!state.encounterBoardSelectionActive || pendingStep?.type !== "boardTargetSelection") return false;
   if (!pendingStep.validNodeIds?.includes(nodeId)) return false;
 
   const previousGameState = state.gameState;
@@ -524,6 +537,7 @@ function confirmEncounterTargetAt(nodeId) {
     queuePlacementVfx("ship", jumpShip);
   }
   state.gameState = submitEncounterPending(state.gameState, { targetNodeId: nodeId });
+  state.encounterBoardSelectionActive = false;
   const shiftedShip = state.gameState.board?.ships?.find((ship) => ship.id === pendingStep.shipId);
   if (shiftedShip) {
     queuePlacementVfx("ship", shiftedShip);
@@ -538,6 +552,7 @@ function finishActiveEncounter() {
 
   state.gameState = finishEncounter(state.gameState);
   state.hudPlayerId = null;
+  state.encounterBoardSelectionActive = false;
   saveCurrentGameState();
   render();
 }
@@ -717,8 +732,10 @@ function goToFlightPhase() {
   if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
 
   state.gameState = advanceToFlightPhase(state.gameState);
+  state.hudPlayerId = null;
+  state.encounterBoardSelectionActive = false;
   saveCurrentGameState();
-  render();
+  determineSpeedForActivePlayer();
 }
 
 function tradeActivePlayerWithSupply() {
@@ -1271,6 +1288,7 @@ function renderEncounterModal() {
 
   const overlay = document.createElement("div");
   const isBoardSelection = ["shipJumpSelection", "boardTargetSelection"].includes(encounter.pendingStep?.type);
+  if (isBoardSelection && state.encounterBoardSelectionActive) return document.createDocumentFragment();
   overlay.className = `encounter-modal-overlay${isBoardSelection ? " encounter-modal-overlay--board-selection" : ""}`;
   overlay.setAttribute("role", "dialog");
   overlay.setAttribute("aria-modal", isBoardSelection ? "false" : "true");
@@ -1934,13 +1952,18 @@ function renderEncounterActions(player) {
   if (!encounter || !card) return wrapper;
 
   const activePlayer = getActivePlayer();
+  const currentText = getLocalizedEncounterText(
+    encounter.choiceId || encounter.pendingStep || encounter.status === "resolved"
+      ? encounter.resultText
+      : card.prompt
+  ) || getLocalizedEncounterText(card.prompt);
   const prompt = document.createElement("p");
   prompt.className = "encounter-prompt";
-  prompt.textContent = getLocalizedEncounterText(card.prompt);
+  prompt.textContent = currentText;
   wrapper.append(prompt);
 
   const stepResultText = getLocalizedEncounterText(encounter.resultText);
-  if (encounter.status !== "resolved" && stepResultText) {
+  if (encounter.status !== "resolved" && stepResultText && stepResultText !== currentText) {
     const stepResult = document.createElement("p");
     stepResult.className = "encounter-step-result";
     stepResult.textContent = stepResultText;
@@ -1971,10 +1994,6 @@ function renderEncounterActions(player) {
     wrapper.append(waiting);
     return wrapper;
   }
-
-  const chooseHint = document.createElement("p");
-  chooseHint.textContent = t("encounterChoose");
-  wrapper.append(chooseHint);
 
   if (encounter.pendingStep?.type === "resourceSelection") {
     wrapper.append(renderEncounterResourceSelection(encounter.pendingStep));
@@ -2008,6 +2027,9 @@ function renderEncounterActions(player) {
 
   const choiceList = document.createElement("div");
   choiceList.className = "encounter-choice-list";
+  const chooseHint = document.createElement("p");
+  chooseHint.textContent = t("encounterChoose");
+  choiceList.append(chooseHint);
   for (const choice of card.choices ?? []) {
     const label = getLocalizedEncounterText(choice.label) || choice.id;
     const button = createButton(label, () => resolveActiveEncounterChoice(choice.id), "small-button");
@@ -2103,13 +2125,10 @@ function renderEncounterShipJumpSelection(pendingStep) {
   const wrapper = document.createElement("div");
   wrapper.className = "encounter-choice-list";
 
-  const hint = document.createElement("p");
-  hint.textContent = getLocalizedEncounterText(pendingStep.hint) || t("encounterSelectJumpShip");
-  wrapper.append(hint);
-
-  const selection = document.createElement("p");
-  selection.textContent = t("encounterChooseShipOnBoard");
-  wrapper.append(selection);
+  wrapper.append(createButton(t("encounterSelectJumpShip"), () => {
+    state.encounterBoardSelectionActive = true;
+    render();
+  }, "small-button"));
 
   return wrapper;
 }
@@ -2118,13 +2137,10 @@ function renderEncounterTargetSelection(pendingStep) {
   const wrapper = document.createElement("div");
   wrapper.className = "encounter-choice-list";
 
-  const hint = document.createElement("p");
-  hint.textContent = getLocalizedEncounterText(pendingStep.hint) || t("encounterSelectTargetPoint");
-  wrapper.append(hint);
-
-  const selection = document.createElement("p");
-  selection.textContent = t("encounterChooseBoardTarget");
-  wrapper.append(selection);
+  wrapper.append(createButton(t("encounterSelectTargetPoint"), () => {
+    state.encounterBoardSelectionActive = true;
+    render();
+  }, "small-button"));
   return wrapper;
 }
 
@@ -3398,9 +3414,11 @@ function updateMothershipSpeedAnimation(now) {
   if (!item || now - item.startTime >= getMothershipSpeedTotalDuration(item)) {
     mothershipSpeedAnimation.item = null;
     mothershipSpeedAnimation.currentTime = 0;
-    if (state.gameState?.phase === "flight" && state.gameState.activeEncounter) {
-      state.hudPlayerId = getActivePlayer()?.id ?? null;
-      state.hudTab = "turn";
+    if (state.gameState?.phase === "flight" && state.gameState.pendingFlightEncounter) {
+      state.gameState = startPendingFlightEncounter(state.gameState);
+      state.hudPlayerId = null;
+      state.encounterBoardSelectionActive = false;
+      saveCurrentGameState();
     }
     render();
     return;
@@ -4477,7 +4495,7 @@ function isValidPendingTradeStationNode(nodeId) {
 
 function getReachableNodeMap() {
   const pendingEncounterStep = state.gameState?.activeEncounter?.pendingStep;
-  if (pendingEncounterStep?.type === "boardTargetSelection") {
+  if (state.encounterBoardSelectionActive && pendingEncounterStep?.type === "boardTargetSelection") {
     const ship = (state.gameState?.board?.ships ?? []).find((candidate) => candidate.id === pendingEncounterStep.shipId);
     return new Map((pendingEncounterStep.validNodeIds ?? []).map((nodeId) => [
       nodeId,
@@ -4513,7 +4531,8 @@ function getReachableNodeMap() {
 
 function isEncounterJumpShipTarget(shipId) {
   const pendingEncounterStep = state.gameState?.activeEncounter?.pendingStep;
-  return pendingEncounterStep?.type === "shipJumpSelection"
+  return state.encounterBoardSelectionActive
+    && pendingEncounterStep?.type === "shipJumpSelection"
     && pendingEncounterStep.shipIds?.includes(shipId);
 }
 

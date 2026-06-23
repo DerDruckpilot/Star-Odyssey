@@ -40,6 +40,7 @@ import {
   useBoughtFame,
   useRichHelpsPoor,
   normalizeGameState,
+  startPendingFlightEncounter,
   submitSevenDiscard,
   updateEncounterResourceSelection,
   updateSevenDiscardSelection
@@ -57,6 +58,13 @@ function assert(condition, message) {
     console.error(message);
     process.exitCode = 1;
   }
+}
+
+function revealPendingFlightEncounter(gameState) {
+  const nextState = startPendingFlightEncounter(gameState);
+  assert(!nextState.pendingFlightEncounter, "Pending flight encounters should clear when the animation opens the encounter.");
+  assert(Boolean(nextState.activeEncounter), "Pending flight encounters should open an active encounter after the animation.");
+  return nextState;
 }
 
 function getUsedSiteNodeIds(game) {
@@ -754,9 +762,12 @@ encounterGame = determineFlightSpeed(encounterGame, {
   balls: ["black", "yellow"],
   encounterCardId: "spreadsheet-14"
 });
-assert(encounterGame.activeEncounter?.cardId === "spreadsheet-14", "A black mothership ball should start an encounter.");
+assert(!encounterGame.activeEncounter, "A black mothership ball should wait for the visible roll animation before opening an encounter.");
+assert(Boolean(encounterGame.pendingFlightEncounter), "A black mothership ball should queue a pending encounter.");
 assert(encounterGame.flightSpeedBase === 3, "A black mothership ball should force base speed 3.");
 assert(Object.keys(encounterGame.remainingMovementByShipId ?? {}).length === 0, "Encounter flight rolls should wait to assign movement until the encounter is finished.");
+encounterGame = revealPendingFlightEncounter(encounterGame);
+assert(encounterGame.activeEncounter?.cardId === "spreadsheet-14", "The pending encounter should open the forced encounter card after the animation.");
 const encounterPointsBeforeMedal = calculateVictoryPoints(encounterGame, "player-1");
 const blockedMoveState = moveShip(
   encounterGame,
@@ -795,6 +806,7 @@ let driveGainEncounterGame = determineFlightSpeed(encounterBaseState, {
   balls: ["black", "yellow"],
   encounterCardId: "spreadsheet-14"
 });
+driveGainEncounterGame = revealPendingFlightEncounter(driveGainEncounterGame);
 driveGainEncounterGame = resolveEncounterChoice(driveGainEncounterGame, { choiceId: "decline" });
 driveGainEncounterGame = {
   ...driveGainEncounterGame,
@@ -821,6 +833,7 @@ driveLossEncounterGame = determineFlightSpeed(driveLossEncounterGame, {
   balls: ["black", "yellow"],
   encounterCardId: "spreadsheet-14"
 });
+driveLossEncounterGame = revealPendingFlightEncounter(driveLossEncounterGame);
 driveLossEncounterGame = resolveEncounterChoice(driveLossEncounterGame, { choiceId: "decline" });
 driveLossEncounterGame = {
   ...driveLossEncounterGame,
@@ -857,6 +870,7 @@ pendingEncounterGame = determineFlightSpeed(pendingEncounterGame, {
   balls: ["black", "yellow"],
   encounterCardId: "spreadsheet-02"
 });
+pendingEncounterGame = revealPendingFlightEncounter(pendingEncounterGame);
 pendingEncounterGame = resolveEncounterChoice(pendingEncounterGame, { choiceId: "gift-3" });
 assert(pendingEncounterGame.activeEncounter?.pendingStep?.type === "resourceSelection", "Merchant encounters should pause for resource loss selection.");
 const normalizedPendingEncounter = normalizeGameState(JSON.parse(JSON.stringify(pendingEncounterGame)), {
@@ -903,6 +917,7 @@ combatEncounterGame = determineFlightSpeed(combatEncounterGame, {
   balls: ["black", "yellow"],
   encounterCardId: "spreadsheet-23"
 });
+combatEncounterGame = revealPendingFlightEncounter(combatEncounterGame);
 combatEncounterGame = resolveEncounterChoice(combatEncounterGame, {
   choiceId: "help",
   forcedRoll: { balls: ["red", "red"] },
@@ -934,6 +949,31 @@ assert(
   getEncounterCardById("spreadsheet-28")?.promptDe === "Du triffst ein Raumschiff des Wandernden Volkes.\nDieses in der ganzen Galaxis verehrte Volk bittet dich um eine Spende. Wie viele Rohstoffe (bis zu 3) schenkst du?\nLege die Rohstoffe sofort in den Vorrat.",
   "Encounter prompts should use the exact spreadsheet text."
 );
+const wanderingDonationJumpText = "Als Dank wird dir ein Raumsprung\ngewährt. Wähle eines deiner\nSchiffe. Mit diesem darfst du den\nRaumsprung ausführen.";
+assert(
+  getEncounterCardById("spreadsheet-28")?.choices.find((choice) => choice.id === "donate-2")?.resultText?.de === wanderingDonationJumpText,
+  "Encounter choices should keep the exact spreadsheet follow-up text."
+);
+let wanderingFollowUpGame = {
+  ...encounterBaseState,
+  players: encounterBaseState.players.map((player, index) => index === 0
+    ? { ...player, resources: { ore: 2, fuel: 0, carbon: 0, food: 0, goods: 0 } }
+    : player)
+};
+wanderingFollowUpGame = determineFlightSpeed(wanderingFollowUpGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "spreadsheet-28"
+});
+wanderingFollowUpGame = revealPendingFlightEncounter(wanderingFollowUpGame);
+wanderingFollowUpGame = resolveEncounterChoice(wanderingFollowUpGame, { choiceId: "donate-2" });
+assert(
+  wanderingFollowUpGame.activeEncounter?.resultText?.de === wanderingDonationJumpText,
+  "Encounter follow-up state should show the spreadsheet text before technical pending actions."
+);
+assert(
+  wanderingFollowUpGame.activeEncounter?.pendingStep?.type === "resourceSelection",
+  "Encounter follow-up effects should continue after the spreadsheet text is available."
+);
 
 let distortionEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
@@ -957,6 +997,7 @@ distortionEncounterGame = determineFlightSpeed(distortionEncounterGame, {
   balls: ["black", "yellow"],
   encounterCardId: "spreadsheet-26"
 });
+distortionEncounterGame = revealPendingFlightEncounter(distortionEncounterGame);
 distortionEncounterGame = resolveEncounterChoice(distortionEncounterGame, {
   choiceId: "attempt",
   forcedRoll: { balls: ["yellow", "yellow"] },
@@ -1015,6 +1056,7 @@ chainedEncounterGame = determineFlightSpeed(chainedEncounterGame, {
   balls: ["black", "yellow"],
   encounterCardId: "spreadsheet-26"
 });
+chainedEncounterGame = revealPendingFlightEncounter(chainedEncounterGame);
 chainedEncounterGame = resolveEncounterChoice(chainedEncounterGame, {
   choiceId: "decline"
 });
@@ -1043,6 +1085,7 @@ toothEncounterGame = determineFlightSpeed(toothEncounterGame, {
   balls: ["black", "yellow"],
   encounterCardId: "spreadsheet-32"
 });
+toothEncounterGame = revealPendingFlightEncounter(toothEncounterGame);
 toothEncounterGame = resolveEncounterChoice(toothEncounterGame, { choiceId: "continue" });
 assert(toothEncounterGame.activeEncounter?.pendingStep?.type === "globalUpgradeLossSelection", "Global encounter cards should enter a multi-player upgrade loss step.");
 toothEncounterGame = submitEncounterPending(toothEncounterGame, { upgrade: "drive" });
