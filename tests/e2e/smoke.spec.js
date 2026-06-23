@@ -16,7 +16,12 @@ test("main menu, new game flow, board, HUD, and settings menu work", async ({ pa
   await page.getByRole("button", { name: "Continue" }).click();
 
   await expect(page.getByRole("heading", { name: "Connect controllers" })).toBeVisible();
-  await page.getByRole("button", { name: "Start game now" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(page.getByRole("heading", { name: "Set up players" })).toBeVisible();
+  await expect(page.locator(".player-setup-row input").nth(0)).toHaveValue("Player 1");
+  await expect(page.locator(".player-setup-row input").nth(1)).toHaveValue("Player 2");
+  await page.getByRole("button", { name: "Start game" }).click();
 
   await expect(page.locator(".board-placeholder")).toBeVisible();
   await expect(page.locator(".board-event-log")).toBeVisible();

@@ -22,9 +22,10 @@ import {
   getPlayerShipAssetPath,
   getPlayerSpaceportAssetPath,
   getTradeShipAssetPath,
+  playerPieceColors,
   playerPieceVisualDefaults
 } from "./data/playerPieceVisuals.js";
-import { getShipEngineTemplate, getShipVfxAnchors } from "./data/shipVfxData.js";
+import { getShipEngineTemplate, getShipVfxAnchors, getTradeShipVfxAnchors } from "./data/shipVfxData.js";
 import { MOTHERSHIP_SPEED_ANIMATION_CONFIG } from "./data/mothershipSpeedAnimationConfig.js";
 import {
   applyDebugLayoutTransform,
@@ -105,6 +106,7 @@ const state = {
   language: loadLanguage(),
   view: "menu",
   selectedPlayers: null,
+  playerSetup: [],
   gameState: loadCurrentGameState(),
   tradeFromResource: "ore",
   tradeToResource: "food",
@@ -295,19 +297,79 @@ function resetTradeOfferDraft() {
 
 function startNewGameSetup() {
   state.selectedPlayers = null;
+  state.playerSetup = [];
   setView("players");
 }
 
 function startGameNow() {
+  const validation = validatePlayerSetup();
+  if (!validation.valid) {
+    state.notice = t(validation.messageKey);
+    render();
+    return;
+  }
+
   state.gameState = createGameState({
     language: state.language,
     playerCount: state.selectedPlayers,
-    boardLayout
+    boardLayout,
+    playerSetup: getSanitizedPlayerSetup()
   });
   resetTradeOfferDraft();
   state.selectedPlayers = state.gameState.playerCount;
+  state.playerSetup = [];
   saveCurrentGameState();
   setView("board");
+}
+
+function createDefaultPlayerSetup(playerCount) {
+  return Array.from({ length: playerCount }, (_, index) => ({
+    name: t("playerNumber").replace("{number}", index + 1),
+    color: playerPieceColors[index] ?? playerPieceColors[0]
+  }));
+}
+
+function ensurePlayerSetup(playerCount) {
+  const defaults = createDefaultPlayerSetup(playerCount);
+  state.playerSetup = defaults.map((fallback, index) => ({
+    ...fallback,
+    ...(state.playerSetup[index] ?? {}),
+    color: playerPieceColors.includes(state.playerSetup[index]?.color)
+      ? state.playerSetup[index].color
+      : fallback.color
+  }));
+  return state.playerSetup;
+}
+
+function getSanitizedPlayerSetup() {
+  return ensurePlayerSetup(state.selectedPlayers ?? 2).map((player) => ({
+    name: String(player.name ?? "").trim(),
+    color: player.color
+  }));
+}
+
+function validatePlayerSetup() {
+  const playerCount = state.selectedPlayers ?? 0;
+  if (![2, 3, 4].includes(playerCount)) {
+    return { valid: false, messageKey: "selectPlayers" };
+  }
+
+  const setup = getSanitizedPlayerSetup();
+  if (setup.some((player) => player.name.length === 0)) {
+    return { valid: false, messageKey: "playerSetupNameRequired" };
+  }
+
+  const normalizedNames = setup.map((player) => player.name.toLocaleLowerCase(state.language));
+  if (new Set(normalizedNames).size !== normalizedNames.length) {
+    return { valid: false, messageKey: "playerSetupNameDuplicate" };
+  }
+
+  const colors = setup.map((player) => player.color);
+  if (new Set(colors).size !== colors.length) {
+    return { valid: false, messageKey: "playerSetupColorDuplicate" };
+  }
+
+  return { valid: true, messageKey: "" };
 }
 
 function createButton(label, onClick, className = "menu-button") {
@@ -843,6 +905,7 @@ function renderPlayerSelect() {
   for (const count of [2, 3, 4]) {
     const button = createButton(String(count), () => {
       state.selectedPlayers = count;
+      ensurePlayerSetup(count);
       render();
     }, "player-button");
     button.setAttribute("aria-label", t("playersLabel").replace("{count}", count));
@@ -888,11 +951,91 @@ function renderControllerConnect() {
   actions.className = "setup-actions";
   actions.append(
     createButton(t("back"), () => setView("players"), "secondary-button"),
-    createButton(t("startGameNow"), startGameNow, "menu-button")
+    createButton(t("continue"), () => setView("playerSetup"), "menu-button")
   );
 
   screen.append(renderLanguageToggle(), title, qrGrid, hint, actions);
   return screen;
+}
+
+function renderPlayerSetup() {
+  ensurePlayerSetup(state.selectedPlayers ?? 2);
+
+  const screen = document.createElement("section");
+  screen.className = "menu-screen player-setup-screen";
+  screen.setAttribute("aria-labelledby", "screen-title");
+
+  const title = document.createElement("h1");
+  title.id = "screen-title";
+  title.className = "setup-title";
+  title.textContent = t("playerSetupTitle");
+
+  const form = document.createElement("div");
+  form.className = "player-setup-form";
+
+  const hint = document.createElement("p");
+  hint.className = "player-setup-hint";
+
+  const actions = document.createElement("div");
+  actions.className = "setup-actions";
+  const startButton = createButton(t("startGame"), startGameNow, "menu-button");
+  actions.append(
+    createButton(t("back"), () => setView("controllers"), "secondary-button"),
+    startButton
+  );
+
+  const updateValidation = () => {
+    const validation = validatePlayerSetup();
+    startButton.disabled = !validation.valid;
+    hint.textContent = validation.valid ? "" : t(validation.messageKey);
+  };
+
+  state.playerSetup.forEach((playerSetup, index) => {
+    const row = document.createElement("article");
+    row.className = "player-setup-row";
+
+    const heading = document.createElement("strong");
+    heading.textContent = t("playerNumber").replace("{number}", index + 1);
+
+    const nameLabel = document.createElement("label");
+    nameLabel.textContent = t("playerSetupName");
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = playerSetup.name;
+    nameInput.autocomplete = "off";
+    nameInput.addEventListener("input", () => {
+      state.playerSetup[index].name = nameInput.value;
+      updateValidation();
+    });
+    nameLabel.append(nameInput);
+
+    const colorLabel = document.createElement("label");
+    colorLabel.textContent = t("playerSetupColor");
+    const colorSelect = document.createElement("select");
+    for (const color of playerPieceColors) {
+      const option = document.createElement("option");
+      option.value = color;
+      option.textContent = getPlayerColorLabel(color);
+      option.selected = playerSetup.color === color;
+      colorSelect.append(option);
+    }
+    colorSelect.addEventListener("change", () => {
+      state.playerSetup[index].color = colorSelect.value;
+      updateValidation();
+    });
+    colorLabel.append(colorSelect);
+
+    row.append(heading, nameLabel, colorLabel);
+    form.append(row);
+  });
+
+  updateValidation();
+  screen.append(renderLanguageToggle(), title, form, hint, actions);
+  return screen;
+}
+
+function getPlayerColorLabel(color) {
+  return t(`playerColor_${color}`);
 }
 
 function renderQrPlaceholder(playerNumber) {
@@ -4057,7 +4200,9 @@ function getShipAssetPath(owner, ship) {
 }
 
 function getShipVfxAnchorsForRender(owner, ship) {
-  return ship.type === "tradeShip" ? null : getShipVfxAnchors(owner?.color, ship);
+  return ship.type === "tradeShip"
+    ? getTradeShipVfxAnchors(owner?.color, ship)
+    : getShipVfxAnchors(owner?.color, ship);
 }
 
 function getShipStatusLabel(status) {
@@ -5430,6 +5575,7 @@ function render() {
     board: renderBoardShell,
     controllers: renderControllerConnect,
     menu: renderMenu,
+    playerSetup: renderPlayerSetup,
     players: renderPlayerSelect
   };
 

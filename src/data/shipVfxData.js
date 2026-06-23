@@ -1,4 +1,5 @@
 import { normalizePlayerPieceColor } from "./playerPieceVisuals.js";
+import { tradeShipVfxData } from "./tradeShipVfxData.js";
 
 const engineTemplates = [
   {
@@ -31,9 +32,10 @@ const colonyShipVfxAnchors = {
 };
 
 export const shipVfxData = {
-  version: 2,
-  engineTemplates,
+  version: 3,
+  engineTemplates: mergeEngineTemplates(engineTemplates, tradeShipVfxData.engineTemplates),
   colonyShipVfxAnchors,
+  tradeShipVfxAnchors: tradeShipVfxData.tradeShipVfxAnchors,
   shipVfxAnchors: colonyShipVfxAnchors
 };
 
@@ -43,8 +45,24 @@ export function getShipVfxAnchors(playerColor, shipRef) {
   return shipVfxData.colonyShipVfxAnchors[`${color}-ship-${variant}`] ?? null;
 }
 
+export function getTradeShipVfxAnchors(playerColor, shipRef) {
+  const color = normalizePlayerPieceColor(playerColor);
+  const variant = getShipVariantIndex(shipRef, 3) + 1;
+  return shipVfxData.tradeShipVfxAnchors[`${color}-trade-ship-${variant}`] ?? null;
+}
+
 export function getShipEngineTemplate(templateId) {
   return shipVfxData.engineTemplates.find((template) => template.id === templateId) ?? null;
+}
+
+function mergeEngineTemplates(primaryTemplates, secondaryTemplates = []) {
+  const templatesById = new Map();
+  for (const template of [...primaryTemplates, ...secondaryTemplates]) {
+    if (template?.id && !templatesById.has(template.id)) {
+      templatesById.set(template.id, template);
+    }
+  }
+  return [...templatesById.values()];
 }
 
 function createEmitter(id, type, x, y, direction, size, length, color, intensity, spread, count, speed, jitter) {

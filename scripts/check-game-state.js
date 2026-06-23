@@ -46,6 +46,7 @@ import {
 } from "../src/game/gameState.js";
 import { getEncounterCardById, getEncounterDeckIds } from "../src/data/encounterCards.js";
 import { isActiveSpecialToken } from "../src/data/numberTokens.js";
+import { shipVfxData } from "../src/data/shipVfxData.js";
 
 function getResourceTotal(player) {
   return Object.values(player.resources ?? {}).reduce((sum, value) => sum + value, 0);
@@ -75,8 +76,28 @@ function placeSpaceportAndShip(game) {
 }
 
 let game = createGameState({ language: "de", playerCount: 2, boardLayout });
+const customPlayerGame = createGameState({
+  language: "de",
+  playerCount: 2,
+  boardLayout,
+  playerSetup: [
+    { name: "Ada", color: "green" },
+    { name: "Ben", color: "red" }
+  ]
+});
 
 assert(game.phase === "placement", "New games should start in placement phase.");
+assert(customPlayerGame.players[0].name === "Ada" && customPlayerGame.players[0].color === "green", "New games should use configured player names and colors.");
+assert(customPlayerGame.players[1].name === "Ben" && customPlayerGame.players[1].color === "red", "New games should preserve configured player names and colors.");
+assert(Object.keys(shipVfxData.tradeShipVfxAnchors ?? {}).length === 12, "Trade ship VFX data should cover all 12 trade ship variants.");
+for (const color of ["red", "blue", "yellow", "green"]) {
+  for (const variant of [1, 2, 3]) {
+    const anchors = shipVfxData.tradeShipVfxAnchors?.[`${color}-trade-ship-${variant}`];
+    assert(anchors?.coils?.length > 0, `Missing trade ship coil VFX anchors for ${color} variant ${variant}.`);
+    assert(anchors?.engines?.length > 0, `Missing trade ship engine VFX anchors for ${color} variant ${variant}.`);
+    assert(Number.isFinite(anchors?.assetWidth) && Number.isFinite(anchors?.assetHeight), `Missing trade ship asset size for ${color} variant ${variant}.`);
+  }
+}
 assert(game.board.placedQuadrants.length === 15, "New games should place 15 hidden space quadrants.");
 assert(Boolean(game.board.unusedQuadrant), "New games should leave exactly one space quadrant unused.");
 assert(game.board.placedQuadrants.filter((quadrant) => quadrant.type === "planetSystem").length === game.board.placedSystems.length, "Placed planet systems should stay aligned with quadrant records.");

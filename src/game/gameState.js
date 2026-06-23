@@ -158,14 +158,14 @@ export function getCannonValueForPlayer(gameState, playerId) {
   return getEffectiveUpgradeValue(gameState, playerId, "cannon");
 }
 
-export function createGameState({ language, playerCount, boardLayout }) {
+export function createGameState({ language, playerCount, boardLayout, playerSetup = [] }) {
   const now = new Date().toISOString();
   const safePlayerCount = [2, 3, 4].includes(playerCount) ? playerCount : 2;
   const boardPlacement = createBoardPlacement(boardLayout);
   const numberTokens = createNumberTokenState(boardLayout, boardPlacement);
   const startingStructures = [];
   const startingShips = [];
-  const players = attachPlayerAssets(createPlayers(safePlayerCount, language), startingStructures, startingShips);
+  const players = attachPlayerAssets(createPlayers(safePlayerCount, language, playerSetup), startingStructures, startingShips);
 
   return finalizeDerivedState({
     gameId: createId("game"),
@@ -2348,11 +2348,11 @@ export function touchGameState(gameState) {
   };
 }
 
-function createPlayers(playerCount, language) {
+function createPlayers(playerCount, language, playerSetup = []) {
   return Array.from({ length: playerCount }, (_, index) => ({
     id: `player-${index + 1}`,
-    name: language === "en" ? `Player ${index + 1}` : `Spieler ${index + 1}`,
-    color: playerColorKeys[index],
+    name: normalizePlayerSetupName(playerSetup[index]?.name, index, language),
+    color: normalizePlayerSetupColor(playerSetup[index]?.color, index),
     victoryPoints: 0,
     resources: createEmptyResources(),
     upgrades: createDefaultUpgrades(),
@@ -2365,6 +2365,16 @@ function createPlayers(playerCount, language) {
     structures: [],
     stations: []
   }));
+}
+
+function normalizePlayerSetupName(name, index, language) {
+  const fallback = language === "en" ? `Player ${index + 1}` : `Spieler ${index + 1}`;
+  const trimmedName = String(name ?? "").trim();
+  return trimmedName || fallback;
+}
+
+function normalizePlayerSetupColor(color, index) {
+  return playerColorKeys.includes(color) ? color : playerColorKeys[index] ?? playerColorKeys[0];
 }
 
 function createPlacementState(playerCount) {
@@ -2441,7 +2451,7 @@ function normalizePlayer(player, index, language) {
     ...player,
     id: player.id || fallback.id,
     name: player.name || fallback.name,
-    color: player.color || fallback.color,
+    color: normalizePlayerSetupColor(player.color, index),
     victoryPoints: Number.isInteger(player.victoryPoints) ? player.victoryPoints : 0,
     resources: normalizeResources(player.resources),
     upgrades: normalizeUpgrades(player.upgrades),
