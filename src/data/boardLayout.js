@@ -201,6 +201,8 @@ export const boardLayout = {
   planetSystems: defaultWildSpacePlacement.placedSystems,
   outposts: defaultWildSpacePlacement.placedOutposts,
   emptySlots: defaultWildSpacePlacement.emptySlots,
+  placedQuadrants: defaultWildSpacePlacement.placedQuadrants,
+  unusedQuadrant: defaultWildSpacePlacement.unusedQuadrant,
   specialPoints: {
     colonySites: ["p03", "p09", "p16", "p18", "p23", "p29", "p33", "p37"],
     spaceports: ["p01", "p11", "p21", "p31"],
@@ -375,6 +377,9 @@ function createCoordinateRange(startColumn, endColumn, rowNumber) {
 
 function createSystemSlot(id, source, hexIds) {
   const centers = hexIds.map((hexId) => hexCenter(hexId));
+  const averageColumnIndex = hexIds
+    .map((hexId) => parseCoordinate(hexId).columnIndex)
+    .reduce((sum, columnIndex) => sum + columnIndex, 0) / hexIds.length;
   const center = centers.reduce((sum, point) => ({
     x: sum.x + point.x,
     y: sum.y + point.y
@@ -385,53 +390,110 @@ function createSystemSlot(id, source, hexIds) {
     source,
     hexIds,
     x: roundCoordinate(center.x / centers.length),
-    y: roundCoordinate(center.y / centers.length)
+    y: roundCoordinate(center.y / centers.length),
+    rightOfNebula: averageColumnIndex >= sectorSplitColumnIndex
   };
 }
 
 function createDefaultWildSpacePlacement() {
-  return placeWildSpaceContents(
-    systemSlots,
-    [
-      ...planetSystemTemplates.map((template) => ({ type: "planetSystem", template })),
-      ...outpostTemplates.map((template) => ({ type: "outpost", template }))
-    ]
-  );
+  return placeWildSpaceContents(systemSlots, createWildSpaceContentPool());
 }
 
 function createWildSpacePlacement() {
-  return placeWildSpaceContents(
-    shuffle(systemSlots),
-    shuffle([
-      ...planetSystemTemplates.map((template) => ({ type: "planetSystem", template })),
-      ...outpostTemplates.map((template) => ({ type: "outpost", template }))
-    ])
-  );
+  return placeWildSpaceContents(systemSlots, createWildSpaceContentPool(), { randomize: true });
 }
 
-function placeWildSpaceContents(slots, contents) {
+function createWildSpaceContentPool() {
+  return [
+    ...planetSystemTemplates.map((template) => ({ type: "planetSystem", id: template.id, template })),
+    ...outpostTemplates.map((template) => ({ type: "outpost", id: template.id, template })),
+    ...Array.from({ length: 4 }, (_, index) => ({
+      type: "empty",
+      id: `empty-${String(index + 1).padStart(2, "0")}`
+    }))
+  ];
+}
+
+function placeWildSpaceContents(slots, contents, options = {}) {
   const placedSystems = [];
   const placedOutposts = [];
-  const usedSlotIds = new Set();
+  const placedQuadrants = [];
+  const availableSlots = [...slots];
+  const remainingContents = options.randomize ? shuffle(contents) : [...contents];
+  const unusedIndex = options.randomize
+    ? Math.floor(Math.random() * remainingContents.length)
+    : remainingContents.length - 1;
+  const unusedQuadrant = remainingContents.length > availableSlots.length
+    ? remainingContents.splice(unusedIndex, 1)[0]
+    : null;
+  const placementContents = options.randomize
+    ? [
+      ...remainingContents.filter((content) => content.type === "outpost"),
+      ...shuffle(remainingContents.filter((content) => content.type !== "outpost"))
+    ]
+    : remainingContents;
 
-  contents.forEach((content, index) => {
-    const slot = slots[index];
-    if (!slot) return;
-    usedSlotIds.add(slot.id);
+  for (const content of placementContents) {
+    const slot = options.randomize && content.type === "outpost"
+      ? takeWeightedOutpostSlot(availableSlots)
+      : takeNextSlot(availableSlots, options.randomize);
+    if (!slot) break;
+
+    placedQuadrants.push(createPlacedQuadrantRecord(content, slot));
 
     if (content.type === "planetSystem") {
       placedSystems.push(instantiatePlanetSystem(content.template, slot));
-    } else {
+    } else if (content.type === "outpost") {
       placedOutposts.push(instantiateOutpost(content.template, slot));
     }
-  });
+  }
 
   return {
     placedSystems,
     placedOutposts,
-    emptySlots: systemSlots
-      .filter((slot) => !usedSlotIds.has(slot.id))
-      .map((slot) => slot.id)
+    emptySlots: placedQuadrants
+      .filter((quadrant) => quadrant.type === "empty")
+      .map((quadrant) => quadrant.slotId),
+    placedQuadrants,
+    unusedQuadrant: unusedQuadrant ? createUnusedQuadrantRecord(unusedQuadrant) : null
+  };
+}
+
+function takeNextSlot(availableSlots, randomize = false) {
+  if (!randomize) return availableSlots.shift();
+  const slotIndex = Math.floor(Math.random() * availableSlots.length);
+  return availableSlots.splice(slotIndex, 1)[0];
+}
+
+function takeWeightedOutpostSlot(availableSlots) {
+  const weightedSlots = availableSlots.flatMap((slot) => (
+    Array.from({ length: slot.rightOfNebula ? 3 : 1 }, () => slot)
+  ));
+  const selected = weightedSlots[Math.floor(Math.random() * weightedSlots.length)] ?? availableSlots[0];
+  const slotIndex = availableSlots.findIndex((slot) => slot.id === selected.id);
+  return availableSlots.splice(slotIndex >= 0 ? slotIndex : 0, 1)[0];
+}
+
+function createPlacedQuadrantRecord(content, slot) {
+  return {
+    id: `${slot.id}-${content.id}`,
+    type: content.type,
+    contentId: content.id,
+    templateId: content.template?.templateId ?? content.template?.id ?? content.id,
+    outpostType: content.template?.outpostType ?? null,
+    slotId: slot.id,
+    slotHexIds: [...slot.hexIds],
+    rightOfNebula: Boolean(slot.rightOfNebula),
+    discovered: false
+  };
+}
+
+function createUnusedQuadrantRecord(content) {
+  return {
+    type: content.type,
+    contentId: content.id,
+    templateId: content.template?.templateId ?? content.template?.id ?? content.id,
+    outpostType: content.template?.outpostType ?? null
   };
 }
 
@@ -676,6 +738,13 @@ function instantiateOutpost(template, slot) {
   };
 }
 
+function getAdjacentNodeIdsForHexIds(hexIds) {
+  const hexIdSet = new Set(hexIds ?? []);
+  return boardGraph.points
+    .filter((point) => point.hexIds?.some((hexId) => hexIdSet.has(hexId)))
+    .map((point) => point.id);
+}
+
 function createStartSite(id, x, y, type, adjacentPlanetIds) {
   return { id, x, y, type, adjacentPlanetIds };
 }
@@ -824,11 +893,55 @@ function applySystemMetadata(system) {
 }
 
 function enrichPlacement(placement) {
+  const placedQuadrants = Array.isArray(placement.placedQuadrants) && placement.placedQuadrants.length > 0
+    ? placement.placedQuadrants
+    : createPlacedQuadrantsFromLegacyPlacement(placement);
   return {
     ...placement,
     placedSystems: (placement.placedSystems ?? []).map((system) => applySystemMetadata(system)),
-    placedOutposts: (placement.placedOutposts ?? []).map((outpost) => applyOutpostMetadata(outpost))
+    placedOutposts: (placement.placedOutposts ?? []).map((outpost) => applyOutpostMetadata(outpost)),
+    emptySlots: Array.isArray(placement.emptySlots) ? placement.emptySlots : [],
+    placedQuadrants,
+    unusedQuadrant: placement.unusedQuadrant ?? null
   };
+}
+
+function createPlacedQuadrantsFromLegacyPlacement(placement) {
+  return [
+    ...(placement.placedSystems ?? []).map((system) => ({
+      id: `${system.slotId}-${system.id}`,
+      type: "planetSystem",
+      contentId: system.id,
+      templateId: system.templateId ?? system.id,
+      slotId: system.slotId,
+      slotHexIds: [...(system.slotHexIds ?? [])],
+      rightOfNebula: Boolean(systemSlots.find((slot) => slot.id === system.slotId)?.rightOfNebula),
+      discovered: false
+    })),
+    ...(placement.placedOutposts ?? []).map((outpost) => ({
+      id: `${outpost.slotId}-${outpost.id}`,
+      type: "outpost",
+      contentId: outpost.id,
+      templateId: outpost.templateId ?? outpost.id,
+      outpostType: outpost.outpostType ?? null,
+      slotId: outpost.slotId,
+      slotHexIds: [...(outpost.slotHexIds ?? [])],
+      rightOfNebula: Boolean(systemSlots.find((slot) => slot.id === outpost.slotId)?.rightOfNebula),
+      discovered: false
+    })),
+    ...(placement.emptySlots ?? []).map((slotId, index) => {
+      const slot = systemSlots.find((candidate) => candidate.id === slotId);
+      return {
+        id: `${slotId}-empty-${String(index + 1).padStart(2, "0")}`,
+        type: "empty",
+        contentId: `empty-${String(index + 1).padStart(2, "0")}`,
+        slotId,
+        slotHexIds: [...(slot?.hexIds ?? [])],
+        rightOfNebula: Boolean(slot?.rightOfNebula),
+        discovered: false
+      };
+    })
+  ];
 }
 
 function applyOutpostMetadata(outpost) {
@@ -847,6 +960,9 @@ function applyOutpostMetadata(outpost) {
     dockIds: Array.isArray(outpost.dockIds) && outpost.dockIds.length > 0
       ? outpost.dockIds
       : nodeProfile.docks.map((dock) => dock.id),
+    adjacentNodeIds: Array.isArray(outpost.adjacentNodeIds) && outpost.adjacentNodeIds.length > 0
+      ? outpost.adjacentNodeIds
+      : getAdjacentNodeIdsForHexIds(outpost.slotHexIds),
     tradeStationIds: Array.isArray(outpost.tradeStationIds) ? outpost.tradeStationIds : [],
     friendshipHolderPlayerId: typeof outpost.friendshipHolderPlayerId === "string" ? outpost.friendshipHolderPlayerId : null,
     friendshipCards: Array.isArray(outpost.friendshipCards)

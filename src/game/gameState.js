@@ -206,7 +206,15 @@ export function createGameState({ language, playerCount, boardLayout }) {
       placedSystems: boardPlacement.placedSystems,
       placedOutposts: boardPlacement.placedOutposts,
       emptySlots: boardPlacement.emptySlots,
+      placedQuadrants: updatePlacedQuadrantDiscovery(boardPlacement.placedQuadrants, {
+        exploredSystems: [],
+        exploredOutposts: [],
+        exploredEmptySlots: []
+      }),
+      unusedQuadrant: boardPlacement.unusedQuadrant,
       exploredSystems: normalizeExploredSystems([], boardLayout, boardPlacement.placedSystems),
+      exploredOutposts: [],
+      exploredEmptySlots: [],
       numberTokens: revealSystemsById(
         numberTokens,
         boardLayout,
@@ -1066,6 +1074,9 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
       board: {
         ...gameState.board,
         exploredSystems: explorationResult.exploredSystems,
+        exploredOutposts: explorationResult.exploredOutposts,
+        exploredEmptySlots: explorationResult.exploredEmptySlots,
+        placedQuadrants: explorationResult.placedQuadrants,
         numberTokens: explorationResult.numberTokens,
         ships: updatedShips
       }
@@ -1084,6 +1095,9 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
     board: {
       ...gameState.board,
       exploredSystems: explorationResult.exploredSystems,
+      exploredOutposts: explorationResult.exploredOutposts,
+      exploredEmptySlots: explorationResult.exploredEmptySlots,
+      placedQuadrants: explorationResult.placedQuadrants,
       numberTokens: specialResult.numberTokens,
       selectedElement: { type: "ship", id: shipId },
       ships: updatedShips
@@ -2218,6 +2232,13 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
   const normalizedShips = sanitizeShips(normalizeShips(gameState.board?.ships), boardLayout, normalizedStructures);
   const normalizedPlacement = normalizeBoardPlacement(gameState.board, boardLayout);
   const normalizedExploredSystems = normalizeExploredSystems(gameState.board?.exploredSystems, boardLayout, normalizedPlacement.placedSystems);
+  const hasStoredQuadrants = Array.isArray(gameState.board?.placedQuadrants);
+  const normalizedExploredOutposts = hasStoredQuadrants
+    ? normalizeExploredOutposts(gameState.board?.exploredOutposts, normalizedPlacement.placedOutposts)
+    : normalizedPlacement.placedOutposts.map((outpost) => outpost.id);
+  const normalizedExploredEmptySlots = hasStoredQuadrants
+    ? normalizeExploredEmptySlots(gameState.board?.exploredEmptySlots, normalizedPlacement.emptySlots)
+    : normalizeExploredEmptySlots(gameState.board?.emptySlots, normalizedPlacement.emptySlots);
   const normalizedNumberTokens = revealSystemsById(
     normalizeNumberTokenState(gameState.board?.numberTokens, boardLayout, normalizedPlacement),
     boardLayout,
@@ -2277,7 +2298,15 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
       placedSystems: normalizedPlacement.placedSystems,
       placedOutposts: normalizedPlacement.placedOutposts,
       emptySlots: normalizedPlacement.emptySlots,
+      placedQuadrants: updatePlacedQuadrantDiscovery(normalizedPlacement.placedQuadrants, {
+        exploredSystems: normalizedExploredSystems,
+        exploredOutposts: normalizedExploredOutposts,
+        exploredEmptySlots: normalizedExploredEmptySlots
+      }),
+      unusedQuadrant: normalizedPlacement.unusedQuadrant,
       exploredSystems: normalizedExploredSystems,
+      exploredOutposts: normalizedExploredOutposts,
+      exploredEmptySlots: normalizedExploredEmptySlots,
       numberTokens: normalizedNumberTokens,
       pendingFriendshipCardSelection: normalizePendingFriendshipCardSelection(gameState.board?.pendingFriendshipCardSelection, normalizedPlayers),
       pendingTradeStationPlacement: normalizePendingTradeStationPlacement(gameState.board?.pendingTradeStationPlacement, normalizedPlayers),
@@ -4122,7 +4151,9 @@ function createFallbackBoardPlacement(boardLayout) {
   return {
     placedSystems: boardLayout.planetSystems ?? [],
     placedOutposts: boardLayout.outposts ?? [],
-    emptySlots: boardLayout.emptySlots ?? []
+    emptySlots: boardLayout.emptySlots ?? [],
+    placedQuadrants: boardLayout.placedQuadrants ?? [],
+    unusedQuadrant: boardLayout.unusedQuadrant ?? null
   };
 }
 
@@ -4131,7 +4162,9 @@ function normalizeBoardPlacement(boardState, boardLayout) {
     return enrichBoardPlacement(boardLayout, normalizePlacementObject({
       placedSystems: boardState.placedSystems,
       placedOutposts: boardState.placedOutposts,
-      emptySlots: boardState.emptySlots
+      emptySlots: boardState.emptySlots,
+      placedQuadrants: boardState.placedQuadrants,
+      unusedQuadrant: boardState.unusedQuadrant
     }));
   }
 
@@ -4148,8 +4181,29 @@ function normalizePlacementObject(placement) {
   return {
     placedSystems: Array.isArray(placement?.placedSystems) ? placement.placedSystems : [],
     placedOutposts: Array.isArray(placement?.placedOutposts) ? placement.placedOutposts : [],
-    emptySlots: Array.isArray(placement?.emptySlots) ? placement.emptySlots : []
+    emptySlots: Array.isArray(placement?.emptySlots) ? placement.emptySlots : [],
+    placedQuadrants: Array.isArray(placement?.placedQuadrants) ? placement.placedQuadrants : [],
+    unusedQuadrant: placement?.unusedQuadrant && typeof placement.unusedQuadrant === "object"
+      ? placement.unusedQuadrant
+      : null
   };
+}
+
+function updatePlacedQuadrantDiscovery(placedQuadrants = [], {
+  exploredSystems = [],
+  exploredOutposts = [],
+  exploredEmptySlots = []
+} = {}) {
+  const exploredSystemIds = new Set(exploredSystems);
+  const exploredOutpostIds = new Set(exploredOutposts);
+  const exploredEmptySlotIds = new Set(exploredEmptySlots);
+  return (placedQuadrants ?? []).map((quadrant) => ({
+    ...quadrant,
+    discovered:
+      (quadrant.type === "planetSystem" && exploredSystemIds.has(quadrant.contentId)) ||
+      (quadrant.type === "outpost" && exploredOutpostIds.has(quadrant.contentId)) ||
+      (quadrant.type === "empty" && exploredEmptySlotIds.has(quadrant.slotId))
+  }));
 }
 
 function getPlacedPlanetSystems(gameState, boardLayout) {
@@ -4158,10 +4212,20 @@ function getPlacedPlanetSystems(gameState, boardLayout) {
     : (boardLayout.planetSystems ?? []);
 }
 
+function getExploredPlanetSystems(gameState, boardLayout) {
+  const exploredSystemIds = new Set(normalizeExploredSystems(
+    gameState.board?.exploredSystems,
+    boardLayout,
+    getPlacedPlanetSystems(gameState, boardLayout)
+  ));
+  return getPlacedPlanetSystems(gameState, boardLayout)
+    .filter((system) => exploredSystemIds.has(system.id));
+}
+
 function getGameColonySites(gameState, boardLayout) {
   return [
     ...(boardLayout.startSites ?? []),
-    ...getPlacedPlanetSystems(gameState, boardLayout).flatMap((system) => system.colonySites ?? [])
+    ...getExploredPlanetSystems(gameState, boardLayout).flatMap((system) => system.colonySites ?? [])
   ];
 }
 
@@ -4192,6 +4256,18 @@ function normalizeExploredSystems(exploredSystems, boardLayout, placedSystems = 
 
   return [...new Set([...startSystemIds, ...savedSystemIds])]
     .filter((systemId) => knownSystemIds.has(systemId));
+}
+
+function normalizeExploredOutposts(exploredOutposts, placedOutposts = []) {
+  const knownOutpostIds = new Set((placedOutposts ?? []).map((outpost) => outpost.id));
+  return [...new Set(Array.isArray(exploredOutposts) ? exploredOutposts : [])]
+    .filter((outpostId) => knownOutpostIds.has(outpostId));
+}
+
+function normalizeExploredEmptySlots(exploredEmptySlots, emptySlots = []) {
+  const knownEmptySlotIds = new Set(emptySlots ?? []);
+  return [...new Set(Array.isArray(exploredEmptySlots) ? exploredEmptySlots : [])]
+    .filter((slotId) => knownEmptySlotIds.has(slotId));
 }
 
 function normalizeShips(ships = []) {
@@ -4449,12 +4525,21 @@ function getPlacedOutposts(gameState, boardLayout) {
     : (boardLayout.outposts ?? []);
 }
 
+function getExploredOutposts(gameState, boardLayout) {
+  const exploredOutpostIds = new Set(normalizeExploredOutposts(
+    gameState.board?.exploredOutposts,
+    getPlacedOutposts(gameState, boardLayout)
+  ));
+  return getPlacedOutposts(gameState, boardLayout)
+    .filter((outpost) => exploredOutpostIds.has(outpost.id));
+}
+
 function getVisibleDocks(gameState, boardLayout) {
-  return getPlacedOutposts(gameState, boardLayout).flatMap((outpost) => outpost.docks ?? []);
+  return getExploredOutposts(gameState, boardLayout).flatMap((outpost) => outpost.docks ?? []);
 }
 
 function getDockingOutpost(gameState, boardLayout, nodeId) {
-  return getPlacedOutposts(gameState, boardLayout)
+  return getExploredOutposts(gameState, boardLayout)
     .find((outpost) => outpost.dockNodeId === nodeId) ?? null;
 }
 
@@ -4627,40 +4712,76 @@ function advancePlacementOrder(placement, gameState, currentStep, nextStep, next
 function exploreAdjacentSystems(gameState, boardLayout, nodeId, playerName) {
   const placedSystems = getPlacedPlanetSystems(gameState, boardLayout);
   const exploredSystemIds = new Set(normalizeExploredSystems(gameState.board?.exploredSystems, boardLayout, placedSystems));
+  const placedOutposts = getPlacedOutposts(gameState, boardLayout);
+  const exploredOutpostIds = new Set(normalizeExploredOutposts(gameState.board?.exploredOutposts, placedOutposts));
+  const exploredEmptySlotIds = new Set(normalizeExploredEmptySlots(gameState.board?.exploredEmptySlots, gameState.board?.emptySlots));
   let numberTokens = gameState.board?.numberTokens;
   const newSystems = placedSystems
     .filter((system) => !exploredSystemIds.has(system.id) && (system.adjacentNodeIds ?? []).includes(nodeId));
+  const newOutposts = placedOutposts
+    .filter((outpost) => !exploredOutpostIds.has(outpost.id) && (outpost.adjacentNodeIds ?? []).includes(nodeId));
+  const newEmptySlots = getPlacedEmptyQuadrants(gameState)
+    .filter((quadrant) => !exploredEmptySlotIds.has(quadrant.slotId) && isNodeAdjacentToSlot(boardLayout, nodeId, quadrant.slotHexIds));
 
   for (const system of newSystems) {
     exploredSystemIds.add(system.id);
     numberTokens = revealSystemTokens(numberTokens, system.planetIds ?? (system.planets ?? []).map((planet) => planet.id));
   }
+  for (const outpost of newOutposts) {
+    exploredOutpostIds.add(outpost.id);
+  }
+  for (const quadrant of newEmptySlots) {
+    exploredEmptySlotIds.add(quadrant.slotId);
+  }
 
   return {
     exploredSystems: [...exploredSystemIds],
+    exploredOutposts: [...exploredOutpostIds],
+    exploredEmptySlots: [...exploredEmptySlotIds],
+    placedQuadrants: updatePlacedQuadrantDiscovery(gameState.board?.placedQuadrants, {
+      exploredSystems: [...exploredSystemIds],
+      exploredOutposts: [...exploredOutpostIds],
+      exploredEmptySlots: [...exploredEmptySlotIds]
+    }),
     numberTokens,
-    logEntries: newSystems.flatMap((system) => [
-      {
-        type: "exploration",
-        messageKey: "logSystemExplored",
-        messageParams: {
-          player: playerName,
-          system: system.name ?? system.id
-        }
-      },
-      ...(system.planets ?? [])
-        .map((planet) => getPlanetToken(numberTokens, planet.id))
-        .filter(isActiveSpecialToken)
-        .map((token) => ({
+    logEntries: [
+      ...newSystems.flatMap((system) => [
+        {
           type: "exploration",
-          messageKey: token.type === "pirate" ? "logPirateBaseDiscovered" : "logIcePlanetDiscovered",
-          messageParams: {
-            player: playerName,
-            value: token.value
-          }
-        }))
-    ])
+          messageKey: "logPlanetSystemDiscovered",
+          messageParams: {}
+        },
+        ...(system.planets ?? [])
+          .map((planet) => getPlanetToken(numberTokens, planet.id))
+          .filter(isActiveSpecialToken)
+          .map((token) => ({
+            type: "exploration",
+            messageKey: token.type === "pirate" ? "logPirateBaseDiscovered" : "logIcePlanetDiscovered",
+            messageParams: {
+              player: playerName,
+              value: token.value
+            }
+          }))
+      ]),
+      ...newOutposts.map(() => ({
+        type: "exploration",
+        messageKey: "logOutpostDiscovered",
+        messageParams: {}
+      }))
+    ]
   };
+}
+
+function getPlacedEmptyQuadrants(gameState) {
+  return (gameState.board?.placedQuadrants ?? [])
+    .filter((quadrant) => quadrant?.type === "empty" && quadrant.slotId);
+}
+
+function isNodeAdjacentToSlot(boardLayout, nodeId, slotHexIds = []) {
+  const point = (boardLayout.points ?? []).find((candidate) => candidate.id === nodeId);
+  if (!point) return false;
+  const slotHexIdSet = new Set(slotHexIds);
+  return point.hexIds?.some((hexId) => slotHexIdSet.has(hexId)) ?? false;
 }
 
 function resolveAdjacentSpecialMarkers(gameState, boardLayout, nodeId, activePlayer) {

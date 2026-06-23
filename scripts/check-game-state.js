@@ -77,6 +77,15 @@ function placeSpaceportAndShip(game) {
 let game = createGameState({ language: "de", playerCount: 2, boardLayout });
 
 assert(game.phase === "placement", "New games should start in placement phase.");
+assert(game.board.placedQuadrants.length === 15, "New games should place 15 hidden space quadrants.");
+assert(Boolean(game.board.unusedQuadrant), "New games should leave exactly one space quadrant unused.");
+assert(game.board.placedQuadrants.filter((quadrant) => quadrant.type === "planetSystem").length === game.board.placedSystems.length, "Placed planet systems should stay aligned with quadrant records.");
+assert(game.board.placedQuadrants.length + (game.board.unusedQuadrant ? 1 : 0) === 16, "Placed and unused quadrants should represent all 16 available quadrants.");
+assert(game.board.placedQuadrants.filter((quadrant) => quadrant.type === "outpost").length === game.board.placedOutposts.length, "Placed outposts should stay aligned with quadrant records.");
+assert(game.board.placedQuadrants.filter((quadrant) => quadrant.type === "empty").length === game.board.emptySlots.length, "Empty quadrant slots should be tracked.");
+assert((game.board.exploredOutposts ?? []).length === 0, "Outposts should start hidden in new games.");
+assert((game.board.exploredEmptySlots ?? []).length === 0, "Empty quadrants should start hidden in new games.");
+assert((game.board.exploredSystems ?? []).every((systemId) => systemId.startsWith("start-")), "Only start systems should be explored at game start.");
 
 let placementTieGame = createGameState({ language: "de", playerCount: 2, boardLayout });
 placementTieGame = rollPlacementStart(placementTieGame, { dice: [3, 3], total: 6 });
@@ -398,7 +407,8 @@ if (outpostUnderTest) {
         ...outpost,
         friendshipHolderPlayerId: null,
         tradeStationIds: []
-      }))
+      })),
+      exploredOutposts: [outpostUnderTest.id]
     },
     players: game.players.map((player, index) => ({
       ...player,
@@ -1417,6 +1427,7 @@ function findValidDockApproachScenario(baseGame) {
         "dock-check": 1
       }
     });
+    testState.board.exploredOutposts = [outpost.id];
     const destinationState = getShipDestinationState(testState, boardLayout, "dock-check", outpost.dockNodeId);
     if (destinationState?.validDestination) {
       return {

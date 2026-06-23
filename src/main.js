@@ -2607,15 +2607,19 @@ function getPlanetById(planetId) {
 }
 
 function getVisiblePlanetSystems() {
-  return Array.isArray(state.gameState?.board?.placedSystems)
+  const exploredSystemIds = new Set(state.gameState?.board?.exploredSystems ?? []);
+  const systems = Array.isArray(state.gameState?.board?.placedSystems)
     ? state.gameState.board.placedSystems
     : (boardLayout.planetSystems ?? []);
+  return systems.filter((system) => exploredSystemIds.has(system.id));
 }
 
 function getVisibleOutposts() {
-  return Array.isArray(state.gameState?.board?.placedOutposts)
+  const exploredOutpostIds = new Set(state.gameState?.board?.exploredOutposts ?? []);
+  const outposts = Array.isArray(state.gameState?.board?.placedOutposts)
     ? state.gameState.board.placedOutposts
     : (boardLayout.outposts ?? []);
+  return outposts.filter((outpost) => exploredOutpostIds.has(outpost.id));
 }
 
 function getVisibleDocks() {
@@ -2648,6 +2652,12 @@ function getVisibleProductionPlanets() {
       ...planet,
       systemId: system.id
     })));
+}
+
+function getPlacedPlanetSystems() {
+  return Array.isArray(state.gameState?.board?.placedSystems)
+    ? state.gameState.board.placedSystems
+    : (boardLayout.planetSystems ?? []);
 }
 
 function getStructureById(structureId) {
@@ -4085,7 +4095,7 @@ function getVisibleColonySites() {
 function getBlockedSystemNodeIds() {
   return new Set([
     ...(boardLayout.startSystems ?? []),
-    ...getVisiblePlanetSystems()
+    ...getPlacedPlanetSystems()
   ].flatMap((system) => system.blockedNodeIds ?? []));
 }
 
