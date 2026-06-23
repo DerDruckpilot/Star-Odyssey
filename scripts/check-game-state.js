@@ -1235,7 +1235,14 @@ if (freeColonySite) {
       "player-1-trade-at-colony": 1
     }
   });
-  const blockedTradeLanding = moveShip(tradeShipBlockedAtColonySite, boardLayout, "player-1-trade-at-colony", freeColonySite.nodeId);
+  const exploredTradeShipBlockedAtColonySite = {
+    ...tradeShipBlockedAtColonySite,
+    board: {
+      ...tradeShipBlockedAtColonySite.board,
+      exploredSystems: [...new Set([...(tradeShipBlockedAtColonySite.board.exploredSystems ?? []), freeColonySite.systemId])]
+    }
+  };
+  const blockedTradeLanding = moveShip(exploredTradeShipBlockedAtColonySite, boardLayout, "player-1-trade-at-colony", freeColonySite.nodeId);
   assert(
     blockedTradeLanding.board.ships.find((ship) => ship.id === "player-1-trade-at-colony")?.locationId === freeColonySite.launchNodeIds[0],
     "Trade ships must not end on colony sites."

@@ -1769,32 +1769,45 @@ h1 {
 }
 
 @media (max-width: 760px) and (orientation: landscape) {
+  .board-screen {
+    --mobile-left-rail: clamp(8.6rem, 24vw, 12.8rem);
+    --mobile-edge-gap: 0.35rem;
+    display: block;
+  }
+
   .board-placeholder {
-    width: min(100vw, 160vh);
+    position: absolute;
+    top: 50%;
+    left: var(--mobile-left-rail);
+    width: min(calc(100vh * 1.6), calc(100vw - var(--mobile-left-rail) - 3.25rem));
     max-height: 100vh;
-    transform: translateX(clamp(2.75rem, 7vw, 5.5rem));
+    transform: translateY(-50%);
   }
 
   .compact-board-status {
-    top: 0.25rem;
-    left: 50%;
-    transform: translateX(-34%);
-    max-width: min(42vw, 26rem);
+    top: 0.18rem;
+    left: calc(var(--mobile-left-rail) + 0.35rem);
+    transform: none;
+    max-width: min(43vw, 25rem);
+    padding: 0.16rem 0.38rem;
+    background: rgba(15, 23, 42, 0.7);
+    font-size: clamp(0.56rem, 1.5vw, 0.68rem);
+    line-height: 1.05;
   }
 
   .victory-point-list {
-    top: 2.35rem;
-    left: 0.35rem;
-    width: clamp(7rem, 16vw, 9.6rem);
-    max-width: clamp(7rem, 16vw, 9.6rem);
+    top: 2.45rem;
+    left: var(--mobile-edge-gap);
+    width: calc(var(--mobile-left-rail) - 0.75rem);
+    max-width: calc(var(--mobile-left-rail) - 0.75rem);
     padding: 0.28rem 0.38rem;
     font-size: clamp(0.58rem, 1.35vw, 0.7rem);
   }
 
   .board-event-log {
-    top: 6.35rem;
-    left: 0.35rem;
-    width: clamp(8.5rem, 25vw, 15rem);
+    top: 5.85rem;
+    left: var(--mobile-edge-gap);
+    width: calc(var(--mobile-left-rail) - 0.75rem);
     max-height: calc(100vh - 10.4rem);
     padding: 0.55rem;
   }
@@ -1808,11 +1821,17 @@ h1 {
   }
 
   .player-hud-launcher {
-    left: clamp(8.5rem, 27vw, 18rem);
-    right: clamp(0.6rem, 5vw, 3.5rem);
-    bottom: 0.3rem;
-    grid-template-columns: repeat(4, minmax(4.6rem, 1fr));
+    left: calc(var(--mobile-left-rail) + clamp(4.6rem, 14vw, 7rem));
+    right: clamp(1.8rem, 12vw, 6rem);
+    bottom: 0.12rem;
+    grid-template-columns: repeat(4, minmax(4rem, 1fr));
     gap: 0.25rem;
+  }
+
+  .player-hud-button {
+    min-height: 1.7rem;
+    padding: 0.18rem 0.32rem;
+    font-size: clamp(0.58rem, 1.7vw, 0.72rem);
   }
 }
 
