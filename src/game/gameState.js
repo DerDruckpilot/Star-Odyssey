@@ -914,8 +914,7 @@ export function determineFlightSpeed(gameState, forcedRoll = null) {
         type: "encounter",
         messageKey: "logEncounterTriggered",
         messageParams: {
-          player: activePlayer.name,
-          title: getEncounterCardById(encounterStart.activeEncounter?.cardId)?.title?.[gameState.language] ?? ""
+          player: activePlayer.name
         }
       }] : [])
     ]
@@ -943,7 +942,7 @@ export function resolveEncounterChoice(gameState, payload = {}) {
     payload,
     {
       choiceId: choice.id,
-      resultText: card.results ?? null
+      resultText: null
     }
   );
   if (!resolution) return gameState;
@@ -2912,8 +2911,7 @@ function applyEncounterResolution(gameState, encounter, resolution, metadata = {
         type: "encounter",
         messageKey: "logEncounterChain",
         messageParams: {
-          player: getActivePlayerName(intermediateState),
-          title: getEncounterCardById(encounterStart.activeEncounter?.cardId)?.title?.[intermediateState.language] ?? ""
+          player: getActivePlayerName(intermediateState)
         }
       }
     });
@@ -2945,7 +2943,7 @@ function runEncounterEffectSequence(gameState, state, activePlayerId, effects, c
   let workingState = state;
   const logEntries = [];
   let combat = context.combat ?? null;
-  let resultText = normalizeLocalizedText(context.resultText) ?? normalizeLocalizedText(card.results);
+  let resultText = normalizeLocalizedText(context.resultText);
 
   for (let index = 0; index < effects.length; index += 1) {
     const effect = effects[index];
@@ -3002,7 +3000,7 @@ function runEncounterEffectSequence(gameState, state, activePlayerId, effects, c
     remainingMovementByShipId: workingState.remainingMovementByShipId,
     logEntries,
     combat,
-    resultText,
+    resultText: resultText ?? normalizeLocalizedText(card.results),
     status: "resolved",
     pendingStep: null
   };
@@ -3304,6 +3302,7 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
           logEntries: [comparisonLog]
         };
       }
+      const comparisonResultText = createEncounterComparisonResultText(comparison);
       return {
         state: {
           players: followUp.players,
@@ -3313,7 +3312,7 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         },
         logEntries: [comparisonLog, ...(followUp.logEntries ?? [])],
         combat: followUp.combat ?? null,
-        resultText: followUp.resultText,
+        resultText: followUp.pendingStep ? comparisonResultText : followUp.resultText,
         pendingStep: followUp.pendingStep ?? null,
         nextEncounter: followUp.nextEncounter ?? null
       };
@@ -3653,32 +3652,82 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
     const ships = normalizeShips(state.board?.ships);
     const ship = ships.find((candidate) => candidate.id === shipId && candidate.ownerPlayerId === activePlayer.id);
     if (!ship) return null;
+    const landingNodeId = resolveEncounterJumpLandingNode(
+      {
+        ...gameState,
+        players: state.players,
+        board: state.board
+      },
+      defaultBoardLayout,
+      ship,
+      targetNodeId
+    );
+    if (!landingNodeId) return null;
 
     const nextShips = ships.map((candidate) => candidate.id === shipId
-      ? { ...candidate, locationId: targetNodeId, status: "active" }
+      ? { ...candidate, locationId: landingNodeId, status: "active" }
       : candidate);
-    const nextState = {
-      ...state,
+    const movedPlayers = state.players.map((player) => ({
+      ...player,
+      ships: nextShips.filter((candidate) => candidate.ownerPlayerId === player.id)
+    }));
+    const discoveryBaseState = {
+      ...gameState,
+      players: movedPlayers,
       board: {
         ...state.board,
         ships: nextShips
-      },
-      remainingMovementByShipId: {
-        ...state.remainingMovementByShipId,
-        [shipId]: 0
       }
+    };
+    const explorationResult = exploreAdjacentSystems(discoveryBaseState, defaultBoardLayout, landingNodeId, activePlayer.name);
+    const specialResult = resolveAdjacentSpecialMarkers(
+      {
+        ...discoveryBaseState,
+        players: movedPlayers,
+        board: {
+          ...discoveryBaseState.board,
+          exploredSystems: explorationResult.exploredSystems,
+          exploredOutposts: explorationResult.exploredOutposts,
+          exploredEmptySlots: explorationResult.exploredEmptySlots,
+          placedQuadrants: explorationResult.placedQuadrants,
+          numberTokens: explorationResult.numberTokens,
+          ships: nextShips
+        }
+      },
+      defaultBoardLayout,
+      landingNodeId,
+      activePlayer
+    );
+    const nextState = {
+      ...state,
+      players: specialResult.players,
+      board: {
+        ...state.board,
+        exploredSystems: explorationResult.exploredSystems,
+        exploredOutposts: explorationResult.exploredOutposts,
+        exploredEmptySlots: explorationResult.exploredEmptySlots,
+        placedQuadrants: explorationResult.placedQuadrants,
+        numberTokens: specialResult.numberTokens,
+        selectedElement: { type: "ship", id: shipId },
+        ships: nextShips
+      },
+      remainingMovementByShipId: state.remainingMovementByShipId
     };
     const baseLog = createEncounterLog("logEncounterJumpShip", {
       player: activePlayer.name,
-      ship: ship.type,
-      target: targetNodeId
+      ship: ship.type
     });
     const followUp = runEncounterEffectSequence(gameState, nextState, activePlayer.id, remainingEffects, card, payload, {});
     if (!followUp) return null;
 
     return {
       ...followUp,
-      logEntries: [baseLog, ...(followUp.logEntries ?? [])]
+      logEntries: [
+        baseLog,
+        ...explorationResult.logEntries,
+        ...specialResult.logEntries,
+        ...(followUp.logEntries ?? [])
+      ]
     };
   }
 
@@ -4139,14 +4188,84 @@ function getEncounterJumpShips(state, activePlayerId) {
 }
 
 function getEncounterJumpTargets(gameState, shipId, boardLayout) {
+  const ship = getShipById(gameState, shipId);
+  if (!ship) return [];
+  const ships = normalizeShips(gameState.board?.ships);
+  const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout);
+  const hiddenBlockedNodeIds = getHiddenPlanetSystemBlockedNodeIds(gameState, boardLayout);
+
   return (boardLayout.points ?? [])
-    .filter((point) => point.id !== getShipById(gameState, shipId)?.locationId)
-    .filter((point) => getShipDestinationState(gameState, boardLayout, shipId, point.id).validDestination)
+    .filter((point) => point.id !== ship.locationId)
+    .filter((point) => !isNodeOccupied(ships, structures, point.id, ship.id))
+    .filter((point) => {
+      const destinationState = getShipDestinationState(gameState, boardLayout, shipId, point.id);
+      return destinationState.validDestination || hiddenBlockedNodeIds.has(point.id);
+    })
     .map((point) => point.id);
 }
 
 function getShipById(gameState, shipId) {
   return normalizeShips(gameState.board?.ships).find((ship) => ship.id === shipId) ?? null;
+}
+
+function resolveEncounterJumpLandingNode(gameState, boardLayout, ship, targetNodeId) {
+  const directDestination = getShipDestinationState(gameState, boardLayout, ship.id, targetNodeId);
+  if (directDestination.validDestination) return targetNodeId;
+
+  const hiddenBlockedNodeIds = getHiddenPlanetSystemBlockedNodeIds(gameState, boardLayout);
+  if (!hiddenBlockedNodeIds.has(targetNodeId)) return null;
+
+  const originPoint = (boardLayout.points ?? []).find((point) => point.id === ship.locationId);
+  const connectedNodeIds = getConnectedNodeIds(boardLayout, targetNodeId);
+  const candidates = connectedNodeIds
+    .map((nodeId) => ({
+      nodeId,
+      point: (boardLayout.points ?? []).find((point) => point.id === nodeId),
+      destination: getShipDestinationState(gameState, boardLayout, ship.id, nodeId)
+    }))
+    .filter((candidate) => candidate.point && candidate.destination.validDestination)
+    .sort((left, right) => {
+      const leftDistance = getPointDistance(originPoint, left.point);
+      const rightDistance = getPointDistance(originPoint, right.point);
+      if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+      return String(left.nodeId).localeCompare(String(right.nodeId));
+    });
+
+  return candidates[0]?.nodeId ?? null;
+}
+
+function getConnectedNodeIds(boardLayout, nodeId) {
+  const connected = new Set();
+  for (const connection of boardLayout.connections ?? []) {
+    if (connection.from === nodeId) connected.add(connection.to);
+    if (connection.to === nodeId) connected.add(connection.from);
+  }
+  return [...connected];
+}
+
+function getPointDistance(left, right) {
+  if (!left || !right) return Number.POSITIVE_INFINITY;
+  return Math.hypot((left.x ?? 0) - (right.x ?? 0), (left.y ?? 0) - (right.y ?? 0));
+}
+
+function getHiddenPlanetSystemBlockedNodeIds(gameState, boardLayout) {
+  const exploredSystemIds = new Set(normalizeExploredSystems(
+    gameState.board?.exploredSystems,
+    boardLayout,
+    getPlacedPlanetSystems(gameState, boardLayout)
+  ));
+  return new Set(getPlacedPlanetSystems(gameState, boardLayout)
+    .filter((system) => !exploredSystemIds.has(system.id))
+    .flatMap((system) => system.blockedNodeIds ?? []));
+}
+
+function createEncounterComparisonResultText(comparison) {
+  const outcomeDe = comparison.success ? "erfolgreich" : "nicht erfolgreich";
+  const outcomeEn = comparison.success ? "successful" : "not successful";
+  return {
+    de: `Prüfung: ${comparison.metric === "speed" ? "Geschwindigkeit" : "Antrieb"} gegen ${comparison.targetName}: ${comparison.ownValue} zu ${comparison.otherValue} (${outcomeDe}).`,
+    en: `Check: ${comparison.metric === "speed" ? "speed" : "drive"} against ${comparison.targetName}: ${comparison.ownValue} to ${comparison.otherValue} (${outcomeEn}).`
+  };
 }
 
 function getPlayerUpgradeTotal(player) {

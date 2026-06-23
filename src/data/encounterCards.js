@@ -1,3 +1,5 @@
+import { encounterSpreadsheetTextsByNumber } from "./encounterSpreadsheetTexts.js";
+
 const R = {
   ore: "ore",
   fuel: "fuel",
@@ -482,6 +484,11 @@ function createEncounterCard({
   inDeck = true,
   notes = "Aus Begegnungen.xlsx uebernommen."
 }) {
+  const spreadsheetText = encounterSpreadsheetTextsByNumber[number] ?? null;
+  const exactPromptDe = spreadsheetText?.promptDe || promptDe;
+  const exactResultsDe = spreadsheetText?.linesDe?.slice(1).join("\n\n") || resultsDe;
+  const exactChoices = applySpreadsheetChoiceLabels(choices, spreadsheetText);
+
   return {
     id,
     number,
@@ -489,12 +496,16 @@ function createEncounterCard({
     type,
     titleDe,
     titleEn,
-    promptDe,
+    promptDe: exactPromptDe,
     promptEn,
     title: { de: titleDe, en: titleEn },
-    prompt: { de: promptDe, en: promptEn },
-    choices,
-    results: { de: resultsDe, en: resultsEn },
+    prompt: { de: exactPromptDe, en: promptEn },
+    choices: exactChoices,
+    resultsDe: exactResultsDe,
+    resultsEn,
+    results: { de: exactResultsDe, en: resultsEn },
+    excelRows: spreadsheetText?.rows ?? [],
+    excelLinesDe: spreadsheetText?.linesDe ?? [],
     requiresInput: false,
     requiresCombat: false,
     effects: [],
@@ -503,6 +514,53 @@ function createEncounterCard({
     source: "Begegnungen.xlsx",
     notes
   };
+}
+
+function applySpreadsheetChoiceLabels(choices, spreadsheetText) {
+  if (!spreadsheetText || !Array.isArray(choices)) return choices;
+
+  return choices.map((choice, index) => {
+    const labelDe = getSpreadsheetChoiceLabel(choice, index, spreadsheetText) ?? choice.labelDe;
+    return {
+      ...choice,
+      labelDe,
+      label: {
+        ...choice.label,
+        de: labelDe
+      }
+    };
+  });
+}
+
+function getSpreadsheetChoiceLabel(choice, index, spreadsheetText) {
+  const donationMatch = choice.id.match(/(?:gift|donate)-(\d+)/);
+  if (donationMatch) return donationMatch[1];
+
+  const fightDonationMatch = choice.id.match(/^fight-(\d+)$/);
+  if (fightDonationMatch) return `${fightDonationMatch[1]} · Ja`;
+
+  const declineDonationMatch = choice.id.match(/^decline-(\d+)$/);
+  if (declineDonationMatch) return `${declineDonationMatch[1]} · Nein`;
+
+  const yesNoLabels = getFirstYesNoLabels(spreadsheetText);
+  if (yesNoLabels.length >= 2) {
+    if (["accept", "help", "attempt", "pay", "flee"].includes(choice.id)) return yesNoLabels[0];
+    if (["decline", "fight"].includes(choice.id)) return yesNoLabels[1];
+    return yesNoLabels[index] ?? null;
+  }
+
+  if (choice.id === "continue") return "Fortfahren";
+  return null;
+}
+
+function getFirstYesNoLabels(spreadsheetText) {
+  for (const row of spreadsheetText.rows ?? []) {
+    const labels = (row.cells ?? []).filter((cell) => cell === "Ja" || cell === "Nein");
+    if (labels.includes("Ja") && labels.includes("Nein")) {
+      return ["Ja", "Nein"];
+    }
+  }
+  return [];
 }
 
 function createChoice(id, labelDe, labelEn, effects = []) {

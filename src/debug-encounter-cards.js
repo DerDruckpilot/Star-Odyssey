@@ -129,6 +129,7 @@ function renderCard(card) {
       ["Prompt EN", card.promptEn],
       ["Result DE", card.resultsDe || "-"],
       ["Result EN", card.resultsEn || "-"],
+      ["Excel-Zeilen", formatExcelRows(card)],
       ["Implementiert", String(card.implemented)],
       ["Im aktiven Deck", String(activeDeckIds.has(card.id))],
       ["Notes / TODO", card.notes || "-"]
@@ -171,6 +172,14 @@ function renderChoices(card) {
   });
 
   return wrapper;
+}
+
+function formatExcelRows(card) {
+  if (!Array.isArray(card.excelRows) || card.excelRows.length === 0) return "-";
+  return card.excelRows
+    .map((row) => row.cells.filter(Boolean).join(" | "))
+    .filter(Boolean)
+    .join("\n");
 }
 
 function renderSimulator() {

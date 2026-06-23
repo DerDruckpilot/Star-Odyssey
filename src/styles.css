@@ -1387,6 +1387,16 @@ h1 {
   pointer-events: none;
 }
 
+.ship.is-encounter-jump-target .ship-hit-area {
+  stroke: #facc15;
+  stroke-width: 6;
+  fill: rgba(250, 204, 21, 0.2);
+}
+
+.ship.is-encounter-jump-target .ship-image {
+  filter: drop-shadow(0 0 12px rgba(250, 204, 21, 0.95));
+}
+
 .ship-coil-vfx--active .ship-coil-vfx__halo,
 .ship-coil-vfx--active .ship-coil-vfx__core {
   animation: ship-coil-pulse 1.25s ease-in-out infinite;
@@ -1611,6 +1621,48 @@ h1 {
   place-items: center;
   padding: 1rem;
   background: rgba(2, 6, 23, 0.62);
+}
+
+.encounter-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.62);
+}
+
+.encounter-modal-overlay--board-selection {
+  align-items: start;
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  background: transparent;
+  pointer-events: none;
+}
+
+.encounter-modal-panel {
+  width: min(92vw, 36rem);
+  max-height: min(86dvh, 42rem);
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.96);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+}
+
+.encounter-modal-panel .encounter-panel {
+  padding: 1.1rem;
+}
+
+.encounter-prompt,
+.encounter-step-result {
+  white-space: pre-line;
+}
+
+.encounter-step-result {
+  border-left: 3px solid rgba(56, 189, 248, 0.85);
+  padding-left: 0.7rem;
+  color: #bae6fd;
 }
 
 .modal-panel {

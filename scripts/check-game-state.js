@@ -930,6 +930,10 @@ assert(
   encounterDeckIds.every((cardId) => getEncounterCardById(cardId)?.implemented === true),
   "Encounter deck should only contain implemented cards."
 );
+assert(
+  getEncounterCardById("spreadsheet-28")?.promptDe === "Du triffst ein Raumschiff des Wandernden Volkes.\nDieses in der ganzen Galaxis verehrte Volk bittet dich um eine Spende. Wie viele Rohstoffe (bis zu 3) schenkst du?\nLege die Rohstoffe sofort in den Vorrat.",
+  "Encounter prompts should use the exact spreadsheet text."
+);
 
 let distortionEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
@@ -965,12 +969,30 @@ if (distortionShipId) {
   distortionEncounterGame = submitEncounterPending(distortionEncounterGame, { shipId: distortionShipId });
 }
 assert(distortionEncounterGame.activeEncounter?.pendingStep?.type === "boardTargetSelection", "Space distortion encounters should request a board target after the ship selection.");
-const distortionTarget = distortionEncounterGame.activeEncounter?.pendingStep?.validNodeIds?.[0];
+const hiddenSystemNodeIds = new Set((distortionEncounterGame.board?.placedSystems ?? [])
+  .filter((system) => !(distortionEncounterGame.board?.exploredSystems ?? []).includes(system.id))
+  .flatMap((system) => system.blockedNodeIds ?? []));
+const distortionTarget = distortionEncounterGame.activeEncounter?.pendingStep?.validNodeIds
+  ?.find((nodeId) => hiddenSystemNodeIds.has(nodeId))
+  ?? distortionEncounterGame.activeEncounter?.pendingStep?.validNodeIds?.[0];
+const distortionWasHiddenCenter = hiddenSystemNodeIds.has(distortionTarget);
 assert(Boolean(distortionTarget), "Space distortion encounters should expose at least one valid jump target.");
+distortionEncounterGame = {
+  ...distortionEncounterGame,
+  remainingMovementByShipId: {
+    ...(distortionEncounterGame.remainingMovementByShipId ?? {}),
+    [distortionShipId]: 4
+  }
+};
 if (distortionTarget) {
   distortionEncounterGame = submitEncounterPending(distortionEncounterGame, { targetNodeId: distortionTarget });
 }
 assert(distortionEncounterGame.activeEncounter?.status === "resolved", "Space distortion encounter should resolve after choosing a jump target.");
+assert(distortionEncounterGame.remainingMovementByShipId?.[distortionShipId] === 4, "Space distortion jumps should not consume normal flight movement.");
+if (distortionWasHiddenCenter) {
+  const jumpedShip = distortionEncounterGame.board?.ships?.find((ship) => ship.id === distortionShipId);
+  assert(jumpedShip?.locationId !== distortionTarget, "Space distortion should not leave a ship on a hidden planet-system center.");
+}
 
 let chainedEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
