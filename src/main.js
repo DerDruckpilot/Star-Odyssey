@@ -91,6 +91,7 @@ const savesStorageKey = "star-odyssey-saves";
 const svgNamespace = "http://www.w3.org/2000/svg";
 const showBoardDebugLabels = false;
 const showBoardNodeDebugLabels = false;
+const showViewportDebug = new URLSearchParams(window.location.search).get("debugViewport") === "1";
 const app = document.querySelector("#app");
 const planetAssetPaths = {
   ore: "./assets/generated/planets/planet-ore.png",
@@ -945,9 +946,41 @@ function renderBoardShell() {
     renderPlayerHudModal(),
     renderGameOverOverlay(),
     controls,
-    renderNotice()
+    renderNotice(),
+    renderViewportDebugPanel()
   );
   return screen;
+}
+
+function renderViewportDebugPanel() {
+  if (!showViewportDebug) return document.createDocumentFragment();
+
+  const panel = document.createElement("pre");
+  panel.className = "viewport-debug-panel";
+
+  const update = () => {
+    if (!panel.isConnected) return;
+
+    const visualViewport = window.visualViewport;
+    const boardRect = document.querySelector(".board-placeholder")?.getBoundingClientRect();
+    const screenRect = document.querySelector(".board-screen")?.getBoundingClientRect();
+    const orientation = window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait";
+    const isMobile = window.matchMedia("(max-height: 560px), (max-width: 760px)").matches;
+
+    panel.textContent = [
+      `inner: ${Math.round(window.innerWidth)} x ${Math.round(window.innerHeight)}`,
+      `visual: ${Math.round(visualViewport?.width ?? 0)} x ${Math.round(visualViewport?.height ?? 0)}`,
+      `dpr: ${window.devicePixelRatio || 1}`,
+      `mode: ${isMobile ? "mobile" : "desktop"} / ${orientation}`,
+      `screen: ${Math.round(screenRect?.width ?? 0)} x ${Math.round(screenRect?.height ?? 0)}`,
+      `board: ${Math.round(boardRect?.left ?? 0)},${Math.round(boardRect?.top ?? 0)} ${Math.round(boardRect?.width ?? 0)} x ${Math.round(boardRect?.height ?? 0)}`
+    ].join("\n");
+
+    window.requestAnimationFrame(update);
+  };
+
+  window.requestAnimationFrame(update);
+  return panel;
 }
 
 function renderCompactBoardStatus() {
