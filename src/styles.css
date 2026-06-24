@@ -543,7 +543,7 @@ h1 {
 .player-hud-tabs {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(6.2rem, 1fr));
   gap: 0.25rem;
 }
 
@@ -1855,7 +1855,7 @@ h1 {
   }
 
   .player-hud-tabs {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(5.4rem, 1fr));
   }
 
   .upgrade-menu {
@@ -2103,7 +2103,7 @@ h1 {
   }
 
   .player-hud-tabs {
-    grid-template-columns: repeat(4, minmax(4rem, 1fr));
+    grid-template-columns: repeat(3, minmax(4.2rem, 1fr));
     overflow-x: auto;
   }
 }

@@ -117,6 +117,7 @@ const state = {
   modal: null,
   hudPlayerId: null,
   hudTab: "turn",
+  hudScrollPositions: {},
   encounterBoardSelectionActive: false,
   notice: ""
 };
@@ -277,6 +278,7 @@ function closeModal() {
 function openPlayerHud(playerId) {
   state.hudPlayerId = playerId;
   state.hudTab = "turn";
+  state.hudScrollPositions = {};
   state.modal = null;
   state.notice = "";
   render();
@@ -284,7 +286,29 @@ function openPlayerHud(playerId) {
 
 function closePlayerHud() {
   state.hudPlayerId = null;
+  state.hudScrollPositions = {};
   render();
+}
+
+function getHudScrollKey(playerId = state.hudPlayerId, tabId = state.hudTab) {
+  return playerId && tabId ? `${playerId}:${tabId}` : null;
+}
+
+function capturePlayerHudScrollPosition() {
+  const content = document.querySelector(".player-hud-content");
+  const key = content?.dataset.scrollKey;
+  if (!key || !content) return;
+  state.hudScrollPositions = {
+    ...state.hudScrollPositions,
+    [key]: content.scrollTop
+  };
+}
+
+function restorePlayerHudScrollPosition() {
+  const key = getHudScrollKey();
+  const content = document.querySelector(".player-hud-content");
+  if (!key || !content) return;
+  content.scrollTop = state.hudScrollPositions[key] ?? 0;
 }
 
 function createEmptyResourceSelection() {
@@ -1245,6 +1269,7 @@ function renderPlayerHudModal() {
 
   const content = document.createElement("div");
   content.className = "player-hud-content";
+  content.dataset.scrollKey = getHudScrollKey(player.id, state.hudTab) ?? "";
   header.append(renderPlayerHudTabs());
   content.append(renderPlayerHudTabContent(player));
 
@@ -1317,11 +1342,19 @@ function renderPlayerHudTabs() {
     ["turn", t("tabTurn")],
     ["resources", t("tabTrade")],
     ["upgrades", t("tabUpgrades")],
-    ["fleet", t("tabFleet")]
+    ["build", t("tabBuild")],
+    ["outposts", t("tabOutposts")],
+    ["overview", t("tabOverview")]
   ];
 
   for (const [tabId, label] of tabDefinitions) {
     const button = createButton(label, () => {
+      if (state.hudTab !== tabId) {
+        state.hudScrollPositions = {
+          ...state.hudScrollPositions,
+          [`${state.hudPlayerId}:${tabId}`]: 0
+        };
+      }
       state.hudTab = tabId;
       render();
     }, "hud-tab-button");
@@ -1340,12 +1373,14 @@ function renderPlayerHudTabContent(player) {
     content.append(renderPlayerTradeControls(player), renderBankTradeControls(player));
   } else if (state.hudTab === "upgrades") {
     content.append(renderUpgradeMenu(player));
-  } else if (state.hudTab === "fleet") {
-    content.append(renderFleetSummary(player));
-    content.append(renderFriendshipSummary(player));
+  } else if (state.hudTab === "build") {
     content.append(renderBuildControls(player));
+  } else if (state.hudTab === "outposts") {
+    content.append(renderFriendshipSummary(player));
+  } else if (state.hudTab === "overview") {
+    content.append(renderPlayerOverview(player));
   } else {
-    content.append(renderTurnSummary(player), renderPhaseActions(player));
+    content.append(renderPhaseActions(player));
   }
 
   return content;
@@ -1504,6 +1539,45 @@ function renderFleetSummary(player = getActivePlayer()) {
 
   wrapper.append(title, list);
   return wrapper;
+}
+
+function renderPlayerOverview(player = getActivePlayer()) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "fleet-summary player-overview";
+
+  const title = document.createElement("strong");
+  title.textContent = t("tabOverview");
+
+  const structures = state.gameState?.board?.structures?.filter((structure) => structure.ownerPlayerId === player?.id) ?? [];
+  const ships = state.gameState?.board?.ships?.filter((ship) => ship.ownerPlayerId === player?.id) ?? [];
+  const rows = [
+    [t("victoryPoints"), player ? calculateVictoryPoints(state.gameState, player.id) : 0],
+    [t("ships"), ships.length],
+    [t("colonies"), structures.filter((structure) => structure.type === "colony").length],
+    [t("spaceports"), structures.filter((structure) => structure.type === "spaceport").length],
+    [t("tradeStations"), structures.filter((structure) => structure.type === "tradeStation").length],
+    [t("medals"), formatMedals(player)]
+  ];
+  const list = document.createElement("dl");
+
+  for (const [labelText, valueText] of rows) {
+    const label = document.createElement("dt");
+    label.textContent = labelText;
+    const value = document.createElement("dd");
+    value.textContent = String(valueText);
+    list.append(label, value);
+  }
+
+  wrapper.append(title, list);
+  return wrapper;
+}
+
+function formatMedals(player) {
+  const medals = Math.max(0, player?.halfMedals ?? 0) / 2;
+  return medals.toLocaleString(state.language === "de" ? "de-DE" : "en-US", {
+    minimumFractionDigits: medals % 1 === 0 ? 0 : 1,
+    maximumFractionDigits: 1
+  });
 }
 
 function renderFriendshipSummary(player = getActivePlayer()) {
@@ -5349,13 +5423,14 @@ function renderShipCoilVfx(owner, ship, anchors, pose, pop) {
   const color = getShipVfxColor(owner?.color);
   const visual = playerPieceVisualDefaults.ship;
   const time = getShipVfxTime();
+  const coilIntensityScale = 1 / Math.sqrt(Math.max(1, anchors.coils.length));
 
   anchors.coils.forEach((coil, index) => {
     const point = getShipVfxWorldPoint(anchors, visual, pose, coil.x, coil.y, pop);
     const pulse = coilState.active
       ? 0.88 + Math.sin(time / 210 + index * 0.9) * 0.24
       : 0.48;
-    const opacity = coilState.opacity * pulse;
+    const opacity = coilState.opacity * pulse * coilIntensityScale;
     const radius = (coilState.active ? 4.8 : 3.0) * (0.94 + pulse * 0.24);
     group.append(
       createSvgElement("circle", {
@@ -5719,6 +5794,7 @@ function renderNotice() {
 }
 
 function render() {
+  capturePlayerHudScrollPosition();
   document.documentElement.lang = state.language;
   app.classList.toggle("app-shell--board", state.view === "board");
 
@@ -5734,6 +5810,7 @@ function render() {
   const renderedModal = renderModal();
 
   app.replaceChildren(...[renderedView, renderedModal].filter(Boolean));
+  restorePlayerHudScrollPosition();
   drawShipEngineVfxOverlays();
   syncShipVfxLoop();
 }
