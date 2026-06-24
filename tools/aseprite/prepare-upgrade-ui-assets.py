@@ -118,7 +118,7 @@ def create_mothership():
     image.save(OUTPUT_ROOT / "mothership.png")
 
 
-def create_blueprint(source_name, output_name):
+def create_blueprint(source_name, output_name, strong=False):
     source = SOURCE_ROOT / "blueprints" / source_name
     image = Image.open(source).convert("RGBA")
     output = Image.new("RGBA", image.size, (0, 0, 0, 0))
@@ -133,10 +133,15 @@ def create_blueprint(source_name, output_name):
             blue_bias = b - min(r, g)
 
             if brightness >= 125 and color_spread <= 70 and blue_bias <= 38:
-                alpha = min(255, max(190, int((brightness - 58) * 3.2)))
+                alpha = 255 if strong else min(255, max(190, int((brightness - 58) * 3.2)))
                 output_pixels[x, y] = (255, 255, 255, alpha)
 
-    output = output.filter(ImageFilter.GaussianBlur(radius=0.15))
+    if strong:
+        alpha = output.getchannel("A").filter(ImageFilter.MaxFilter(3))
+        output = Image.new("RGBA", output.size, (255, 255, 255, 0))
+        output.putalpha(alpha)
+    else:
+        output = output.filter(ImageFilter.GaussianBlur(radius=0.15))
     output = crop_to_alpha(output, padding=18)
     output = resize_inside_square(output, 256)
     output.save(OUTPUT_ROOT / output_name)
@@ -163,6 +168,9 @@ def main():
     create_blueprint("blueprint-cannon-source.jpg", "blueprint-cannon.png")
     create_blueprint("blueprint-cargo-source.jpg", "blueprint-cargo.png")
     create_blueprint("blueprint-drive-source.jpg", "blueprint-drive.png")
+    create_blueprint("blueprint-build-colony-ship-source.jpg", "blueprint-build-colony-ship.png", strong=True)
+    create_blueprint("blueprint-build-trade-ship-source.jpg", "blueprint-build-trade-ship.png", strong=True)
+    create_blueprint("blueprint-build-spaceport-source.jpg", "blueprint-build-spaceport.png", strong=True)
     create_upgrade_overlays()
 
 

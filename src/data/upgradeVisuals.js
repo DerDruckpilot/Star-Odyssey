@@ -5,6 +5,11 @@ export const upgradeMenuAssetPaths = {
     cargo: "./assets/generated/ui/blueprint-cargo.png",
     drive: "./assets/generated/ui/blueprint-drive.png"
   },
+  buildBlueprints: {
+    colonyShip: "./assets/generated/ui/blueprint-build-colony-ship.png",
+    tradeShip: "./assets/generated/ui/blueprint-build-trade-ship.png",
+    spaceport: "./assets/generated/ui/blueprint-build-spaceport.png"
+  },
   overlays: {
     cannonLeft: "./assets/generated/ui/upgrades/cannon-left.png",
     cannonCenter: "./assets/generated/ui/upgrades/cannon-center.png",

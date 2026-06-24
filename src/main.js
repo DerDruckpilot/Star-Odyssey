@@ -2338,25 +2338,46 @@ function renderBuildControls(player = getActivePlayer()) {
 
   for (const action of buildActionDefinitions) {
     const card = document.createElement("article");
-    card.className = "upgrade-card";
+    card.className = "upgrade-card upgrade-card--menu build-action-card";
 
-    const label = document.createElement("span");
+    const preview = document.createElement("div");
+    preview.className = "upgrade-card-preview build-action-card-preview";
+
+    const image = document.createElement("img");
+    image.className = "upgrade-card-blueprint build-action-blueprint";
+    image.src = upgradeMenuAssetPaths.buildBlueprints[action.id];
+    image.alt = "";
+    image.loading = "lazy";
+    preview.append(image);
+
+    const body = document.createElement("div");
+    body.className = "upgrade-card-body";
+
+    const label = document.createElement("strong");
+    label.className = "upgrade-card-title";
     label.textContent = getBuildActionLabel(action.id);
 
     const cost = document.createElement("small");
+    cost.className = "upgrade-card-cost";
     cost.textContent = `${t("cost")}: ${formatCost(action.cost)}`;
 
     const disabledReasonKey = getBuildUnavailableReason(player, action);
     const button = createButton(t("build"), () => runBuildAction(action.id), "small-button");
     button.disabled = Boolean(pendingShipPlacement) || Boolean(pendingSpaceportUpgrade) || !canTradeBuildActions(player) || !canPlayerBuild(player, action);
 
-    card.append(label, cost);
+    const actions = document.createElement("div");
+    actions.className = "upgrade-card-actions";
+    actions.append(button, cost);
+
+    body.append(label);
     if (disabledReasonKey) {
       const hint = document.createElement("small");
+      hint.className = "upgrade-card-bonus";
       hint.textContent = t(disabledReasonKey);
-      card.append(hint);
+      body.append(hint);
     }
-    card.append(button);
+    body.append(actions);
+    card.append(preview, body);
     wrapper.append(card);
   }
 
