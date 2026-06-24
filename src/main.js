@@ -1252,7 +1252,7 @@ function renderPlayerHudModal() {
   overlay.addEventListener("click", closePlayerHud);
 
   const panel = document.createElement("section");
-  panel.className = `player-hud-panel${state.hudTab === "upgrades" ? " player-hud-panel--upgrades" : ""}`;
+  panel.className = "player-hud-panel";
   panel.addEventListener("click", (event) => event.stopPropagation());
 
   const header = document.createElement("header");
@@ -1723,18 +1723,6 @@ function renderPlacementActions() {
   const wrapper = document.createElement("div");
   wrapper.className = "placement-actions";
   const placement = state.gameState?.placement;
-
-  const rows = [
-    `${t("placementStep")}: ${getPlacementStepLabel(placement?.step)}`,
-    `${t("placementOrder")}: ${formatPlacementOrder(placement?.order)}`,
-    `${t("placementRolls")}: ${formatPlacementRolls(placement)}`
-  ];
-
-  for (const row of rows) {
-    const item = document.createElement("p");
-    item.textContent = row;
-    wrapper.append(item);
-  }
 
   const instruction = document.createElement("p");
   instruction.textContent = getPlacementInstruction(placement);
