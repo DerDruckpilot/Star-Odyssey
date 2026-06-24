@@ -1952,15 +1952,14 @@ function renderEncounterActions(player) {
   if (!encounter || !card) return wrapper;
 
   const activePlayer = getActivePlayer();
-  const currentText = getLocalizedEncounterText(
-    encounter.choiceId || encounter.pendingStep || encounter.status === "resolved"
-      ? encounter.resultText
-      : card.prompt
-  ) || getLocalizedEncounterText(card.prompt);
-  const prompt = document.createElement("p");
-  prompt.className = "encounter-prompt";
-  prompt.textContent = currentText;
-  wrapper.append(prompt);
+  const hasAdvancedEncounter = Boolean(encounter.choiceId || encounter.pendingStep || encounter.status === "resolved");
+  const currentText = getLocalizedEncounterText(hasAdvancedEncounter ? encounter.resultText : card.prompt);
+  if (currentText) {
+    const prompt = document.createElement("p");
+    prompt.className = "encounter-prompt";
+    prompt.textContent = currentText;
+    wrapper.append(prompt);
+  }
 
   const stepResultText = getLocalizedEncounterText(encounter.resultText);
   if (encounter.status !== "resolved" && stepResultText && stepResultText !== currentText) {
@@ -1971,9 +1970,11 @@ function renderEncounterActions(player) {
   }
 
   if (encounter.status === "resolved") {
-    const result = document.createElement("p");
-    result.textContent = getLocalizedEncounterText(encounter.resultText) || t("movementAfterEncounter");
-    wrapper.append(result);
+    if (!currentText) {
+      const result = document.createElement("p");
+      result.textContent = t("movementAfterEncounter");
+      wrapper.append(result);
+    }
     if (player?.id === activePlayer?.id) {
       wrapper.append(createButton(t("finishEncounter"), finishActiveEncounter, "small-button"));
     } else {

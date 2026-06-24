@@ -3027,7 +3027,7 @@ function runEncounterEffectSequence(gameState, state, activePlayerId, effects, c
     remainingMovementByShipId: workingState.remainingMovementByShipId,
     logEntries,
     combat,
-    resultText: resultText ?? normalizeLocalizedText(card.results),
+    resultText,
     status: "resolved",
     pendingStep: null
   };
@@ -3321,7 +3321,11 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         comparison.success ? (effect.onSuccess ?? []) : (effect.onFailure ?? []),
         card,
         payload,
-        {}
+        {
+          resultText: comparison.success
+            ? effect.successText
+            : effect.failureText
+        }
       );
       if (!followUp) {
         return {
@@ -3339,7 +3343,7 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         },
         logEntries: [comparisonLog, ...(followUp.logEntries ?? [])],
         combat: followUp.combat ?? null,
-        resultText: followUp.pendingStep ? comparisonResultText : followUp.resultText,
+        resultText: followUp.resultText ?? comparisonResultText,
         pendingStep: followUp.pendingStep ?? null,
         nextEncounter: followUp.nextEncounter ?? null
       };
@@ -3363,7 +3367,10 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         combat.outcome === "win" ? (effect.onWin ?? []) : (effect.onLose ?? []),
         card,
         payload,
-        { combat }
+        {
+          combat,
+          resultText: combat.outcome === "win" ? effect.winText : effect.loseText
+        }
       );
       if (!followUp) {
         return {
@@ -3381,7 +3388,7 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         },
         logEntries: [combatLog, ...(followUp.logEntries ?? [])],
         combat: followUp.combat ?? combat,
-        resultText: followUp.resultText,
+        resultText: followUp.resultText ?? (combat.outcome === "win" ? effect.winText : effect.loseText),
         pendingStep: followUp.pendingStep ?? null,
         nextEncounter: followUp.nextEncounter ?? null
       };
@@ -3401,7 +3408,7 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         outcome?.effects ?? [],
         card,
         payload,
-        {}
+        { resultText: outcome?.resultText }
       );
       const outcomeLog = createEncounterLog("logEncounterOutcomeRoll", {
         player: activePlayer.name,

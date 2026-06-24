@@ -197,10 +197,10 @@ const encounterCards = [
       createGiftPirateChoice("fight-1", 1, 1),
       createGiftPirateChoice("fight-2", 2, 1),
       createGiftPirateChoice("fight-3", 3, 1),
-      createGiftPirateDecline("decline-0", 0),
-      createGiftPirateDecline("decline-1", 1),
-      createGiftPirateDecline("decline-2", 2),
-      createGiftPirateDecline("decline-3", 3)
+      createGiftPirateDecline("decline-0", 0, getSpreadsheetCell(7, 3, 2)),
+      createGiftPirateDecline("decline-1", 1, getSpreadsheetCell(7, 3, 2)),
+      createGiftPirateDecline("decline-2", 2, getSpreadsheetCell(7, 3, 2)),
+      createGiftPirateDecline("decline-3", 3, getSpreadsheetCell(7, 3, 2))
     ],
     resultsDe: "Der Piratenueberfall ist entschieden.",
     resultsEn: "The pirate raid is resolved."
@@ -218,10 +218,10 @@ const encounterCards = [
       createGiftPirateChoice("fight-1", 1, -1),
       createGiftPirateChoice("fight-2", 2, -1),
       createGiftPirateChoice("fight-3", 3, -1),
-      createGiftPirateDecline("decline-0", 0),
-      createGiftPirateDecline("decline-1", 1),
-      createGiftPirateDecline("decline-2", 2),
-      createGiftPirateDecline("decline-3", 3)
+      createGiftPirateDecline("decline-0", 0, getSpreadsheetCell(8, 3, 2)),
+      createGiftPirateDecline("decline-1", 1, getSpreadsheetCell(8, 3, 2)),
+      createGiftPirateDecline("decline-2", 2, getSpreadsheetCell(8, 3, 2)),
+      createGiftPirateDecline("decline-3", 3, getSpreadsheetCell(8, 3, 2))
     ],
     resultsDe: "Der Piratenueberfall ist entschieden.",
     resultsEn: "The pirate raid is resolved."
@@ -235,15 +235,21 @@ const encounterCards = [
     promptDe: "Ein Pirat fordert 2 Rohstoffe. Zahlst du oder kaempfst du?",
     promptEn: "A pirate demands 2 resources. Do you pay or fight?",
     choices: [
-      createChoice("pay", "2 Rohstoffe zahlen", "Pay 2 resources", [{ type: "chooseResourceLoss", amount: 2 }]),
+      withChoiceResultText(
+        createChoice("pay", "2 Rohstoffe zahlen", "Pay 2 resources", [{ type: "chooseResourceLoss", amount: 2 }]),
+        getSpreadsheetCell(9, 2, 0)
+      ),
       createChoice("fight", "Kaempfen", "Fight", [
         {
           type: "combat",
           neighborOffset: 1,
+          promptText: localizedDe(getSpreadsheetCell(9, 2, 1)),
+          winText: localizedDe(getSpreadsheetCell(9, 4, 1)),
+          loseText: localizedDe(getSpreadsheetCell(9, 4, 2)),
           onWin: [grantTradeShip],
           onLose: [{ type: "chooseUpgradeLoss", amount: 1 }, loseHalf]
         }
-      ])
+      ], { resultText: localizedDe(getSpreadsheetCell(9, 2, 1)) })
     ],
     resultsDe: "Der Konflikt mit den Piraten ist entschieden.",
     resultsEn: "The pirate conflict is resolved."
@@ -257,15 +263,21 @@ const encounterCards = [
     promptDe: "Ein Pirat fordert 2 Rohstoffe. Zahlst du oder kaempfst du?",
     promptEn: "A pirate demands 2 resources. Do you pay or fight?",
     choices: [
-      createChoice("pay", "2 Rohstoffe zahlen", "Pay 2 resources", [{ type: "chooseResourceLoss", amount: 2 }]),
+      withChoiceResultText(
+        createChoice("pay", "2 Rohstoffe zahlen", "Pay 2 resources", [{ type: "chooseResourceLoss", amount: 2 }]),
+        getSpreadsheetCell(10, 2, 0)
+      ),
       createChoice("fight", "Kaempfen", "Fight", [
         {
           type: "combat",
           neighborOffset: 2,
+          promptText: localizedDe(getSpreadsheetCell(10, 2, 1)),
+          winText: localizedDe(getSpreadsheetCell(10, 4, 1)),
+          loseText: localizedDe(getSpreadsheetCell(10, 4, 2)),
           onWin: [{ type: "gainResource", resource: R.carbon, amount: 2 }, gainHalf],
           onLose: [blockShip, gainHalf]
         }
-      ])
+      ], { resultText: localizedDe(getSpreadsheetCell(10, 2, 1)) })
     ],
     resultsDe: "Der Pirat zieht weiter.",
     resultsEn: "The pirate moves on."
@@ -279,18 +291,21 @@ const encounterCards = [
     promptDe: "Ein Pirat fordert 2 Rohstoffe. Zahlst du oder kaempfst du?",
     promptEn: "A pirate demands 2 resources. Do you pay or fight?",
     choices: [
-      createChoice("pay", "2 Rohstoffe zahlen", "Pay 2 resources", [
+      withChoiceResultText(createChoice("pay", "2 Rohstoffe zahlen", "Pay 2 resources", [
         { type: "chooseResourceLoss", amount: 2 },
         blockShip
-      ]),
+      ]), getSpreadsheetCell(11, 2, 0)),
       createChoice("fight", "Kaempfen", "Fight", [
         {
           type: "combat",
           neighborOffset: -1,
+          promptText: localizedDe(getSpreadsheetCell(11, 2, 1)),
+          winText: localizedDe(getSpreadsheetCell(11, 4, 1)),
+          loseText: localizedDe(getSpreadsheetCell(11, 4, 2)),
           onWin: [{ type: "gainResource", resource: R.ore, amount: 2 }, gainHalf],
           onLose: [{ type: "chooseUpgradeLoss", amount: 1 }]
         }
-      ])
+      ], { resultText: localizedDe(getSpreadsheetCell(11, 2, 1)) })
     ],
     resultsDe: "Der Tribut wurde geklaert.",
     resultsEn: "The tribute is resolved."
@@ -318,14 +333,14 @@ const encounterCards = [
         { type: "chooseResourceLoss", amount: 1 },
         {
           type: "mothershipOutcomeRoll",
-          outcomes: [
+          outcomes: applyOutcomeTexts([
             { range: [0, 2], effects: [loseHalf] },
             { range: [3, 3], effects: [{ type: "drawFromOpponents", amountPerOpponent: 1 }, loseHalf] },
             { range: [4, 5], effects: [{ type: "drawFromOpponents", amountPerOpponent: 1 }] }
-          ]
+          ], 14)
         }
-      ]),
-      createChoice("decline", "Ablehnen", "Decline", [gainHalf])
+      ], { resultText: localizedDe(getSpreadsheetCell(14, 2, 0)) }),
+      withChoiceResultText(createChoice("decline", "Ablehnen", "Decline", [gainHalf]), getSpreadsheetCell(14, 2, 1))
     ],
     resultsDe: "Die Piratensuche ist abgeschlossen.",
     resultsEn: "The pirate search is complete."
@@ -343,14 +358,14 @@ const encounterCards = [
         { type: "chooseResourceLoss", amount: 1 },
         {
           type: "mothershipOutcomeRoll",
-          outcomes: [
+          outcomes: applyOutcomeTexts([
             { range: [0, 2], effects: [{ type: "drawFromOpponents", amountPerOpponent: 1 }] },
             { range: [3, 3], effects: [{ type: "drawFromOpponents", amountPerOpponent: 1 }, loseHalf] },
             { range: [4, 5], effects: [loseHalf] }
-          ]
+          ], 15)
         }
-      ]),
-      createChoice("decline", "Ablehnen", "Decline", [])
+      ], { resultText: localizedDe(getSpreadsheetCell(15, 2, 0)) }),
+      withChoiceResultText(createChoice("decline", "Ablehnen", "Decline", []), getSpreadsheetCell(15, 2, 1))
     ],
     resultsDe: "Die Begegnung mit dem Piraten endet.",
     resultsEn: "The pirate encounter ends."
@@ -486,7 +501,7 @@ function createEncounterCard({
 }) {
   const spreadsheetText = encounterSpreadsheetTextsByNumber[number] ?? null;
   const exactPromptDe = spreadsheetText?.promptDe || promptDe;
-  const exactResultsDe = spreadsheetText?.linesDe?.slice(1).join("\n\n") || resultsDe;
+  const exactResultsDe = resultsDe;
   const exactChoices = applySpreadsheetChoiceLabels(choices, spreadsheetText);
 
   return {
@@ -521,7 +536,7 @@ function applySpreadsheetChoiceLabels(choices, spreadsheetText) {
 
   return choices.map((choice, index) => {
     const labelDe = getSpreadsheetChoiceLabel(choice, index, spreadsheetText) ?? choice.labelDe;
-    const resultDe = getSpreadsheetChoiceResultText(choice, index, spreadsheetText);
+    const resultDe = choice.resultText ? null : getSpreadsheetChoiceResultText(choice, index, spreadsheetText);
     return {
       ...choice,
       labelDe,
@@ -529,12 +544,7 @@ function applySpreadsheetChoiceLabels(choices, spreadsheetText) {
         ...choice.label,
         de: labelDe
       },
-      resultText: resultDe
-        ? {
-          ...(choice.resultText ?? {}),
-          de: resultDe
-        }
-        : choice.resultText ?? null
+      resultText: choice.resultText ?? (resultDe ? { de: resultDe } : null)
     };
   });
 }
@@ -630,42 +640,68 @@ function isSpreadsheetResultText(cell) {
     && !/^\d+(?:\s*,\s*\d+)*$/.test(cell.trim());
 }
 
-function createChoice(id, labelDe, labelEn, effects = []) {
+function localizedDe(text) {
+  return typeof text === "string" && text.trim().length > 0 ? { de: text } : null;
+}
+
+function getSpreadsheetCell(number, rowIndex, cellIndex) {
+  const cell = encounterSpreadsheetTextsByNumber[number]?.rows?.[rowIndex]?.cells?.[cellIndex];
+  return typeof cell === "string" && cell.trim().length > 0 ? cell : null;
+}
+
+function withChoiceResultText(choice, resultTextDe) {
+  const resultText = localizedDe(resultTextDe);
+  return resultText ? { ...choice, resultText } : choice;
+}
+
+function createChoice(id, labelDe, labelEn, effects = [], options = {}) {
   return {
     id,
     labelDe,
     labelEn,
     label: { de: labelDe, en: labelEn },
-    effects
+    effects,
+    ...(options.resultText ? { resultText: options.resultText } : {})
   };
 }
 
 function createGiftPirateChoice(id, giftAmount, neighborOffset) {
+  const number = neighborOffset === 1 ? 7 : 8;
   const effects = [];
   if (giftAmount > 0) effects.push({ type: "chooseResourceLoss", amount: giftAmount });
   effects.push({
     type: "combat",
     neighborOffset,
+    promptText: localizedDe(getSpreadsheetCell(number, 3, 0)),
+    winText: localizedDe(getSpreadsheetCell(number, 5, 0)),
+    loseText: localizedDe(getSpreadsheetCell(number, 5, 1)),
     onWin: [{ type: "gainSelectedResources" }, gainHalf],
     onLose: [blockShip]
   });
-  return createChoice(
+  return withChoiceResultText(createChoice(
     id,
     `${giftAmount} Rohstoff(e) geben und kaempfen`,
     `Give ${giftAmount} resource(s) and fight`,
     effects
-  );
+  ), getSpreadsheetCell(number, 3, 0));
 }
 
-function createGiftPirateDecline(id, giftAmount) {
+function createGiftPirateDecline(id, giftAmount, resultTextDe = null) {
   const effects = [];
   if (giftAmount > 0) effects.push({ type: "chooseResourceLoss", amount: giftAmount });
-  return createChoice(
+  return withChoiceResultText(createChoice(
     id,
     `${giftAmount} Rohstoff(e) geben und nicht kaempfen`,
     `Give ${giftAmount} resource(s) and do not fight`,
     effects
-  );
+  ), resultTextDe);
+}
+
+function applyOutcomeTexts(outcomes, number) {
+  return outcomes.map((outcome, index) => ({
+    ...outcome,
+    resultText: localizedDe(getSpreadsheetCell(number, 3 + index, 1))
+  }));
 }
 
 function createPirateTradeCard(number, id, outcomes, declineEffects) {
@@ -681,9 +717,9 @@ function createPirateTradeCard(number, id, outcomes, declineEffects) {
       createChoice("accept", "Tausch annehmen", "Accept trade", [
         { type: "chooseResourceLoss", amount: 1 },
         { type: "chooseResourceGain", amount: 2 },
-        { type: "mothershipOutcomeRoll", outcomes }
-      ]),
-      createChoice("decline", "Ablehnen", "Decline", declineEffects)
+        { type: "mothershipOutcomeRoll", outcomes: applyOutcomeTexts(outcomes, number) }
+      ], { resultText: localizedDe(getSpreadsheetCell(number, 2, 0)) }),
+      withChoiceResultText(createChoice("decline", "Ablehnen", "Decline", declineEffects), getSpreadsheetCell(number, 2, 1))
     ],
     resultsDe: "Der Piratentausch ist entschieden.",
     resultsEn: "The pirate trade is resolved."
@@ -705,23 +741,32 @@ function createPirateAttackCard(number, id, neighborOffset, winEffects, loseEffe
           type: "comparison",
           metric: "drive",
           neighborOffset,
+          promptText: localizedDe(getSpreadsheetCell(number, 2, 0)),
+          successText: localizedDe(getSpreadsheetCell(number, 4, 0)),
+          failureText: localizedDe(getSpreadsheetCell(number, 4, 1)),
           onSuccess: [],
           onFailure: [{
             type: "combat",
             neighborOffset,
+            promptText: localizedDe(getSpreadsheetCell(number, 4, 1)),
+            winText: localizedDe(getSpreadsheetCell(number, 6, 1)),
+            loseText: localizedDe(getSpreadsheetCell(number, 6, 2)),
             onWin: winEffects,
             onLose: loseEffects
           }]
         }
-      ]),
+      ], { resultText: localizedDe(getSpreadsheetCell(number, 2, 0)) }),
       createChoice("fight", "Direkt kaempfen", "Fight directly", [
         {
           type: "combat",
           neighborOffset,
+          promptText: localizedDe(getSpreadsheetCell(number, 4, 1)),
+          winText: localizedDe(getSpreadsheetCell(number, 6, 1)),
+          loseText: localizedDe(getSpreadsheetCell(number, 6, 2)),
           onWin: winEffects,
           onLose: loseEffects
         }
-      ])
+      ], { resultText: localizedDe(getSpreadsheetCell(number, 4, 1)) })
     ],
     resultsDe: "Der Piratenangriff ist abgehandelt.",
     resultsEn: "The pirate attack is resolved."
@@ -743,11 +788,14 @@ function createDistressCard(number, id, neighborOffset, successEffects, failureE
           type: "comparison",
           metric: "speed",
           neighborOffset,
+          promptText: localizedDe(getSpreadsheetCell(number, 2, 0)),
+          successText: localizedDe(getSpreadsheetCell(number, 4, 0)),
+          failureText: localizedDe(getSpreadsheetCell(number, 4, 1)),
           onSuccess: successEffects,
           onFailure: failureEffects
         }
-      ]),
-      createChoice("decline", "Nicht helfen", "Do not help", declineEffects)
+      ], { resultText: localizedDe(getSpreadsheetCell(number, 2, 0)) }),
+      withChoiceResultText(createChoice("decline", "Nicht helfen", "Do not help", declineEffects), getSpreadsheetCell(number, 2, 2))
     ],
     resultsDe: "Der Notruf ist abgeschlossen.",
     resultsEn: "The distress call is resolved."
@@ -768,11 +816,14 @@ function createRescueCard(number, id, neighborOffset, winEffects, loseEffects, d
         {
           type: "combat",
           neighborOffset,
+          promptText: localizedDe(getSpreadsheetCell(number, 2, 0)),
+          winText: localizedDe(getSpreadsheetCell(number, 4, 0)),
+          loseText: localizedDe(getSpreadsheetCell(number, 4, 1)),
           onWin: winEffects,
           onLose: loseEffects
         }
-      ]),
-      createChoice("decline", "Nicht eingreifen", "Do not intervene", declineEffects)
+      ], { resultText: localizedDe(getSpreadsheetCell(number, 2, 0)) }),
+      withChoiceResultText(createChoice("decline", "Nicht eingreifen", "Do not intervene", declineEffects), getSpreadsheetCell(number, 2, 2))
     ],
     resultsDe: "Die Rettung ist entschieden.",
     resultsEn: "The rescue is resolved."
@@ -794,11 +845,14 @@ function createSpaceDistortionCard(number, id, neighborOffset, successEffects, f
           type: "comparison",
           metric: "speed",
           neighborOffset,
+          promptText: localizedDe(getSpreadsheetCell(number, 2, 0)),
+          successText: localizedDe(getSpreadsheetCell(number, 4, 0)),
+          failureText: localizedDe(getSpreadsheetCell(number, 4, 1)),
           onSuccess: successEffects,
           onFailure: failureEffects
         }
-      ]),
-      createChoice("decline", "Nicht springen", "Do not jump", [drawNextEncounter])
+      ], { resultText: localizedDe(getSpreadsheetCell(number, 2, 0)) }),
+      withChoiceResultText(createChoice("decline", "Nicht springen", "Do not jump", [drawNextEncounter]), getSpreadsheetCell(number, 2, 2))
     ],
     resultsDe: "Die Raumzerrung ist abgehandelt.",
     resultsEn: "The space distortion is resolved."

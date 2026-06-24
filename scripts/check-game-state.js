@@ -975,6 +975,35 @@ assert(
   "Encounter follow-up effects should continue after the spreadsheet text is available."
 );
 
+let pirateStepGame = determineFlightSpeed(encounterBaseState, {
+  balls: ["black", "yellow"],
+  encounterCardId: "spreadsheet-18"
+});
+pirateStepGame = revealPendingFlightEncounter(pirateStepGame);
+pirateStepGame = resolveEncounterChoice(pirateStepGame, {
+  choiceId: "fight",
+  forcedRoll: { balls: ["red", "red"] },
+  forcedOpponentRoll: { balls: ["blue", "blue"] }
+});
+const pirateFightText = pirateStepGame.activeEncounter?.resultText?.de ?? "";
+assert(pirateFightText.includes("SIEG:"), "Combat encounters should show the selected combat result text.");
+assert(!pirateFightText.includes("NIEDERLAGE:"), "Combat encounters should not show unselected failure text.");
+assert(!pirateFightText.includes("Hast du gleich"), "Combat encounters should not dump earlier decision steps after the result.");
+
+let pirateFleeGame = determineFlightSpeed(encounterBaseState, {
+  balls: ["black", "yellow"],
+  encounterCardId: "spreadsheet-18"
+});
+pirateFleeGame = revealPendingFlightEncounter(pirateFleeGame);
+pirateFleeGame = resolveEncounterChoice(pirateFleeGame, {
+  choiceId: "flee",
+  forcedRoll: { balls: ["red", "red"] },
+  forcedOpponentRoll: { balls: ["blue", "blue"] }
+});
+const pirateFleeText = pirateFleeGame.activeEncounter?.resultText?.de ?? "";
+assert(pirateFleeText === "Deine Flucht gelingt.", "Successful flee checks should show only the flee success text.");
+assert(!pirateFleeText.includes("SIEG:") && !pirateFleeText.includes("NIEDERLAGE:"), "Successful flee checks should not show combat branches.");
+
 let distortionEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
   playerCount: 2,
