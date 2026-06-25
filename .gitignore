@@ -17,3 +17,5 @@ assets/source/ui/upgrades/reference/
 Thumbs.db
 .env
 .env.*
+fire-tv-wrapper/.gradle/
+fire-tv-wrapper/app/build/

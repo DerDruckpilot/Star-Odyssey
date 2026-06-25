@@ -1,0 +1,44 @@
+name: Build Fire TV APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "fire-tv-wrapper/**"
+      - ".github/workflows/build-fire-tv-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Build debug APK
+        run: gradle -p fire-tv-wrapper :app:assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: star-odyssey-fire-tv-debug-apk
+          path: fire-tv-wrapper/app/build/outputs/apk/debug/app-debug.apk
