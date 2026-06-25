@@ -99,20 +99,38 @@ body {
   padding: clamp(0.42rem, 1.85vw, 0.65rem);
 }
 
-.controller-tabs.player-hud-tabs {
+.controller-tabbar.controller-tabs.player-hud-tabs {
   position: sticky;
   top: 0;
   z-index: 4;
-  grid-template-columns: repeat(auto-fit, minmax(4.75rem, 1fr));
+  align-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: stretch;
+  min-height: 0;
+  height: auto;
+  max-height: none;
   gap: 0.2rem;
-  padding-bottom: 0.08rem;
+  padding: 0 0 0.08rem;
   background: rgba(15, 23, 42, 0.97);
+  overflow: visible;
 }
 
-.controller-tab-button.hud-tab-button {
-  min-height: clamp(1.78rem, 6.1vw, 2.18rem);
+.controller-tabbar .controller-tab-button.hud-tab-button {
+  flex: 0 1 clamp(6.9rem, 18vw, 8rem);
+  width: clamp(6.9rem, 18vw, 8rem);
+  min-width: 0;
+  height: clamp(1.8rem, 5.8vw, 2.18rem);
+  min-height: 0;
+  max-height: 2.18rem;
   padding: 0.18rem 0.28rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: clamp(0.66rem, 2.45vw, 0.8rem);
+  line-height: 1.05;
+  white-space: nowrap;
 }
 
 .controller-section.player-hud-tab-content {
@@ -326,12 +344,23 @@ body {
     padding: 0.32rem 0.45rem;
   }
 
-  .controller-tabs.player-hud-tabs {
-    grid-template-columns: repeat(auto-fit, minmax(4.9rem, 1fr));
+  .controller-tabbar.controller-tabs.player-hud-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 0.2rem;
+    padding-bottom: 0.1rem;
+    scrollbar-width: thin;
   }
 
-  .controller-tab-button.hud-tab-button {
-    min-height: 1.58rem;
+  .controller-tabbar .controller-tab-button.hud-tab-button {
+    flex: 0 0 clamp(5.8rem, 13.2vw, 7.6rem);
+    width: clamp(5.8rem, 13.2vw, 7.6rem);
+    height: 1.9rem;
+    min-height: 0;
+    max-height: 1.9rem;
+    padding: 0.16rem 0.28rem;
     font-size: clamp(0.58rem, 1.7vw, 0.7rem);
   }
 

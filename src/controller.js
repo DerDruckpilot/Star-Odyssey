@@ -316,7 +316,7 @@ function renderSetupPanel() {
 
 function renderTabs() {
   const tabs = document.createElement("nav");
-  tabs.className = "player-hud-tabs controller-tabs";
+  tabs.className = "player-hud-tabs controller-tabs controller-tabbar";
   const definitions = [
     ["turn", "Zug"],
     ["trade", "Handeln"],
