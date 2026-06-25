@@ -13,7 +13,7 @@ body {
   position: relative;
   z-index: 1;
   width: 100vw;
-  height: var(--app-viewport-height);
+  height: var(--app-viewport-height, 100dvh);
   min-height: 100dvh;
   padding:
     var(--safe-top)
@@ -26,155 +26,150 @@ body {
   width: 100%;
   height: 100%;
   max-width: none;
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(8, 13, 26, 0.98)),
-    rgba(15, 23, 42, 0.96);
+  background: rgba(15, 23, 42, 0.97);
 }
 
 .controller-header.player-hud-header {
-  padding: clamp(0.65rem, 2.5vw, 1rem);
-  gap: clamp(0.45rem, 2vw, 0.85rem);
-  background: rgba(2, 6, 23, 0.34);
+  padding: clamp(0.55rem, 2.2vw, 0.8rem);
+  gap: 0.6rem;
+}
+
+.controller-title {
+  gap: 0.32rem;
 }
 
 .controller-title h2 {
-  font-size: clamp(1.35rem, 5vw, 2.35rem);
+  margin: 0;
+  font-size: clamp(1.15rem, 4.6vw, 1.7rem);
+}
+
+.controller-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  min-height: 1.55rem;
+}
+
+.controller-status-dot {
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 0.55rem rgba(239, 68, 68, 0.65);
+}
+
+.controller-status-line--connected .controller-status-dot {
+  background: #22c55e;
+  box-shadow: 0 0 0.6rem rgba(34, 197, 94, 0.75);
 }
 
 .controller-status {
-  margin: 0;
-  color: #facc15;
-  font-size: clamp(0.78rem, 2.8vw, 0.98rem);
+  color: #cbd5e1;
+  font-size: clamp(0.68rem, 2.4vw, 0.82rem);
   font-weight: 800;
 }
 
-.controller-status--connected {
-  color: #86efac;
+.controller-header-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
 }
 
-.controller-status--lost,
-.controller-status--replaced,
-.controller-status--missing-session {
-  color: #fca5a5;
+.controller-reconnect-inline.small-button {
+  min-height: 1.55rem;
+  padding: 0.15rem 0.42rem;
+  font-size: clamp(0.62rem, 2.1vw, 0.74rem);
+  opacity: 0.86;
 }
 
-.controller-header-meta {
-  display: grid;
-  gap: 0.25rem;
-  min-width: min(42vw, 18rem);
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  padding: 0.55rem 0.65rem;
-  background: rgba(15, 23, 42, 0.62);
-  color: #cbd5e1;
-  font-size: clamp(0.72rem, 2.35vw, 0.88rem);
+.controller-close-button.small-button {
+  min-height: 2.3rem;
+  padding: 0.35rem 0.75rem;
+  font-size: clamp(0.9rem, 3.4vw, 1.12rem);
 }
 
-.controller-header-meta p,
-.controller-summary p,
-.controller-empty,
-.controller-encounter-panel p {
-  margin: 0;
-}
-
-.controller-resource-list {
-  font-size: clamp(0.74rem, 2.6vw, 0.92rem);
+.controller-resource-list.player-hud-resources {
+  gap: 0.18rem 0.4rem;
+  font-size: clamp(0.66rem, 2.45vw, 0.82rem);
 }
 
 .controller-content.player-hud-content {
-  gap: clamp(0.45rem, 1.8vw, 0.75rem);
-  padding: clamp(0.6rem, 2.3vw, 0.9rem);
+  gap: 0.55rem;
+  padding: clamp(0.55rem, 2.25vw, 0.75rem);
 }
 
 .controller-tabs.player-hud-tabs {
-  grid-template-columns: repeat(auto-fit, minmax(min(8rem, 42vw), 1fr));
-  gap: 0.28rem;
+  grid-template-columns: repeat(auto-fit, minmax(5.7rem, 1fr));
+  gap: 0.24rem;
 }
 
 .controller-tab-button.hud-tab-button {
-  min-height: clamp(2.65rem, 8vw, 3.4rem);
-  font-size: clamp(0.86rem, 3.4vw, 1.08rem);
+  min-height: clamp(2.05rem, 7.2vw, 2.55rem);
+  padding: 0.25rem 0.35rem;
+  font-size: clamp(0.73rem, 2.8vw, 0.9rem);
 }
 
 .controller-section.player-hud-tab-content {
-  gap: clamp(0.55rem, 2vw, 0.9rem);
+  gap: 0.55rem;
 }
 
 .controller-section h2 {
   margin: 0;
-  color: #e0f2fe;
-  font-size: clamp(1.05rem, 4vw, 1.45rem);
+  color: #f8fafc;
+  font-size: clamp(1.05rem, 3.8vw, 1.3rem);
 }
 
 .controller-summary.turn-summary,
 .controller-action-grid.phase-actions,
-.controller-footer.selection-panel,
-.controller-encounter-panel.selection-panel {
-  flex: initial;
+.controller-encounter-panel.selection-panel,
+.controller-setup.player-hud-tab-content {
   max-height: none;
   overflow: visible;
 }
 
-.controller-summary {
-  color: #dbeafe;
+.controller-action-grid.phase-actions {
+  gap: 0.45rem;
 }
 
-.controller-action-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: clamp(0.45rem, 1.8vw, 0.7rem);
+.controller-action-grid .small-button {
+  width: 100%;
 }
 
-.controller-button,
-.controller-player-button,
-.controller-board-back-button {
-  min-height: clamp(3.1rem, 11vw, 4.15rem);
+.controller-button {
+  min-height: 2.85rem;
   border: 1px solid rgba(148, 163, 184, 0.45);
   padding: 0.55rem 0.7rem;
   color: #f8fafc;
   background: rgba(2, 6, 23, 0.72);
   font: inherit;
-  font-size: clamp(0.98rem, 4.1vw, 1.28rem);
   font-weight: 900;
-  cursor: pointer;
 }
 
 .controller-button:disabled,
-.controller-player-button:disabled,
-.controller-tab-button:disabled,
-.controller-board-back-button:disabled {
+.controller-color-button:disabled {
   border-color: rgba(100, 116, 139, 0.32);
   color: rgba(203, 213, 225, 0.42);
   background: rgba(15, 23, 42, 0.44);
   cursor: not-allowed;
 }
 
-.controller-button:active,
-.controller-player-button:active,
-.controller-board-back-button:active {
-  transform: scale(0.985);
-}
-
-.controller-button--secondary {
-  width: 100%;
-  min-height: 3rem;
-  background: rgba(15, 23, 42, 0.78);
-}
-
 .controller-empty {
+  margin: 0;
   color: #94a3b8;
 }
 
 .controller-field {
   display: grid;
-  gap: 0.42rem;
-  color: #cbd5e1;
+  gap: 0.35rem;
+  color: #dbeafe;
   font-weight: 900;
 }
 
 .controller-field input {
-  min-height: 3.35rem;
+  min-height: 2.85rem;
   border: 1px solid rgba(148, 163, 184, 0.42);
-  padding: 0.7rem 0.8rem;
+  padding: 0.55rem 0.65rem;
   color: #f8fafc;
   background: rgba(2, 6, 23, 0.75);
   font: inherit;
@@ -183,11 +178,16 @@ body {
 .controller-color-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
+  gap: 0.45rem;
 }
 
 .controller-color-button {
-  min-height: 3.25rem;
+  min-height: 2.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  color: #f8fafc;
+  background: rgba(2, 6, 23, 0.72);
+  font: inherit;
+  font-weight: 900;
 }
 
 .controller-color-button--red {
@@ -213,42 +213,61 @@ body {
   box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.45);
 }
 
-.controller-encounter-panel {
-  border-color: rgba(250, 204, 21, 0.52);
-  background: rgba(120, 53, 15, 0.2);
+.controller-upgrade-menu.upgrade-menu {
+  min-height: 0;
 }
 
-.controller-encounter-panel p {
-  color: #fde68a;
-}
-
-.controller-board-section {
-  min-height: min(72dvh, 44rem);
+.controller-board-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  padding:
+    max(0.45rem, var(--safe-top))
+    max(0.45rem, var(--safe-right))
+    max(0.45rem, var(--safe-bottom))
+    max(0.45rem, var(--safe-left));
+  background:
+    radial-gradient(circle at 20% 20%, rgba(14, 165, 233, 0.12), transparent 20rem),
+    rgba(2, 6, 23, 0.96);
 }
 
 .controller-board-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.6rem;
+  gap: 0.65rem;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  padding: 0.45rem 0.55rem;
+  background: rgba(15, 23, 42, 0.78);
+}
+
+.controller-board-header h2,
+.controller-board-header p {
+  margin: 0;
 }
 
 .controller-board-header p {
-  margin: 0;
   color: #bae6fd;
+  font-size: clamp(0.72rem, 2.5vw, 0.9rem);
   font-weight: 800;
 }
 
 .controller-board-back-button {
-  width: auto;
-  min-height: 2.8rem;
-  font-size: clamp(0.8rem, 3vw, 0.98rem);
+  min-height: 2.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 0.3rem 0.55rem;
+  color: #f8fafc;
+  background: rgba(2, 6, 23, 0.72);
+  font: inherit;
+  font-weight: 900;
 }
 
 .controller-board-viewport {
   position: relative;
-  min-height: min(64dvh, 38rem);
+  min-height: 0;
   overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.35);
   background:
@@ -270,44 +289,34 @@ body {
   max-width: none;
 }
 
-.controller-footer {
-  padding: 0.55rem 0.65rem;
-}
-
 @media (orientation: landscape) and (max-height: 520px) {
   .controller-header.player-hud-header {
-    grid-template-columns: minmax(0, 1fr) minmax(12rem, 0.72fr);
-    padding: 0.5rem 0.65rem;
+    padding: 0.38rem 0.5rem;
   }
 
   .controller-content.player-hud-content {
-    padding: 0.55rem 0.65rem;
+    padding: 0.45rem 0.55rem;
   }
 
   .controller-tabs.player-hud-tabs {
-    grid-template-columns: repeat(auto-fit, minmax(6.7rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(5.4rem, 1fr));
   }
 
   .controller-tab-button.hud-tab-button {
-    min-height: 2.35rem;
+    min-height: 1.9rem;
   }
 
-  .controller-button,
-  .controller-player-button {
-    min-height: 2.85rem;
+  .controller-upgrade-menu.upgrade-menu {
+    grid-template-columns: minmax(10rem, 0.78fr) minmax(16rem, 1.22fr);
   }
 
-  .controller-board-viewport {
-    min-height: 58dvh;
+  .controller-upgrade-menu .upgrade-ship-panel {
+    min-height: 11rem;
   }
 }
 
 @media (max-width: 520px) {
   .controller-header.player-hud-header {
-    grid-template-columns: 1fr;
-  }
-
-  .controller-header-meta {
-    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }

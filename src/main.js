@@ -6214,19 +6214,82 @@ function getRemoteControllerState() {
     phaseLabel: state.gameState ? getPhaseLabel(state.gameState.phase) : "",
     activePlayerId: activePlayer?.id ?? null,
     activePlayerName: activePlayer?.name ?? "",
-    players: (state.gameState?.players ?? []).map((player) => ({
-      id: player.id,
-      name: player.name,
-      color: player.color,
-      resources: player.resources,
-      upgrades: player.upgrades,
-      victoryPoints: state.gameState ? calculateVictoryPoints(state.gameState, player.id) : 0,
-      medals: player.medals ?? 0
-    })),
+    players: (state.gameState?.players ?? []).map((player) => getRemotePlayerState(player)),
+    trade: getRemoteTradeState(),
     encounter: getRemoteEncounterStateForController(),
     board: getRemoteBoardState(),
     actions: getRemoteControllerActions()
   };
+}
+
+function getRemotePlayerState(player) {
+  const structures = (state.gameState?.board?.structures ?? [])
+    .filter((structure) => structure.ownerPlayerId === player.id);
+  const ships = (state.gameState?.board?.ships ?? [])
+    .filter((ship) => ship.ownerPlayerId === player.id);
+  const upgradeBonuses = Object.fromEntries(
+    upgradeDefinitions.map((upgrade) => [upgrade.id, getFriendshipUpgradeBonus(state.gameState, player.id, upgrade.id)])
+  );
+  const effectiveUpgrades = Object.fromEntries(
+    upgradeDefinitions.map((upgrade) => [upgrade.id, getEffectiveUpgradeValue(state.gameState, player.id, upgrade.id)])
+  );
+
+  return {
+    id: player.id,
+    name: player.name,
+    color: player.color,
+    resources: player.resources,
+    upgrades: player.upgrades,
+    upgradeBonuses,
+    effectiveUpgrades,
+    tradeRates: Object.fromEntries(resourceTypes.map((resource) => [resource, getBankTradeRate(player, resource)])),
+    victoryPoints: state.gameState ? calculateVictoryPoints(state.gameState, player.id) : 0,
+    halfMedals: player.halfMedals ?? 0,
+    medalLabel: formatMedals(player),
+    counts: {
+      ships: ships.length,
+      colonyShips: ships.filter((ship) => ship.type === "colonyShip").length,
+      tradeShips: ships.filter((ship) => ship.type === "tradeShip").length,
+      colonies: structures.filter((structure) => structure.type === "colony").length,
+      spaceports: structures.filter((structure) => structure.type === "spaceport").length,
+      tradeStations: structures.filter((structure) => structure.type === "tradeStation").length
+    },
+    friendship: getRemoteFriendshipState(player, structures)
+  };
+}
+
+function getRemoteTradeState() {
+  return {
+    bankFromResource: state.tradeFromResource,
+    bankToResource: state.tradeToResource,
+    offerTargetPlayerId: state.tradeOfferTargetPlayerId,
+    offeredResources: state.tradeOfferedResources,
+    requestedResources: state.tradeRequestedResources,
+    activeTradeOffer: state.gameState?.activeTradeOffer ?? null
+  };
+}
+
+function getRemoteFriendshipState(player, structures) {
+  const tradeStations = structures.filter((structure) => structure.type === "tradeStation");
+  const representedOutposts = [...new Set(tradeStations.map((structure) => structure.outpostId))]
+    .map((outpostId) => getOutpostById(outpostId))
+    .filter(Boolean)
+    .map((outpost) => formatOutpostLabel(outpost));
+  const markers = (player.friendshipMarkers ?? [])
+    .map((outpostId) => getOutpostById(outpostId))
+    .filter(Boolean)
+    .map((outpost) => formatOutpostLabel(outpost));
+  const cards = (player.friendshipCards ?? [])
+    .map((cardId) => getFriendshipCardById(cardId))
+    .filter(Boolean)
+    .map((card) => ({
+      id: card.id,
+      title: getFriendshipCardTitle(card, state.language),
+      summary: getFriendshipCardSummary(card, state.language),
+      implemented: card.implemented
+    }));
+
+  return { representedOutposts, markers, cards };
 }
 
 function getControllerLobbyStateForRemote() {
@@ -6446,6 +6509,36 @@ function executeRemoteAction(actionId, payload = {}) {
       break;
     case "drawSupply":
       if (isRemoteActionPlayerActive(playerId)) drawSupplyForActivePlayer();
+      break;
+    case "trade.setBankResources":
+      if (isRemoteActionPlayerActive(playerId)) {
+        if (resourceTypes.includes(payload.fromResource)) state.tradeFromResource = payload.fromResource;
+        if (resourceTypes.includes(payload.toResource)) state.tradeToResource = payload.toResource;
+        render();
+      }
+      break;
+    case "trade.bankTrade":
+      if (isRemoteActionPlayerActive(playerId)) tradeActivePlayerWithSupply();
+      break;
+    case "trade.setOfferTarget":
+      if (isRemoteActionPlayerActive(playerId)) setTradeOfferTarget(payload.targetPlayerId || null);
+      break;
+    case "trade.updateOfferResource":
+      if (isRemoteActionPlayerActive(playerId) && ["offered", "requested"].includes(payload.side) && resourceTypes.includes(payload.resource)) {
+        updateTradeOfferResource(payload.side, payload.resource, Number(payload.delta) || 0);
+      }
+      break;
+    case "trade.createOffer":
+      if (isRemoteActionPlayerActive(playerId)) offerTradeToPlayer();
+      break;
+    case "trade.acceptOffer":
+      if (state.gameState?.activeTradeOffer?.toPlayerId === playerId) acceptTradeOffer(playerId);
+      break;
+    case "trade.declineOffer":
+      if (state.gameState?.activeTradeOffer?.toPlayerId === playerId) declineTradeOffer(playerId);
+      break;
+    case "trade.cancelOffer":
+      if (state.gameState?.activeTradeOffer?.fromPlayerId === playerId) cancelOpenTradeOffer();
       break;
     case "toFlightPhase":
       if (isRemoteActionPlayerActive(playerId)) goToFlightPhase();

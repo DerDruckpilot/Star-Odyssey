@@ -48,10 +48,11 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await page.screenshot({ path: "test-results/screenshots/board.png", fullPage: true });
 
   await expect(controllerOne.getByRole("button", { name: "Spielfeld" })).toBeVisible();
-  await controllerOne.getByRole("button", { name: "Spielfeld" }).click();
-  await expect(controllerOne.locator(".controller-board-viewport")).toBeVisible();
   await expect(controllerOne.getByRole("button", { name: "Einstellungen" })).toBeVisible();
   await expect(controllerTwo.getByRole("button", { name: "Einstellungen" })).toHaveCount(0);
+  await controllerOne.getByRole("button", { name: "Spielfeld" }).click();
+  await expect(controllerOne.locator(".controller-board-viewport")).toBeVisible();
+  await expect(controllerOne.getByRole("button", { name: "Zurück zum Menü" })).toBeVisible();
 
   await controllerOneContext.close();
   await controllerTwoContext.close();

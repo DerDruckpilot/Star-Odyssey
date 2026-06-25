@@ -1,3 +1,7 @@
+import { buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
+import { getFriendshipCardById, getFriendshipCardSummary, getFriendshipCardTitle } from "./data/friendshipCards.js";
+import { mothershipUpgradeSlots, upgradeMenuAssetPaths, upgradeMenuOrder } from "./data/upgradeVisuals.js";
+
 const root = document.querySelector("#controller-root");
 const params = new URLSearchParams(window.location.search);
 const sessionId = params.get("session") || "";
@@ -11,6 +15,16 @@ const resourceLabels = {
   food: "Nahrung",
   goods: "Handelsware"
 };
+const upgradeLabels = {
+  cannon: "Bordkanone",
+  cargo: "Frachtmodul",
+  drive: "Antrieb"
+};
+const buildLabels = {
+  colonyShip: "Kolonieschiff bauen",
+  tradeShip: "Handelsschiff bauen",
+  spaceport: "Kolonie zu Raumhafen ausbauen"
+};
 
 let socket = null;
 let reconnectTimer = null;
@@ -20,6 +34,7 @@ let connectionStatus = "connecting";
 let replacedByReconnect = false;
 let gameState = null;
 let activeTab = "turn";
+let boardFullscreen = false;
 let boardScale = 1;
 let boardOffset = { x: 0, y: 0 };
 let boardPointers = new Map();
@@ -180,6 +195,11 @@ function createButton(label, onClick, className = "controller-button") {
 }
 
 function render() {
+  if (boardFullscreen && gameState?.view !== "controllers") {
+    root.replaceChildren(renderBoardFullscreen());
+    return;
+  }
+
   const shell = document.createElement("section");
   shell.className = "player-hud-panel controller-panel";
 
@@ -189,7 +209,7 @@ function render() {
   content.className = "player-hud-content controller-content";
 
   if (gameState?.view === "controllers" && gameState.controllerLobby) {
-    content.append(renderSetupPanel(), renderReconnectFooter());
+    content.append(renderSetupPanel());
     shell.append(header, content);
     root.replaceChildren(shell);
     return;
@@ -198,7 +218,7 @@ function render() {
   const tabs = renderTabs();
   const activeContent = renderActiveTab(currentPlayer);
 
-  content.append(tabs, activeContent, renderReconnectFooter());
+  content.append(tabs, activeContent);
   shell.append(header, content);
   root.replaceChildren(shell);
 }
@@ -211,20 +231,31 @@ function renderControllerHeader(player) {
   titleGroup.className = "player-hud-title controller-title";
   const title = document.createElement("h2");
   const slot = getOwnLobbySlot();
-  title.textContent = player?.name || (slot ? `Spieler ${slot.slotNumber}` : "Star Odyssey");
-  const status = document.createElement("p");
-  status.className = `controller-status controller-status--${connectionStatus}`;
-  status.textContent = getStatusLabel();
+  title.textContent = player?.name || (slot ? `Spieler ${slot.slotNumber}` : "Controller");
+
+  const status = document.createElement("div");
+  status.className = `controller-status-line controller-status-line--${connectionStatus}`;
+  const statusDot = document.createElement("span");
+  statusDot.className = "controller-status-dot";
+  statusDot.setAttribute("aria-hidden", "true");
+  const statusLabel = document.createElement("span");
+  statusLabel.className = "controller-status";
+  statusLabel.textContent = getStatusLabel();
+  status.append(statusDot, statusLabel, createButton("Neu verbinden", connect, "small-button controller-reconnect-inline"));
+
   titleGroup.append(title, status);
   if (player) titleGroup.append(renderControllerResources(player));
 
-  const meta = document.createElement("div");
-  meta.className = "controller-header-meta";
-  meta.append(createMetaItem("Phase", gameState?.phaseLabel || "Warte auf Spiel"));
-  meta.append(createMetaItem("Aktiv", gameState?.activePlayerName || "-"));
-  meta.append(createMetaItem("Session", sessionId || "fehlt"));
+  const actions = document.createElement("div");
+  actions.className = "controller-header-actions";
+  if (player && gameState?.view === "board") {
+    actions.append(createButton("Schließen", () => {
+      boardFullscreen = true;
+      render();
+    }, "small-button controller-close-button"));
+  }
 
-  header.append(titleGroup, meta);
+  header.append(titleGroup, actions);
   return header;
 }
 
@@ -300,23 +331,26 @@ function renderTabs() {
 
   for (const [tabId, label] of definitions) {
     const button = createButton(label, () => {
-      activeTab = tabId;
+      if (tabId === "board") {
+        boardFullscreen = true;
+      } else {
+        activeTab = tabId;
+      }
       render();
     }, "hud-tab-button controller-tab-button");
-    button.setAttribute("aria-pressed", String(activeTab === tabId));
+    button.setAttribute("aria-pressed", String(activeTab === tabId && !boardFullscreen));
     tabs.append(button);
   }
   return tabs;
 }
 
 function renderActiveTab(player) {
-  if (activeTab === "board") return renderBoardTab();
   if (activeTab === "settings") return renderSettingsTab();
   if (activeTab === "overview") return renderOverviewTab(player);
-  if (activeTab === "build") return renderActionTab("Bauen", ["build."]);
-  if (activeTab === "mothership") return renderActionTab("Mutterschiff", ["upgrade."]);
-  if (activeTab === "outposts") return renderInfoTab("Außenposten", "Freundschaftsmarker und Außenposten-Details bleiben auf dem TV öffentlich sichtbar.");
-  if (activeTab === "trade") return renderInfoTab("Handeln", "Handelsaktionen folgen hier; Basisaktionen sind im Zug-Tab verfügbar.");
+  if (activeTab === "build") return renderBuildTab(player);
+  if (activeTab === "mothership") return renderMothershipTab(player);
+  if (activeTab === "outposts") return renderOutpostsTab(player);
+  if (activeTab === "trade") return renderTradeTab(player);
   return renderTurnTab(player);
 }
 
@@ -324,30 +358,25 @@ function renderTurnTab(player) {
   const section = document.createElement("section");
   section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
-  title.textContent = "Zug";
-  section.append(title, renderPlayerSummary(player), renderEncounterPanel(), renderActionGrid(getFilteredActions()));
+  title.textContent = gameState?.phaseLabel || "Zug";
+  const actions = getTurnActions();
+  section.append(title, renderTurnHint(player), renderEncounterPanel(), renderActionGrid(actions));
   return section;
 }
 
-function renderActionTab(titleText, prefixes) {
+function renderMothershipTab(player) {
   const section = document.createElement("section");
   section.className = "player-hud-tab-content controller-section";
-  const title = document.createElement("h2");
-  title.textContent = titleText;
-  const actions = getFilteredActions().filter((action) => prefixes.some((prefix) => action.id.startsWith(prefix)));
-  section.append(title, renderActionGrid(actions));
+  section.append(renderMothershipMenu(player));
   return section;
 }
 
-function renderInfoTab(titleText, text) {
+function renderBuildTab(player) {
   const section = document.createElement("section");
   section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
-  title.textContent = titleText;
-  const body = document.createElement("p");
-  body.className = "controller-empty";
-  body.textContent = text;
-  section.append(title, body);
+  title.textContent = "Bauen";
+  section.append(title, renderBuildControls(player));
   return section;
 }
 
@@ -356,7 +385,25 @@ function renderOverviewTab(player) {
   section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
   title.textContent = "Übersicht";
-  section.append(title, renderPlayerSummary(player));
+  section.append(title, renderPlayerOverview(player));
+  return section;
+}
+
+function renderOutpostsTab(player) {
+  const section = document.createElement("section");
+  section.className = "player-hud-tab-content controller-section";
+  const title = document.createElement("h2");
+  title.textContent = "Außenposten";
+  section.append(title, renderFriendshipSummary(player));
+  return section;
+}
+
+function renderTradeTab(player) {
+  const section = document.createElement("section");
+  section.className = "player-hud-tab-content controller-section";
+  const title = document.createElement("h2");
+  title.textContent = "Handeln";
+  section.append(title, renderBankTradeControls(player), renderPlayerTradeControls(player));
   return section;
 }
 
@@ -392,9 +439,403 @@ function renderEncounterPanel() {
   return panel;
 }
 
-function renderBoardTab() {
+function renderTurnHint(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "turn-summary controller-summary";
+  if (!player) {
+    wrapper.textContent = "Warte auf Spielstand.";
+    return wrapper;
+  }
+  const activeText = isSelectedPlayerActive()
+    ? "Du bist am Zug."
+    : `${gameState?.activePlayerName || "Ein anderer Spieler"} ist am Zug.`;
+  wrapper.append(createMetaItem("Phase", gameState?.phaseLabel || "-"));
+  wrapper.append(createMetaItem("Status", activeText));
+  return wrapper;
+}
+
+function renderMothershipMenu(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "upgrade-menu controller-upgrade-menu";
+
+  const shipPanel = document.createElement("section");
+  shipPanel.className = "upgrade-ship-panel";
+  shipPanel.append(renderMothershipUpgradeVisual(player));
+  wrapper.append(shipPanel, renderUpgradeControls(player));
+  return wrapper;
+}
+
+function renderMothershipUpgradeVisual(player) {
+  const visual = document.createElement("div");
+  visual.className = "mothership-visual";
+
+  const shipImage = document.createElement("img");
+  shipImage.className = "mothership-base";
+  shipImage.src = upgradeMenuAssetPaths.mothership;
+  shipImage.alt = "";
+  shipImage.loading = "lazy";
+  shipImage.style.zIndex = "100";
+  visual.append(shipImage);
+
+  for (const slot of mothershipUpgradeSlots) {
+    const upgradeValue = player?.upgrades?.[slot.upgradeId] ?? 0;
+    const assetPath = upgradeMenuAssetPaths.overlays[slot.assetId];
+    if (upgradeValue < slot.minValue || !assetPath) continue;
+
+    const overlay = document.createElement("img");
+    overlay.className = `mothership-overlay mothership-overlay--${slot.id}`;
+    overlay.src = assetPath;
+    overlay.alt = "";
+    overlay.loading = "lazy";
+    overlay.style.width = `${slot.widthPercent}%`;
+    overlay.style.transform = `translate(${slot.x}%, ${slot.y}%) scale(${slot.scale ?? 1})`;
+    overlay.style.zIndex = String(slot.z ?? (slot.layer === "back" ? 50 : 150));
+    visual.append(overlay);
+  }
+
+  return visual;
+}
+
+function renderUpgradeControls(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "trade-build-section upgrade-controls";
+
+  const orderedUpgrades = upgradeMenuOrder
+    .map((upgradeId) => upgradeDefinitions.find((upgrade) => upgrade.id === upgradeId))
+    .filter(Boolean);
+
+  for (const upgrade of orderedUpgrades) {
+    const action = findAction("upgrade.buy", (candidate) => candidate.payload?.upgradeId === upgrade.id);
+    const card = document.createElement("article");
+    card.className = "upgrade-card upgrade-card--menu";
+
+    const preview = document.createElement("div");
+    preview.className = "upgrade-card-preview";
+    const image = document.createElement("img");
+    image.className = "upgrade-card-blueprint";
+    image.src = upgradeMenuAssetPaths.blueprints[upgrade.id];
+    image.alt = "";
+    image.loading = "lazy";
+    preview.append(image);
+
+    const body = document.createElement("div");
+    body.className = "upgrade-card-body";
+    const label = document.createElement("strong");
+    label.className = "upgrade-card-title";
+    label.textContent = `${getUpgradeLabel(upgrade.id)} ${formatUpgradeValue(player, upgrade)}`;
+
+    const bonus = player?.upgradeBonuses?.[upgrade.id] ?? 0;
+    const bonusText = document.createElement("small");
+    bonusText.className = "upgrade-card-bonus";
+    if (bonus > 0) {
+      bonusText.textContent = `Freundschaftsbonus +${bonus} · Effektiv: ${player?.effectiveUpgrades?.[upgrade.id] ?? ((player?.upgrades?.[upgrade.id] ?? 0) + bonus)}`;
+    }
+
+    const cost = document.createElement("small");
+    cost.className = "upgrade-card-cost";
+    cost.textContent = `Kosten: ${formatCost(upgrade.cost)}`;
+
+    const button = createButton("Bauen", () => action && sendAction(action), "small-button");
+    button.disabled = !action || Boolean(action.disabled);
+
+    const actions = document.createElement("div");
+    actions.className = "upgrade-card-actions";
+    actions.append(button, cost);
+
+    body.append(label);
+    if (bonus > 0) body.append(bonusText);
+    body.append(actions);
+    card.append(preview, body);
+    wrapper.append(card);
+  }
+
+  return wrapper;
+}
+
+function renderBuildControls() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "trade-build-section build-controls";
+
+  for (const actionDefinition of buildActionDefinitions) {
+    const remoteAction = findAction(`build.${actionDefinition.id}`);
+    const card = document.createElement("article");
+    card.className = "upgrade-card upgrade-card--menu build-action-card";
+
+    const preview = document.createElement("div");
+    preview.className = "upgrade-card-preview build-action-card-preview";
+    const image = document.createElement("img");
+    image.className = "upgrade-card-blueprint build-action-blueprint";
+    image.src = upgradeMenuAssetPaths.buildBlueprints[actionDefinition.id];
+    image.alt = "";
+    image.loading = "lazy";
+    preview.append(image);
+
+    const body = document.createElement("div");
+    body.className = "upgrade-card-body";
+    const label = document.createElement("strong");
+    label.className = "upgrade-card-title";
+    label.textContent = getBuildActionLabel(actionDefinition.id);
+
+    const cost = document.createElement("small");
+    cost.className = "upgrade-card-cost";
+    cost.textContent = `Kosten: ${formatCost(actionDefinition.cost)}`;
+
+    const button = createButton("Bauen", () => remoteAction && sendAction(remoteAction), "small-button");
+    button.disabled = !remoteAction || Boolean(remoteAction.disabled);
+
+    const actions = document.createElement("div");
+    actions.className = "upgrade-card-actions";
+    actions.append(button, cost);
+    body.append(label, actions);
+    card.append(preview, body);
+    wrapper.append(card);
+  }
+
+  return wrapper;
+}
+
+function renderResourceOverview(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "resource-summary";
+  const title = document.createElement("strong");
+  title.textContent = "Rohstoffe";
+  const list = document.createElement("dl");
+  for (const resource of resourceTypes) {
+    const label = document.createElement("dt");
+    label.textContent = getResourceLabel(resource);
+    const value = document.createElement("dd");
+    value.textContent = String(player?.resources?.[resource] ?? 0);
+    list.append(label, value);
+  }
+  wrapper.append(title, list);
+  return wrapper;
+}
+
+function renderBankTradeControls(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "trade-build-section";
+  const title = document.createElement("strong");
+  title.textContent = "Bankhandel";
+
+  const fields = document.createElement("div");
+  fields.className = "trade-fields";
+  const fromResource = gameState?.trade?.bankFromResource ?? "ore";
+  const toResource = gameState?.trade?.bankToResource ?? "food";
+  fields.append(
+    renderResourceSelect("Geben", fromResource, (resource) => {
+      sendNamedAction("trade.setBankResources", { fromResource: resource, toResource });
+    }),
+    renderResourceSelect("Erhalten", toResource, (resource) => {
+      sendNamedAction("trade.setBankResources", { fromResource, toResource: resource });
+    })
+  );
+
+  const rate = player?.tradeRates?.[fromResource] ?? 3;
+  const hint = document.createElement("p");
+  hint.textContent = `${rate}:1`;
+
+  const button = createButton("Handeln", () => sendNamedAction("trade.bankTrade"), "small-button");
+  button.disabled = !canUseTradeBuildActions(player) || fromResource === toResource || (player?.resources?.[fromResource] ?? 0) < rate;
+
+  wrapper.append(title, fields, hint, button);
+  return wrapper;
+}
+
+function renderPlayerTradeControls(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "trade-build-section player-trade-controls";
+  const title = document.createElement("strong");
+  title.textContent = "Spielerhandel";
+  wrapper.append(title);
+
+  const activeTradeOffer = gameState?.trade?.activeTradeOffer;
+  if (activeTradeOffer) {
+    wrapper.append(renderActiveTradeOffer(player, activeTradeOffer));
+    return wrapper;
+  }
+
+  if (!canUseTradeBuildActions(player)) {
+    const hint = document.createElement("p");
+    hint.textContent = isSelectedPlayerActive() ? "Handel ist nur in der Handels-/Bauphase möglich." : "Nicht am Zug.";
+    wrapper.append(hint);
+    return wrapper;
+  }
+
+  wrapper.append(
+    renderTradeTargetSelect(),
+    renderTradeResourceConfigurator("offered"),
+    renderTradeResourceConfigurator("requested")
+  );
+
+  const offerButton = createButton("Handel anbieten", () => sendNamedAction("trade.createOffer"), "small-button");
+  offerButton.disabled = !canCreateTradeOffer(player);
+  wrapper.append(offerButton);
+  return wrapper;
+}
+
+function renderActiveTradeOffer(player, activeTradeOffer) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "active-trade-offer";
+  const fromPlayer = getPlayerById(activeTradeOffer.fromPlayerId);
+  const toPlayer = getPlayerById(activeTradeOffer.toPlayerId);
+  const isRecipientView = player?.id === activeTradeOffer.toPlayerId;
+  const giveResources = isRecipientView ? activeTradeOffer.requestedResources : activeTradeOffer.offeredResources;
+  const receiveResources = isRecipientView ? activeTradeOffer.offeredResources : activeTradeOffer.requestedResources;
+
+  const title = document.createElement("p");
+  title.textContent = "Offenes Handelsangebot";
+  const summary = document.createElement("p");
+  summary.textContent = `${fromPlayer?.name ?? activeTradeOffer.fromPlayerId} -> ${toPlayer?.name ?? activeTradeOffer.toPlayerId}`;
+  const offered = document.createElement("p");
+  offered.textContent = `Du gibst: ${formatResourceSelection(giveResources)}`;
+  const requested = document.createElement("p");
+  requested.textContent = `Du erhältst: ${formatResourceSelection(receiveResources)}`;
+  wrapper.append(title, summary, offered, requested);
+
+  const actions = document.createElement("div");
+  actions.className = "trade-offer-actions";
+  if (player?.id === activeTradeOffer.toPlayerId) {
+    actions.append(
+      createButton("Annehmen", () => sendNamedAction("trade.acceptOffer"), "small-button"),
+      createButton("Ablehnen", () => sendNamedAction("trade.declineOffer"), "small-button secondary-small-button")
+    );
+  } else if (player?.id === activeTradeOffer.fromPlayerId) {
+    actions.append(createButton("Angebot zurückziehen", () => sendNamedAction("trade.cancelOffer"), "small-button secondary-small-button"));
+  }
+  if (actions.childElementCount > 0) wrapper.append(actions);
+  return wrapper;
+}
+
+function renderTradeTargetSelect() {
+  const label = document.createElement("label");
+  label.className = "resource-select";
+  const caption = document.createElement("span");
+  caption.textContent = "Zielspieler";
+
+  const select = document.createElement("select");
+  const emptyOption = document.createElement("option");
+  emptyOption.value = "";
+  emptyOption.textContent = "Zielspieler wählen";
+  select.append(emptyOption);
+
+  for (const player of gameState?.players ?? []) {
+    if (player.id === selectedPlayerId) continue;
+    const option = document.createElement("option");
+    option.value = player.id;
+    option.textContent = player.name;
+    select.append(option);
+  }
+  select.value = gameState?.trade?.offerTargetPlayerId ?? "";
+  select.addEventListener("change", () => sendNamedAction("trade.setOfferTarget", { targetPlayerId: select.value || null }));
+  label.append(caption, select);
+  return label;
+}
+
+function renderTradeResourceConfigurator(side) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "trade-resource-configurator";
+  const title = document.createElement("strong");
+  title.textContent = side === "offered" ? "Du gibst" : "Du erhältst";
+  wrapper.append(title);
+
+  const selection = side === "offered"
+    ? gameState?.trade?.offeredResources ?? {}
+    : gameState?.trade?.requestedResources ?? {};
+
+  for (const resource of resourceTypes) {
+    const row = document.createElement("div");
+    row.className = "seven-discard-row";
+    const label = document.createElement("span");
+    label.textContent = `${getResourceLabel(resource)}: ${selection[resource] ?? 0}`;
+    const decreaseButton = createButton("-", () => sendNamedAction("trade.updateOfferResource", { side, resource, delta: -1 }), "small-button secondary-small-button");
+    decreaseButton.disabled = (selection[resource] ?? 0) <= 0;
+    const increaseButton = createButton("+", () => sendNamedAction("trade.updateOfferResource", { side, resource, delta: 1 }), "small-button");
+    row.append(label, decreaseButton, increaseButton);
+    wrapper.append(row);
+  }
+
+  return wrapper;
+}
+
+function renderPlayerOverview(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "fleet-summary player-overview";
+  const title = document.createElement("strong");
+  title.textContent = "Übersicht";
+  const counts = player?.counts ?? {};
+  const rows = [
+    ["Siegpunkte", player?.victoryPoints ?? 0],
+    ["Schiffe", counts.ships ?? 0],
+    ["Kolonien", counts.colonies ?? 0],
+    ["Raumhäfen", counts.spaceports ?? 0],
+    ["Handelsstationen", counts.tradeStations ?? 0],
+    ["Medaillen", player?.medalLabel ?? formatMedals(player)]
+  ];
+  const list = document.createElement("dl");
+  for (const [labelText, valueText] of rows) {
+    const label = document.createElement("dt");
+    label.textContent = labelText;
+    const value = document.createElement("dd");
+    value.textContent = String(valueText);
+    list.append(label, value);
+  }
+  wrapper.append(title, list);
+  return wrapper;
+}
+
+function renderFriendshipSummary(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "friendship-summary fleet-summary";
+  const title = document.createElement("strong");
+  title.textContent = "Freundschaft";
+
+  const friendship = player?.friendship ?? {};
+  const rows = [
+    ["Handelsstationen", player?.counts?.tradeStations ?? 0],
+    ["Außenposten", formatList(friendship.representedOutposts)],
+    ["Freundschaftsmarker", formatList(friendship.markers)]
+  ];
+  const list = document.createElement("dl");
+  for (const [labelText, valueText] of rows) {
+    const label = document.createElement("dt");
+    label.textContent = labelText;
+    const value = document.createElement("dd");
+    value.textContent = String(valueText);
+    list.append(label, value);
+  }
+
+  wrapper.append(title, list);
+
+  const cards = friendship.cards ?? [];
+  if (cards.length > 0) {
+    const cardTitle = document.createElement("p");
+    cardTitle.textContent = "Aktive Freundschaftskarten";
+    const cardList = document.createElement("div");
+    cardList.className = "friendship-card-list";
+    for (const cardInfo of cards) {
+      const card = getFriendshipCardById(cardInfo.id) ?? cardInfo;
+      const cardElement = document.createElement("article");
+      cardElement.className = "friendship-card";
+      const titleElement = document.createElement("strong");
+      titleElement.textContent = cardInfo.title || getFriendshipCardTitle(card);
+      const summary = document.createElement("p");
+      summary.textContent = cardInfo.summary || getFriendshipCardSummary(card);
+      cardElement.append(titleElement, summary);
+      cardList.append(cardElement);
+    }
+    wrapper.append(cardTitle, cardList);
+  } else {
+    const empty = document.createElement("p");
+    empty.textContent = "Keine Freundschaftskarten.";
+    wrapper.append(empty);
+  }
+
+  return wrapper;
+}
+
+function renderBoardFullscreen() {
   const section = document.createElement("section");
-  section.className = "player-hud-tab-content controller-section controller-board-section";
+  section.className = "controller-board-fullscreen";
   const header = document.createElement("div");
   header.className = "controller-board-header";
   const title = document.createElement("h2");
@@ -402,7 +843,7 @@ function renderBoardTab() {
   const mode = document.createElement("p");
   mode.textContent = gameState?.board?.mode || "Nur ansehen";
   const backButton = createButton("Zurück zum Menü", () => {
-    activeTab = "turn";
+    boardFullscreen = false;
     render();
   }, "controller-board-back-button");
   header.append(title, mode, backButton);
@@ -454,13 +895,6 @@ function renderActionGrid(actions) {
   return actionGrid;
 }
 
-function renderReconnectFooter() {
-  const footer = document.createElement("footer");
-  footer.className = "selection-panel controller-footer";
-  footer.append(createButton("Neu verbinden", connect, "controller-button controller-button--secondary"));
-  return footer;
-}
-
 function getFilteredActions() {
   return (gameState?.actions ?? []).filter((action) => {
     if (action.adminOnly && !isSelectedPlayerAdmin()) return false;
@@ -469,8 +903,46 @@ function getFilteredActions() {
   });
 }
 
+function getTurnActions() {
+  return getFilteredActions().filter((action) => {
+    if (action.id.startsWith("build.")) return false;
+    if (action.id.startsWith("upgrade.")) return false;
+    if (action.adminOnly) return false;
+    return ![
+      "openControllers",
+      "openPlayerHud",
+      "closeHud",
+      "hudTab",
+      "save.quick",
+      "app.exit"
+    ].includes(action.id);
+  });
+}
+
+function findAction(actionId, predicate = () => true) {
+  return getFilteredActions().find((action) => action.id === actionId && predicate(action)) ?? null;
+}
+
+function canUseTradeBuildActions(player) {
+  return Boolean(player?.id === selectedPlayerId && isSelectedPlayerActive() && gameState?.phase === "tradeBuild");
+}
+
+function canCreateTradeOffer(player) {
+  if (!canUseTradeBuildActions(player) || !gameState?.trade?.offerTargetPlayerId) return false;
+  const offered = gameState?.trade?.offeredResources ?? {};
+  const requested = gameState?.trade?.requestedResources ?? {};
+  const totalOffered = Object.values(offered).reduce((sum, amount) => sum + (amount ?? 0), 0);
+  const totalRequested = Object.values(requested).reduce((sum, amount) => sum + (amount ?? 0), 0);
+  if (totalOffered <= 0 && totalRequested <= 0) return false;
+  return resourceTypes.every((resource) => (offered[resource] ?? 0) <= (player?.resources?.[resource] ?? 0));
+}
+
 function getSelectedPlayer() {
   return (gameState?.players ?? []).find((player) => player.id === selectedPlayerId) ?? null;
+}
+
+function getPlayerById(playerId) {
+  return (gameState?.players ?? []).find((player) => player.id === playerId) ?? null;
 }
 
 function getOwnLobbySlot() {
@@ -555,11 +1027,56 @@ function createMetaItem(label, value) {
   return item;
 }
 
+function getResourceLabel(resource) {
+  return resourceLabels[resource] ?? resource;
+}
+
+function getUpgradeLabel(upgradeId) {
+  return upgradeLabels[upgradeId] ?? upgradeId;
+}
+
+function getBuildActionLabel(actionId) {
+  return buildLabels[actionId] ?? actionId;
+}
+
+function formatCost(cost = {}) {
+  return Object.entries(cost)
+    .map(([resource, amount]) => `${amount} ${getResourceLabel(resource)}`)
+    .join(", ");
+}
+
+function formatResourceSelection(resources = {}) {
+  const entries = Object.entries(resources)
+    .filter(([, amount]) => amount > 0)
+    .map(([resource, amount]) => `${amount} ${getResourceLabel(resource)}`);
+  return entries.length > 0 ? entries.join(", ") : "keine";
+}
+
+function formatUpgradeValue(player, upgrade) {
+  const realValue = player?.upgrades?.[upgrade.id] ?? 0;
+  const bonus = player?.upgradeBonuses?.[upgrade.id] ?? 0;
+  return bonus > 0
+    ? `${realValue}/${upgrade.limit} (+${bonus}, Effektiv: ${realValue + bonus})`
+    : `${realValue}/${upgrade.limit}`;
+}
+
+function formatMedals(player) {
+  const medals = Math.max(0, player?.halfMedals ?? 0) / 2;
+  return medals.toLocaleString("de-DE", {
+    minimumFractionDigits: medals % 1 === 0 ? 0 : 1,
+    maximumFractionDigits: 1
+  });
+}
+
+function formatList(items = []) {
+  return items.length > 0 ? items.join(", ") : "keine";
+}
+
 function getStatusLabel() {
   if (connectionStatus === "connected") return "Verbunden";
   if (connectionStatus === "waiting") return "Warte auf Spiel";
-  if (connectionStatus === "lost") return "Verbindung verloren, verbinde neu ...";
-  if (connectionStatus === "replaced") return "Dieser Spieler-Slot wurde auf einem anderen Gerät verbunden.";
+  if (connectionStatus === "lost") return "Getrennt";
+  if (connectionStatus === "replaced") return "Ersetzt";
   if (connectionStatus === "missing-session") return "Keine Session in der URL";
   return "Verbinde ...";
 }
