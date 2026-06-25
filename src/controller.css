@@ -428,3 +428,16 @@ body {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 }
+
+@media (orientation: portrait) {
+  .controller-content--mothership.player-hud-content {
+    display: flex;
+    flex-direction: column;
+    align-content: initial;
+  }
+
+  .controller-content--mothership .controller-tabbar,
+  .controller-content--mothership .controller-section {
+    flex: 0 0 auto;
+  }
+}

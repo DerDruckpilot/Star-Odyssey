@@ -206,7 +206,7 @@ function render() {
   const currentPlayer = getSelectedPlayer();
   const header = renderControllerHeader(currentPlayer);
   const content = document.createElement("div");
-  content.className = "player-hud-content controller-content";
+  content.className = `player-hud-content controller-content controller-content--${activeTab}`;
 
   if (gameState?.view === "controllers" && gameState.controllerLobby) {
     content.append(renderSetupPanel());
