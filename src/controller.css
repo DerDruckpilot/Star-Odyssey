@@ -95,6 +95,7 @@ body {
 }
 
 .controller-content.player-hud-content {
+  align-content: start;
   gap: 0.42rem;
   padding: clamp(0.42rem, 1.85vw, 0.65rem);
 }
@@ -107,7 +108,7 @@ body {
   flex-wrap: wrap;
   align-content: flex-start;
   align-items: stretch;
-  min-height: 0;
+  min-height: clamp(1.8rem, 5.8vw, 2.18rem);
   height: auto;
   max-height: none;
   gap: 0.2rem;
@@ -236,7 +237,13 @@ body {
 }
 
 .controller-upgrade-menu.upgrade-menu {
+  margin-top: 0.45rem;
   min-height: 0;
+}
+
+.controller-upgrade-menu .upgrade-ship-panel {
+  box-sizing: border-box;
+  padding: 0.55rem;
 }
 
 .controller-section .build-controls {
@@ -349,6 +356,7 @@ body {
     overflow-x: auto;
     overflow-y: hidden;
     gap: 0.2rem;
+    min-height: 2rem;
     padding-bottom: 0.1rem;
     scrollbar-width: thin;
   }
