@@ -1,0 +1,171 @@
+:root {
+  color-scheme: dark;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #05070d;
+  color: #f8fafc;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100dvh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 18% 10%, rgba(14, 165, 233, 0.28), transparent 18rem),
+    radial-gradient(circle at 90% 18%, rgba(168, 85, 247, 0.22), transparent 18rem),
+    #05070d;
+}
+
+button {
+  font: inherit;
+}
+
+.controller-shell {
+  min-height: 100dvh;
+  padding:
+    max(1rem, var(--safe-top))
+    max(1rem, var(--safe-right))
+    max(1rem, var(--safe-bottom))
+    max(1rem, var(--safe-left));
+}
+
+.controller-panel {
+  width: min(100%, 46rem);
+  min-height: calc(100dvh - max(1rem, var(--safe-top)) - max(1rem, var(--safe-bottom)));
+  margin: 0 auto;
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+
+.controller-header,
+.controller-meta,
+.controller-section,
+.controller-footer {
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  background: rgba(15, 23, 42, 0.86);
+  box-shadow: 0 1rem 2rem rgba(2, 6, 23, 0.3);
+}
+
+.controller-header {
+  padding: 1.1rem;
+}
+
+.controller-header h1,
+.controller-section h2,
+.controller-header p,
+.controller-meta p,
+.controller-empty {
+  margin: 0;
+}
+
+.controller-header h1 {
+  font-size: clamp(2rem, 10vw, 3.2rem);
+  line-height: 1;
+}
+
+.controller-status {
+  margin-top: 0.7rem;
+  color: #facc15;
+  font-weight: 700;
+}
+
+.controller-status--connected {
+  color: #86efac;
+}
+
+.controller-status--lost,
+.controller-status--missing-session {
+  color: #fca5a5;
+}
+
+.controller-meta {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  color: #cbd5e1;
+}
+
+.controller-section {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+}
+
+.controller-section h2 {
+  font-size: 1.15rem;
+  color: #e0f2fe;
+}
+
+.controller-player-grid,
+.controller-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.controller-action-grid {
+  grid-template-columns: 1fr;
+}
+
+.controller-button,
+.controller-player-button {
+  min-height: 4.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  color: #f8fafc;
+  background: rgba(30, 41, 59, 0.9);
+  font-weight: 800;
+  font-size: clamp(1.05rem, 5vw, 1.35rem);
+  cursor: pointer;
+}
+
+.controller-player-button.is-active {
+  border-color: #facc15;
+  background: rgba(250, 204, 21, 0.16);
+}
+
+.controller-button:active,
+.controller-player-button:active {
+  transform: scale(0.98);
+}
+
+.controller-button--secondary {
+  width: 100%;
+  min-height: 3.5rem;
+  background: rgba(15, 23, 42, 0.78);
+}
+
+.controller-empty {
+  color: #94a3b8;
+}
+
+.controller-footer {
+  padding: 1rem;
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .controller-shell {
+    padding: 0.65rem;
+  }
+
+  .controller-panel {
+    grid-template-columns: 0.8fr 1.2fr;
+    align-items: start;
+  }
+
+  .controller-header,
+  .controller-meta,
+  .controller-footer {
+    grid-column: 1;
+  }
+
+  .controller-section {
+    grid-column: 2;
+  }
+}

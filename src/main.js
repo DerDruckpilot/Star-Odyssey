@@ -90,6 +90,9 @@ import { defaultLanguage, getText, languages } from "./i18n.js";
 
 const languageStorageKey = "star-odyssey-language";
 const savesStorageKey = "star-odyssey-saves";
+const autosaveStorageKey = "starOdyssey.autosave.v1";
+const autosaveVersion = 1;
+const controllerSessionStorageKey = "star-odyssey-controller-session";
 const svgNamespace = "http://www.w3.org/2000/svg";
 const showBoardDebugLabels = false;
 const showBoardNodeDebugLabels = false;
@@ -103,12 +106,15 @@ const planetAssetPaths = {
   goods: "./assets/generated/planets/planet-trade.png"
 };
 
+const initialLanguage = loadLanguage();
+const initialGame = loadInitialGameState(initialLanguage);
+
 const state = {
-  language: loadLanguage(),
-  view: "menu",
-  selectedPlayers: null,
+  language: initialGame.language,
+  view: initialGame.gameState ? "board" : "menu",
+  selectedPlayers: initialGame.gameState?.playerCount ?? null,
   playerSetup: [],
-  gameState: loadCurrentGameState(),
+  gameState: initialGame.gameState,
   tradeFromResource: "ore",
   tradeToResource: "food",
   tradeOfferTargetPlayerId: null,
@@ -119,8 +125,20 @@ const state = {
   hudTab: "turn",
   hudScrollPositions: {},
   encounterBoardSelectionActive: false,
-  notice: ""
+  notice: initialGame.fromAutosave ? (initialGame.language === "de" ? "Autosave geladen." : "Autosave loaded.") : ""
 };
+
+const remoteHost = {
+  sessionId: loadOrCreateControllerSessionId(),
+  socket: null,
+  connected: false,
+  controllerCount: 0,
+  reconnectTimer: null,
+  lastStateJson: ""
+};
+
+const controllerReconnectMs = 1600;
+let autosaveTimer = null;
 
 const placementVfxDuration = 1650;
 const placementVfx = {
@@ -206,6 +224,39 @@ function loadCurrentGameState() {
   }
 }
 
+function loadInitialGameState(fallbackLanguage = defaultLanguage) {
+  const autosaveGameState = loadAutosaveGameState(fallbackLanguage);
+  if (autosaveGameState) {
+    return {
+      gameState: autosaveGameState,
+      language: languages.includes(autosaveGameState.language) ? autosaveGameState.language : fallbackLanguage,
+      fromAutosave: true
+    };
+  }
+
+  const currentGameState = loadCurrentGameState();
+  return {
+    gameState: currentGameState,
+    language: languages.includes(currentGameState?.language) ? currentGameState.language : fallbackLanguage,
+    fromAutosave: false
+  };
+}
+
+function loadAutosaveGameState(fallbackLanguage = defaultLanguage) {
+  try {
+    const parsedAutosave = JSON.parse(localStorage.getItem(autosaveStorageKey) ?? "null");
+    if (!parsedAutosave || parsedAutosave.version !== autosaveVersion || !parsedAutosave.gameState) return null;
+
+    return normalizeGameState(parsedAutosave.gameState, {
+      language: parsedAutosave.gameState.language || parsedAutosave.language || fallbackLanguage,
+      playerCount: parsedAutosave.gameState.playerCount || 2,
+      boardLayout
+    });
+  } catch {
+    return null;
+  }
+}
+
 function saveCurrentGameState() {
   if (!state.gameState) return;
 
@@ -214,6 +265,70 @@ function saveCurrentGameState() {
   } catch {
     // Saving the current game is best-effort for the browser prototype.
   }
+  scheduleAutosave();
+}
+
+function scheduleAutosave() {
+  if (autosaveTimer) clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(writeAutosaveNow, 250);
+}
+
+function writeAutosaveNow() {
+  if (autosaveTimer) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+  }
+  if (!state.gameState || state.view !== "board") return;
+
+  try {
+    localStorage.setItem(autosaveStorageKey, JSON.stringify({
+      version: autosaveVersion,
+      savedAt: new Date().toISOString(),
+      language: state.language,
+      view: "board",
+      gameState: state.gameState
+    }));
+  } catch {
+    // Autosave is best-effort; the game must stay playable if storage is full.
+  }
+}
+
+function clearAutosave() {
+  if (autosaveTimer) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+  }
+  try {
+    localStorage.removeItem(autosaveStorageKey);
+    localStorage.removeItem(currentGameStorageKey);
+  } catch {
+    // ignore storage cleanup failures
+  }
+}
+
+function loadOrCreateControllerSessionId() {
+  try {
+    const existingSessionId = sessionStorage.getItem(controllerSessionStorageKey);
+    if (existingSessionId) return existingSessionId;
+    const nextSessionId = Math.random().toString(36).slice(2, 8).toUpperCase();
+    sessionStorage.setItem(controllerSessionStorageKey, nextSessionId);
+    return nextSessionId;
+  } catch {
+    return Math.random().toString(36).slice(2, 8).toUpperCase();
+  }
+}
+
+function getControllerUrl(playerId = null) {
+  const url = new URL("/controller.html", window.location.origin);
+  url.searchParams.set("session", remoteHost.sessionId);
+  if (playerId) url.searchParams.set("player", playerId);
+  return url.toString();
+}
+
+function getQrCodeUrl(text) {
+  const url = new URL("/api/qr", window.location.origin);
+  url.searchParams.set("text", text);
+  return url.toString();
 }
 
 function saveLanguage(language) {
@@ -322,6 +437,8 @@ function resetTradeOfferDraft() {
 }
 
 function startNewGameSetup() {
+  clearAutosave();
+  state.gameState = null;
   state.selectedPlayers = null;
   state.playerSetup = [];
   setView("players");
@@ -887,11 +1004,7 @@ function endTurn() {
 
 function returnToMenuFromGameOver() {
   state.gameState = null;
-  try {
-    localStorage.removeItem(currentGameStorageKey);
-  } catch {
-    // ignore storage cleanup failures
-  }
+  clearAutosave();
   resetTradeOfferDraft();
   setView("menu");
 }
@@ -950,7 +1063,8 @@ function renderMenu() {
   actions.className = "menu-actions";
   actions.append(
     createButton(t("newGame"), startNewGameSetup),
-    createButton(t("loadGame"), () => openModal("load"))
+    createButton(t("loadGame"), () => openModal("load")),
+    createButton(t("connectControllers"), () => openModal("controllers"), "secondary-button")
   );
 
   screen.append(renderLanguageToggle(), titleGroup, actions, renderNotice());
@@ -1113,11 +1227,18 @@ function renderQrPlaceholder(playerNumber) {
   const label = document.createElement("h2");
   label.textContent = t("playerNumber").replace("{number}", playerNumber);
 
-  const qrBox = document.createElement("div");
-  qrBox.className = "qr-placeholder";
-  qrBox.setAttribute("aria-hidden", "true");
+  const playerId = state.gameState?.players?.[playerNumber - 1]?.id ?? `player-${playerNumber}`;
+  const controllerUrl = getControllerUrl(playerId);
+  const qrImage = document.createElement("img");
+  qrImage.className = "qr-image";
+  qrImage.alt = t("controllerQrAlt").replace("{player}", label.textContent);
+  qrImage.src = getQrCodeUrl(controllerUrl);
 
-  card.append(label, qrBox);
+  const urlText = document.createElement("p");
+  urlText.className = "qr-url";
+  urlText.textContent = controllerUrl;
+
+  card.append(label, qrImage, urlText);
   return card;
 }
 
@@ -5565,7 +5686,7 @@ function renderModal() {
   overlay.setAttribute("aria-modal", "true");
 
   const modal = document.createElement("section");
-  modal.className = "modal-panel";
+  modal.className = `modal-panel${state.modal === "controllers" ? " modal-panel--controller" : ""}`;
   modal.append(renderModalContent());
 
   overlay.append(modal);
@@ -5575,6 +5696,7 @@ function renderModal() {
 function renderModalContent() {
   if (state.modal === "save") return renderSaveDialog();
   if (state.modal === "load") return renderLoadDialog();
+  if (state.modal === "controllers") return renderControllerPairingDialog();
   return renderSettingsMenu();
 }
 
@@ -5599,6 +5721,7 @@ function renderSettingsMenu() {
   const actions = document.createElement("div");
   actions.className = "modal-actions";
   actions.append(
+    createButton(t("connectControllers"), () => openModal("controllers"), "menu-button"),
     createButton(t("save"), () => openModal("save"), "menu-button"),
     createButton(t("loadGame"), () => openModal("load"), "menu-button"),
     createButton(t("backToMenu"), confirmBackToMenu, "secondary-button"),
@@ -5606,6 +5729,53 @@ function renderSettingsMenu() {
   );
 
   wrapper.append(title, modalNotice, languageSection, actions);
+  return wrapper;
+}
+
+function renderControllerPairingDialog() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "modal-content controller-pairing-dialog";
+
+  const title = document.createElement("h2");
+  title.textContent = t("controllerPairingTitle");
+
+  const status = document.createElement("p");
+  status.className = "controller-pairing-status";
+  status.textContent = t("controllerPairingStatus")
+    .replace("{count}", remoteHost.controllerCount)
+    .replace("{status}", remoteHost.connected ? t("controllerBridgeConnected") : t("controllerBridgeDisconnected"));
+
+  const qrGrid = document.createElement("div");
+  qrGrid.className = "qr-grid qr-grid--modal";
+  const players = state.gameState?.players?.length
+    ? state.gameState.players
+    : Array.from({ length: state.selectedPlayers || 2 }, (_, index) => ({
+      id: `player-${index + 1}`,
+      name: t("playerNumber").replace("{number}", index + 1)
+    }));
+
+  players.forEach((player, index) => {
+    const card = renderQrPlaceholder(index + 1);
+    card.querySelector("h2").textContent = player.name;
+    const controllerUrl = getControllerUrl(player.id);
+    const image = card.querySelector(".qr-image");
+    const urlText = card.querySelector(".qr-url");
+    if (image) {
+      image.alt = t("controllerQrAlt").replace("{player}", player.name);
+      image.src = getQrCodeUrl(controllerUrl);
+    }
+    if (urlText) urlText.textContent = controllerUrl;
+    qrGrid.append(card);
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "modal-actions modal-actions--row";
+  actions.append(
+    createButton(t("back"), () => openModal("settings"), "secondary-button"),
+    createButton(t("close"), closeModal, "secondary-button")
+  );
+
+  wrapper.append(title, status, qrGrid, actions);
   return wrapper;
 }
 
@@ -5774,6 +5944,8 @@ function deleteSave(saveId) {
 
 function confirmBackToMenu() {
   if (window.confirm(t("confirmBackToMenu"))) {
+    state.gameState = null;
+    clearAutosave();
     setView("menu");
   }
 }
@@ -5802,6 +5974,216 @@ function renderNotice() {
   return notice;
 }
 
+function connectRemoteHost() {
+  if (!("WebSocket" in window)) return;
+  if (remoteHost.socket && [WebSocket.CONNECTING, WebSocket.OPEN].includes(remoteHost.socket.readyState)) return;
+
+  clearTimeout(remoteHost.reconnectTimer);
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+  remoteHost.socket = socket;
+
+  socket.addEventListener("open", () => {
+    remoteHost.connected = true;
+    socket.send(JSON.stringify({
+      type: "hello",
+      role: "host",
+      sessionId: remoteHost.sessionId
+    }));
+    remoteHost.lastStateJson = "";
+    publishRemoteHostState();
+    render();
+  });
+
+  socket.addEventListener("message", (event) => handleRemoteHostMessage(event.data));
+  socket.addEventListener("close", () => {
+    if (remoteHost.socket !== socket) return;
+    remoteHost.connected = false;
+    remoteHost.controllerCount = 0;
+    remoteHost.socket = null;
+    remoteHost.reconnectTimer = setTimeout(connectRemoteHost, controllerReconnectMs);
+    if (state.modal === "controllers") render();
+  });
+  socket.addEventListener("error", () => {
+    socket.close();
+  });
+}
+
+function handleRemoteHostMessage(rawData) {
+  let message;
+  try {
+    message = JSON.parse(rawData);
+  } catch {
+    return;
+  }
+
+  if (message.type === "helloAck" || message.type === "controllerCount") {
+    remoteHost.controllerCount = message.controllerCount ?? remoteHost.controllerCount;
+    if (state.modal === "controllers") render();
+    return;
+  }
+
+  if (message.type === "controllerAction") {
+    executeRemoteAction(message.actionId, message.payload || {});
+  }
+}
+
+function publishRemoteHostState() {
+  if (!remoteHost.connected || !remoteHost.socket || remoteHost.socket.readyState !== WebSocket.OPEN) return;
+
+  const controllerState = getRemoteControllerState();
+  const stateJson = JSON.stringify(controllerState);
+  if (stateJson === remoteHost.lastStateJson) return;
+  remoteHost.lastStateJson = stateJson;
+  remoteHost.socket.send(JSON.stringify({
+    type: "state",
+    sessionId: remoteHost.sessionId,
+    state: controllerState
+  }));
+}
+
+function getRemoteControllerState() {
+  return {
+    view: state.view,
+    phase: state.gameState?.phase ?? null,
+    phaseLabel: state.gameState ? getPhaseLabel(state.gameState.phase) : "",
+    activePlayerId: getActivePlayer()?.id ?? null,
+    activePlayerName: getActivePlayer()?.name ?? "",
+    players: (state.gameState?.players ?? []).map((player) => ({
+      id: player.id,
+      name: player.name
+    })),
+    actions: getRemoteControllerActions()
+  };
+}
+
+function getRemoteControllerActions() {
+  const actions = [];
+
+  if (state.view === "menu") {
+    actions.push(createRemoteAction("newGame", t("newGame")));
+    return actions;
+  }
+
+  if (state.view !== "board" || !state.gameState) {
+    actions.push(createRemoteAction("backToMenu", t("backToMenu")));
+    return actions;
+  }
+
+  if (state.modal) {
+    actions.push(createRemoteAction("closeModal", t("close")));
+  }
+  if (state.hudPlayerId) {
+    actions.push(createRemoteAction("closeHud", t("close")));
+    actions.push(
+      createRemoteAction("hudTab", t("tabTurn"), { tab: "turn" }),
+      createRemoteAction("hudTab", t("tabTrade"), { tab: "resources" }),
+      createRemoteAction("hudTab", t("tabUpgrades"), { tab: "upgrades" }),
+      createRemoteAction("hudTab", t("tabBuild"), { tab: "build" }),
+      createRemoteAction("hudTab", t("tabOutposts"), { tab: "outposts" }),
+      createRemoteAction("hudTab", t("tabOverview"), { tab: "overview" })
+    );
+  }
+
+  for (const player of state.gameState.players ?? []) {
+    actions.push(createRemoteAction("openPlayerHud", player.name, { playerId: player.id }));
+  }
+
+  actions.push(
+    createRemoteAction("openSettings", t("ingameMenu")),
+    createRemoteAction("openControllers", t("connectControllers"))
+  );
+
+  if (state.gameState.activeEncounter) {
+    actions.push(createRemoteAction("finishEncounter", t("finishEncounter")));
+    return actions;
+  }
+
+  if (state.gameState.phase === "placement" && state.gameState.placement?.step === "rollStartPlayer" && !isDiceRollAnimating()) {
+    actions.push(createRemoteAction("rollPlacement", t("rollStartPlayer")));
+  }
+
+  if (state.gameState.phase === "production" && !isDiceRollAnimating()) {
+    actions.push(createRemoteAction("rollProduction", t("rollProduction")));
+  }
+
+  if (state.gameState.phase === "tradeBuild") {
+    const drawCount = getSupplyDrawCount(getActivePlayer());
+    if (drawCount > 0 && !hasActivePlayerDrawnSupplyThisTurn()) {
+      actions.push(createRemoteAction("drawSupply", t("drawSupply").replace("{count}", drawCount)));
+    }
+    actions.push(createRemoteAction("toFlightPhase", t("toFlightPhase")));
+  }
+
+  if (state.gameState.phase === "flight") {
+    if (!state.gameState.hasRolledFlightSpeed && !isMothershipSpeedAnimating()) {
+      actions.push(createRemoteAction("determineSpeed", t("determineSpeed")));
+    }
+    actions.push(createRemoteAction("endTurn", t("endTurn")));
+  }
+
+  return actions;
+}
+
+function createRemoteAction(id, label, payload = {}) {
+  return { id, label, payload };
+}
+
+function executeRemoteAction(actionId, payload = {}) {
+  switch (actionId) {
+    case "newGame":
+      startNewGameSetup();
+      break;
+    case "backToMenu":
+      setView("menu");
+      break;
+    case "openSettings":
+      openModal("settings");
+      break;
+    case "openControllers":
+      openModal("controllers");
+      break;
+    case "closeModal":
+      closeModal();
+      break;
+    case "closeHud":
+      closePlayerHud();
+      break;
+    case "openPlayerHud":
+      openPlayerHud(payload.playerId);
+      break;
+    case "hudTab":
+      if (payload.tab) {
+        state.hudTab = payload.tab;
+        render();
+      }
+      break;
+    case "rollPlacement":
+      rollPlacementForActivePlayer();
+      break;
+    case "rollProduction":
+      rollProductionForActivePlayer();
+      break;
+    case "drawSupply":
+      drawSupplyForActivePlayer();
+      break;
+    case "toFlightPhase":
+      goToFlightPhase();
+      break;
+    case "determineSpeed":
+      determineSpeedForActivePlayer();
+      break;
+    case "endTurn":
+      endTurn();
+      break;
+    case "finishEncounter":
+      finishActiveEncounter();
+      break;
+    default:
+      break;
+  }
+}
+
 function render() {
   capturePlayerHudScrollPosition();
   document.documentElement.lang = state.language;
@@ -5822,6 +6204,14 @@ function render() {
   restorePlayerHudScrollPosition();
   drawShipEngineVfxOverlays();
   syncShipVfxLoop();
+  publishRemoteHostState();
 }
 
+connectRemoteHost();
 render();
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") writeAutosaveNow();
+});
+window.addEventListener("pagehide", writeAutosaveNow);
+window.addEventListener("beforeunload", writeAutosaveNow);

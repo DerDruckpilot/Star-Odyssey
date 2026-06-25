@@ -286,6 +286,31 @@ h1 {
     auto;
 }
 
+.qr-image {
+  width: min(100%, 10rem);
+  aspect-ratio: 1;
+  padding: 0.45rem;
+  background: #f8fafc;
+}
+
+.qr-url {
+  width: 100%;
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.qr-grid--modal {
+  width: min(100%, 58rem);
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+}
+
+.qr-grid--modal .qr-image {
+  width: min(100%, 13rem);
+}
+
 .player-setup-form {
   width: min(100%, 44rem);
   display: grid;
@@ -1700,6 +1725,11 @@ h1 {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
 }
 
+.modal-panel--controller {
+  width: min(94vw, 66rem);
+  max-height: min(90vh, 48rem);
+}
+
 .modal-content {
   display: grid;
   gap: 1rem;
@@ -1719,6 +1749,16 @@ h1 {
 .modal-notice[hidden] {
   display: block;
   visibility: hidden;
+}
+
+.controller-pairing-dialog {
+  width: min(92vw, 64rem);
+}
+
+.controller-pairing-status {
+  margin: 0;
+  color: #bae6fd;
+  font-weight: 700;
 }
 
 .settings-language {
