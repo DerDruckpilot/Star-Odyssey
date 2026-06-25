@@ -188,11 +188,41 @@ function handleSocketMessage(socket, rawMessage) {
   }
 }
 
+const noCacheExtensions = new Set([".html", ".js", ".css", ".json", ".map"]);
+const cacheableAssetExtensions = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".svg",
+  ".ico",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".otf",
+  ".mp3",
+  ".ogg",
+  ".wav"
+]);
+
 function setNoCacheHeaders(response) {
   response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   response.setHeader("Pragma", "no-cache");
   response.setHeader("Expires", "0");
   response.setHeader("Surrogate-Control", "no-store");
+}
+
+function setStaticCacheHeaders(response, filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  if (cacheableAssetExtensions.has(extension)) {
+    response.setHeader("Cache-Control", "public, max-age=3600");
+    return;
+  }
+  if (noCacheExtensions.has(extension)) {
+    setNoCacheHeaders(response);
+    return;
+  }
+  response.setHeader("Cache-Control", "no-cache");
 }
 
 async function serveQr(request, response) {
@@ -231,7 +261,7 @@ async function serveStatic(request, response) {
   try {
     const content = await fs.readFile(filePath);
     const mimeType = mimeTypes.get(path.extname(filePath).toLowerCase()) || "application/octet-stream";
-    setNoCacheHeaders(response);
+    setStaticCacheHeaders(response, filePath);
     response.writeHead(200, { "Content-Type": mimeType });
     response.end(content);
   } catch {

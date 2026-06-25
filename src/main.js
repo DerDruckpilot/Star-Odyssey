@@ -11,6 +11,8 @@ import {
 import {
   getOutpostAssetPath,
   getTradeStationAssetPath,
+  outpostAssetPaths,
+  tradeStationAssetPaths,
   outpostVisualDefaults
 } from "./data/outpostVisuals.js";
 import {
@@ -22,6 +24,10 @@ import {
   getPlayerShipAssetPath,
   getPlayerSpaceportAssetPath,
   getTradeShipAssetPath,
+  colonyShipAssetPaths,
+  tradeShipAssetPaths,
+  playerColonyAssetPaths,
+  playerSpaceportAssetPaths,
   playerPieceColors,
   playerPieceVisualDefaults
 } from "./data/playerPieceVisuals.js";
@@ -105,6 +111,7 @@ const planetAssetPaths = {
   food: "./assets/generated/planets/planet-food.png",
   goods: "./assets/generated/planets/planet-trade.png"
 };
+const preloadedAssetUrls = new Set();
 
 const initialLanguage = loadLanguage();
 const initialGame = loadInitialGameState(initialLanguage);
@@ -345,6 +352,41 @@ function getQrCodeUrl(text) {
   const url = new URL("/api/qr", window.location.origin);
   url.searchParams.set("text", text);
   return url.toString();
+}
+
+function preloadGameAssets() {
+  const urls = collectAssetUrls([
+    planetAssetPaths,
+    outpostAssetPaths,
+    tradeStationAssetPaths,
+    colonyShipAssetPaths,
+    tradeShipAssetPaths,
+    playerColonyAssetPaths,
+    playerSpaceportAssetPaths,
+    upgradeMenuAssetPaths
+  ]);
+
+  for (const url of urls) {
+    if (!url || preloadedAssetUrls.has(url)) continue;
+    preloadedAssetUrls.add(url);
+    const image = new Image();
+    image.decoding = "async";
+    image.src = url;
+  }
+}
+
+function collectAssetUrls(values) {
+  const urls = [];
+  for (const value of values) {
+    if (typeof value === "string") {
+      urls.push(value);
+    } else if (Array.isArray(value)) {
+      urls.push(...collectAssetUrls(value));
+    } else if (value && typeof value === "object") {
+      urls.push(...collectAssetUrls(Object.values(value)));
+    }
+  }
+  return urls;
 }
 
 function saveLanguage(language) {
@@ -1176,7 +1218,6 @@ function renderMenu() {
   actions.append(
     createButton(t("newGame"), startNewGameSetup),
     createButton(t("loadGame"), () => openModal("load")),
-    createButton(t("connectControllers"), () => openModal("controllers"), "secondary-button"),
     createButton(t("exitGame"), requestAppExit, "secondary-button")
   );
 
@@ -2304,9 +2345,6 @@ function renderEncounterActions(player) {
       wrapper.append(result);
     }
     if (state.controllerMode) {
-      const waiting = document.createElement("p");
-      waiting.textContent = t("controllerEncounterDecisionHint");
-      wrapper.append(waiting);
       return wrapper;
     }
     if (player?.id === activePlayer?.id) {
@@ -2320,9 +2358,6 @@ function renderEncounterActions(player) {
   }
 
   if (state.controllerMode) {
-    const waiting = document.createElement("p");
-    waiting.textContent = t("controllerEncounterDecisionHint");
-    wrapper.append(waiting);
     return wrapper;
   }
 
@@ -6218,6 +6253,7 @@ function getRemoteControllerState() {
     trade: getRemoteTradeState(),
     encounter: getRemoteEncounterStateForController(),
     board: getRemoteBoardState(),
+    saves: getRemoteSaveList(),
     actions: getRemoteControllerActions()
   };
 }
@@ -6318,16 +6354,22 @@ function getRemoteEncounterStateForController() {
   if (!encounter) return null;
   const card = getEncounterCardById(encounter.cardId);
   const activePlayer = getActivePlayer();
+  const hasAdvancedEncounter = Boolean(encounter.choiceId || encounter.pendingStep || encounter.status === "resolved");
+  const promptText = getLocalizedEncounterText(hasAdvancedEncounter ? encounter.resultText : card?.prompt);
+  const resultText = getLocalizedEncounterText(encounter.resultText);
+  const canChoose = !encounter.pendingStep && encounter.status !== "resolved";
   return {
     active: true,
     playerId: getEncounterActionPlayer()?.id ?? getActivePlayer()?.id ?? null,
+    prompt: promptText || "",
+    resultText: resultText || "",
     pendingType: encounter.pendingStep?.type ?? null,
     status: encounter.status,
-    choices: (card?.choices ?? []).map((choice) => ({
+    choices: canChoose ? (card?.choices ?? []).map((choice) => ({
       id: choice.id,
       label: getLocalizedEncounterText(choice.label) || choice.id,
       available: isEncounterChoiceAvailable(choice, activePlayer)
-    }))
+    })) : []
   };
 }
 
@@ -6335,8 +6377,32 @@ function getRemoteBoardState() {
   if (state.view !== "board" || !state.gameState) return null;
   return {
     mode: getRemoteBoardMode(),
+    actionPlayerId: getRemoteBoardActionPlayerId(),
     svg: serializeBoardSvgForController()
   };
+}
+
+function getRemoteBoardActionPlayerId() {
+  const pendingEncounterStep = state.gameState?.activeEncounter?.pendingStep;
+  if (
+    state.encounterBoardSelectionActive &&
+    ["shipJumpSelection", "boardTargetSelection"].includes(pendingEncounterStep?.type)
+  ) {
+    return getEncounterActionPlayer()?.id ?? null;
+  }
+  if (state.gameState?.board?.pendingShipPlacement) {
+    return state.gameState.board.pendingShipPlacement.ownerPlayerId ?? null;
+  }
+  if (state.gameState?.board?.pendingSpaceportUpgrade) {
+    return state.gameState.board.pendingSpaceportUpgrade.ownerPlayerId ?? null;
+  }
+  if (state.gameState?.phase === "placement") {
+    return getActivePlayer()?.id ?? null;
+  }
+  if (state.gameState?.phase === "flight" && getSelectedShip()) {
+    return getActivePlayer()?.id ?? null;
+  }
+  return null;
 }
 
 function getRemoteBoardMode() {
@@ -6393,7 +6459,9 @@ function getRemoteControllerActions() {
 
   actions.push(
     createRemoteAction("save.quick", t("save"), {}, { adminOnly: true }),
+    createRemoteAction("save.named", t("save"), {}, { adminOnly: true }),
     createRemoteAction("openControllers", t("connectControllers"), {}, { adminOnly: true }),
+    createRemoteAction("admin.backToMenu", t("backToMenu"), {}, { adminOnly: true }),
     createRemoteAction("admin.tvReload", "TV neu laden", {}, { adminOnly: true }),
     createRemoteAction("admin.tvHardReload", "Hard Reload / Cache löschen", {}, { adminOnly: true })
   );
@@ -6453,6 +6521,18 @@ function createRemoteAction(id, label, payload = {}, options = {}) {
   return { id, label, payload, ...options };
 }
 
+function getRemoteSaveList() {
+  return readSaves()
+    .sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)))
+    .map((save) => ({
+      id: save.id,
+      name: save.name || t("unnamedSave"),
+      savedAt: save.savedAt,
+      displayDate: save.displayDate || formatSavedAt(save.savedAt),
+      playerCount: getSavePlayerCount(save)
+    }));
+}
+
 function isPlayerAdmin(playerId) {
   return Boolean(playerId && state.gameState?.players?.[0]?.id === playerId);
 }
@@ -6471,6 +6551,7 @@ function executeRemoteAction(actionId, payload = {}) {
       updateControllerColor(playerId, payload.color);
       break;
     case "player.ready":
+      if (typeof payload.name === "string") updateControllerName(playerId, payload.name);
       setControllerReady(playerId, true);
       break;
     case "player.edit":
@@ -6554,6 +6635,26 @@ function executeRemoteAction(actionId, payload = {}) {
     case "save.quick":
       if (isPlayerAdmin(playerId)) saveCurrentGame(t("defaultSaveName"), { returnToSettings: false });
       break;
+    case "save.named":
+      if (isPlayerAdmin(playerId)) saveCurrentGame(String(payload.name || ""), { returnToSettings: false });
+      break;
+    case "save.load":
+      if (isPlayerAdmin(playerId) && payload.saveId) {
+        const save = readSaves().find((candidate) => candidate.id === payload.saveId);
+        if (save) loadSave(save);
+      }
+      break;
+    case "save.delete":
+      if (isPlayerAdmin(playerId) && payload.saveId) deleteSave(payload.saveId);
+      break;
+    case "admin.backToMenu":
+      if (isPlayerAdmin(playerId)) {
+        writeAutosaveNow();
+        state.modal = null;
+        state.hudPlayerId = null;
+        setView("menu");
+      }
+      break;
     case "admin.tvReload":
       if (isPlayerAdmin(playerId)) requestTvReload();
       break;
@@ -6577,6 +6678,15 @@ function executeRemoteAction(actionId, payload = {}) {
       break;
     case "encounter.choose":
       if (isRemoteActionPlayerActive(playerId) && payload.choiceId) resolveActiveEncounterChoice(payload.choiceId);
+      break;
+    case "encounter.startBoardSelection":
+      if (
+        isRemoteActionPlayerActive(playerId) &&
+        ["shipJumpSelection", "boardTargetSelection"].includes(state.gameState?.activeEncounter?.pendingStep?.type)
+      ) {
+        state.encounterBoardSelectionActive = true;
+        render();
+      }
       break;
     case "board.select":
       if (isRemoteActionPlayerActive(playerId) && payload.type && payload.id) selectBoardElement(payload.type, payload.id);
@@ -6657,6 +6767,7 @@ function render() {
   publishRemoteHostState();
 }
 
+preloadGameAssets();
 connectRemoteHost();
 render();
 

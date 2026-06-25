@@ -39,6 +39,9 @@ let boardScale = 1;
 let boardOffset = { x: 0, y: 0 };
 let boardPointers = new Map();
 let boardPanStart = null;
+const tabScrollPositions = new Map();
+const setupNameDrafts = new Map();
+let saveNameDraft = "";
 
 function loadStoredControllerId() {
   try {
@@ -195,8 +198,12 @@ function createButton(label, onClick, className = "controller-button") {
 }
 
 function render() {
+  captureControllerScrollPosition();
+  const focusedInput = captureFocusedInput();
+
   if (boardFullscreen && gameState?.view !== "controllers") {
     root.replaceChildren(renderBoardFullscreen());
+    restoreFocusedInput(focusedInput);
     return;
   }
 
@@ -212,6 +219,8 @@ function render() {
     content.append(renderSetupPanel());
     shell.append(header, content);
     root.replaceChildren(shell);
+    restoreControllerScrollPosition();
+    restoreFocusedInput(focusedInput);
     return;
   }
 
@@ -221,6 +230,46 @@ function render() {
   content.append(tabs, activeContent);
   shell.append(header, content);
   root.replaceChildren(shell);
+  restoreControllerScrollPosition();
+  restoreFocusedInput(focusedInput);
+}
+
+function captureControllerScrollPosition() {
+  const content = root.querySelector(".controller-content");
+  if (!content || boardFullscreen) return;
+  tabScrollPositions.set(activeTab, content.scrollTop);
+}
+
+function restoreControllerScrollPosition() {
+  const scrollTop = tabScrollPositions.get(activeTab) ?? 0;
+  requestAnimationFrame(() => {
+    const content = root.querySelector(".controller-content");
+    if (content) content.scrollTop = scrollTop;
+  });
+}
+
+function captureFocusedInput() {
+  const activeElement = document.activeElement;
+  if (!(activeElement instanceof HTMLInputElement) && !(activeElement instanceof HTMLTextAreaElement)) return null;
+  const key = activeElement.dataset.controllerInputKey;
+  if (!key) return null;
+  return {
+    key,
+    start: activeElement.selectionStart,
+    end: activeElement.selectionEnd
+  };
+}
+
+function restoreFocusedInput(snapshot) {
+  if (!snapshot) return;
+  requestAnimationFrame(() => {
+    const input = root.querySelector(`[data-controller-input-key="${snapshot.key}"]`);
+    if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLTextAreaElement)) return;
+    input.focus({ preventScroll: true });
+    if (Number.isInteger(snapshot.start) && Number.isInteger(snapshot.end)) {
+      input.setSelectionRange(snapshot.start, snapshot.end);
+    }
+  });
 }
 
 function renderControllerHeader(player) {
@@ -283,10 +332,20 @@ function renderSetupPanel() {
   nameLabel.textContent = "Name";
   const nameInput = document.createElement("input");
   nameInput.type = "text";
-  nameInput.value = slot?.name ?? "";
+  const draftName = setupNameDrafts.has(selectedPlayerId)
+    ? setupNameDrafts.get(selectedPlayerId)
+    : (slot?.name ?? "");
+  nameInput.value = draftName;
   nameInput.disabled = Boolean(slot?.ready);
   nameInput.placeholder = `Spieler ${slot?.slotNumber ?? ""}`;
-  nameInput.addEventListener("input", () => sendNamedAction("player.setName", { name: nameInput.value }));
+  nameInput.dataset.controllerInputKey = `setup-name-${selectedPlayerId || "unknown"}`;
+  nameInput.addEventListener("input", () => {
+    setupNameDrafts.set(selectedPlayerId, nameInput.value);
+  });
+  nameInput.addEventListener("blur", () => commitSetupNameDraft(slot, nameInput.value));
+  nameInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") nameInput.blur();
+  });
   nameLabel.append(nameInput);
 
   const colorGrid = document.createElement("div");
@@ -306,9 +365,10 @@ function renderSetupPanel() {
   status.textContent = getSetupStatus(slot);
 
   const readyButton = createButton(slot?.ready ? "Bearbeiten" : "Bereit", () => {
-    sendNamedAction(slot?.ready ? "player.edit" : "player.ready");
+    if (!slot?.ready) commitSetupNameDraft(slot, nameInput.value);
+    sendNamedAction(slot?.ready ? "player.edit" : "player.ready", { name: nameInput.value });
   });
-  readyButton.disabled = !slot || (!slot.ready && (!slot.name?.trim() || !slot.color));
+  readyButton.disabled = !slot || (!slot.ready && (!nameInput.value.trim() || !slot.color));
 
   section.append(title, nameLabel, colorGrid, status, readyButton);
   return section;
@@ -332,6 +392,10 @@ function renderTabs() {
     const button = createButton(label, () => {
       if (tabId === "board") {
         boardFullscreen = true;
+      } else if (activeTab !== tabId) {
+        captureControllerScrollPosition();
+        activeTab = tabId;
+        tabScrollPositions.set(activeTab, 0);
       } else {
         activeTab = tabId;
       }
@@ -341,6 +405,14 @@ function renderTabs() {
     tabs.append(button);
   }
   return tabs;
+}
+
+function commitSetupNameDraft(slot, name) {
+  if (!slot || slot.ready) return;
+  const nextName = String(name || "").trim();
+  if (nextName !== (slot.name ?? "")) {
+    sendNamedAction("player.setName", { name: nextName });
+  }
 }
 
 function renderActiveTab(player) {
@@ -411,9 +483,94 @@ function renderSettingsTab() {
   section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
   title.textContent = "Einstellungen";
-  const actions = getFilteredActions().filter((action) => action.adminOnly || action.id === "app.exit");
-  section.append(title, renderActionGrid(actions));
+  const adminActions = getFilteredActions().filter((action) => [
+    "openControllers",
+    "admin.backToMenu",
+    "admin.tvReload",
+    "admin.tvHardReload",
+    "app.exit"
+  ].includes(action.id));
+  section.append(title, renderSaveControls(), renderActionGrid(adminActions));
   return section;
+}
+
+function renderSaveControls() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "trade-build-section controller-save-controls";
+
+  const title = document.createElement("strong");
+  title.textContent = "Spiel speichern";
+
+  const label = document.createElement("label");
+  label.className = "controller-field";
+  label.textContent = "Name";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.maxLength = 48;
+  input.autocomplete = "off";
+  input.dataset.controllerInputKey = "save-name";
+  if (!saveNameDraft) saveNameDraft = createDefaultSaveName();
+  input.value = saveNameDraft;
+  input.addEventListener("input", () => {
+    saveNameDraft = input.value;
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      sendNamedAction("save.named", { name: input.value });
+    }
+  });
+  label.append(input);
+
+  const saveButton = createButton("Speichern", () => {
+    saveNameDraft = input.value;
+    sendNamedAction("save.named", { name: saveNameDraft });
+  }, "small-button");
+
+  wrapper.append(title, label, saveButton, renderSaveList());
+  return wrapper;
+}
+
+function renderSaveList() {
+  const list = document.createElement("div");
+  list.className = "controller-save-list";
+  const saves = gameState?.saves ?? [];
+  if (saves.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "controller-empty";
+    empty.textContent = "Keine Spielstände vorhanden.";
+    list.append(empty);
+    return list;
+  }
+
+  for (const save of saves) {
+    const item = document.createElement("article");
+    item.className = "controller-save-item";
+    const details = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = save.name || "Spielstand";
+    const meta = document.createElement("small");
+    meta.textContent = [save.displayDate, save.playerCount ? `${save.playerCount} Spieler` : ""].filter(Boolean).join(" · ");
+    details.append(name, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "save-actions";
+    actions.append(
+      createButton("Laden", () => sendNamedAction("save.load", { saveId: save.id }), "small-button"),
+      createButton("Löschen", () => sendNamedAction("save.delete", { saveId: save.id }), "small-button secondary-small-button")
+    );
+    item.append(details, actions);
+    list.append(item);
+  }
+  return list;
+}
+
+function createDefaultSaveName() {
+  const now = new Date();
+  const date = now.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+  const time = now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  const round = gameState?.phaseLabel ? ` - ${gameState.phaseLabel}` : "";
+  return `Spielstand ${date} ${time}${round}`;
 }
 
 function renderEncounterPanel() {
@@ -422,11 +579,35 @@ function renderEncounterPanel() {
   panel.className = "selection-panel controller-encounter-panel";
   const title = document.createElement("strong");
   title.textContent = "Begegnung";
-  const hint = document.createElement("p");
   const isOwner = gameState.encounter.playerId === selectedPlayerId;
-  hint.textContent = isOwner ? "Du entscheidest diese Begegnung." : "Ein anderer Spieler entscheidet.";
-  panel.append(title, hint);
-  if (isOwner) {
+  panel.append(title);
+
+  const promptText = gameState.encounter.resultText || gameState.encounter.prompt || "";
+  if (promptText) {
+    const prompt = document.createElement("p");
+    prompt.className = "encounter-prompt";
+    prompt.textContent = promptText;
+    panel.append(prompt);
+  }
+
+  const hint = document.createElement("p");
+  hint.textContent = isOwner ? getEncounterStatusLabel() : `${gameState.activePlayerName || "Ein anderer Spieler"} entscheidet.`;
+  panel.append(hint);
+
+  if (isOwner && gameState.encounter.status === "resolved") {
+    const finishAction = findAction("finishEncounter");
+    if (finishAction) panel.append(renderActionGrid([finishAction]));
+  } else if (isOwner && ["shipJumpSelection", "boardTargetSelection"].includes(gameState.encounter.pendingType)) {
+    panel.append(createButton(
+      gameState.encounter.pendingType === "shipJumpSelection" ? "Schiff wählen" : "Ziel wählen",
+      () => {
+        sendNamedAction("encounter.startBoardSelection");
+        boardFullscreen = true;
+        render();
+      },
+      "controller-button"
+    ));
+  } else if (isOwner && (gameState.encounter.choices ?? []).length > 0) {
     panel.append(renderActionGrid((gameState.encounter.choices ?? []).map((choice) => ({
       id: "encounter.choose",
       label: choice.label,
@@ -436,6 +617,12 @@ function renderEncounterPanel() {
     }))));
   }
   return panel;
+}
+
+function getEncounterStatusLabel() {
+  if (gameState?.encounter?.status === "resolved") return "Begegnung abschließen.";
+  if (gameState?.encounter?.pendingType) return "Folge den nächsten Begegnungsschritten.";
+  return "Wähle eine Antwort.";
 }
 
 function renderTurnHint(player) {
@@ -860,7 +1047,7 @@ function renderBoardFullscreen() {
   const title = document.createElement("h2");
   title.textContent = "Spielfeld";
   const mode = document.createElement("p");
-  mode.textContent = gameState?.board?.mode || "Nur ansehen";
+  mode.textContent = getControllerBoardModeLabel();
   const backButton = createButton("Zurück zum Menü", () => {
     boardFullscreen = false;
     render();
@@ -872,6 +1059,7 @@ function renderBoardFullscreen() {
   const content = document.createElement("div");
   content.className = "controller-board-content";
   content.innerHTML = gameState?.board?.svg || "";
+  scrubBoardSelectionForInactivePlayer(content);
   applyBoardTransform(content);
   attachBoardGestures(viewport, content);
   viewport.append(content);
@@ -935,6 +1123,10 @@ function getTurnActions() {
       "closeHud",
       "hudTab",
       "save.quick",
+      "save.named",
+      "encounter.choose",
+      "finishEncounter",
+      "admin.backToMenu",
       "app.exit"
     ].includes(action.id);
   });
@@ -1002,7 +1194,10 @@ function attachBoardGestures(viewport, content) {
   content.querySelectorAll("[data-board-type][data-board-id]").forEach((element) => {
     element.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (!isSelectedPlayerActive()) return;
+      if (!canUseBoardSelection()) {
+        flashBoardFeedback(viewport);
+        return;
+      }
       sendNamedAction("board.select", {
         type: element.dataset.boardType,
         id: element.dataset.boardId
@@ -1040,6 +1235,47 @@ function attachBoardGestures(viewport, content) {
   });
   viewport.addEventListener("pointerup", (event) => boardPointers.delete(event.pointerId));
   viewport.addEventListener("pointercancel", (event) => boardPointers.delete(event.pointerId));
+}
+
+function getControllerBoardModeLabel() {
+  if (!gameState?.board) return "Nur ansehen";
+  if (canUseBoardSelection()) return gameState.board.mode || "Ziel wählen";
+  if (gameState.board.actionPlayerId && gameState.board.actionPlayerId !== selectedPlayerId) {
+    return `${gameState.activePlayerName || "Ein anderer Spieler"} ist am Zug.`;
+  }
+  return "Nur ansehen";
+}
+
+function canUseBoardSelection() {
+  return Boolean(
+    gameState?.board?.actionPlayerId &&
+    gameState.board.actionPlayerId === selectedPlayerId &&
+    isSelectedPlayerActive()
+  );
+}
+
+function scrubBoardSelectionForInactivePlayer(content) {
+  if (canUseBoardSelection()) return;
+  const selectionClasses = [
+    "is-reachable",
+    "is-colony-target",
+    "is-dock-target",
+    "is-foundable",
+    "is-placement-target",
+    "is-ship-build-target",
+    "is-trade-station-target",
+    "is-spaceport-build-target",
+    "is-encounter-jump-target"
+  ];
+  content.querySelectorAll(selectionClasses.map((className) => `.${className}`).join(",")).forEach((element) => {
+    element.classList.remove(...selectionClasses);
+  });
+}
+
+function flashBoardFeedback(viewport) {
+  viewport.classList.remove("controller-board-viewport--invalid");
+  void viewport.offsetWidth;
+  viewport.classList.add("controller-board-viewport--invalid");
 }
 
 function getPointerDistance() {
