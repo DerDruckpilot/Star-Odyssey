@@ -181,40 +181,69 @@ function createButton(label, onClick, className = "controller-button") {
 
 function render() {
   const shell = document.createElement("section");
-  shell.className = "controller-panel";
+  shell.className = "player-hud-panel controller-panel";
 
-  const header = document.createElement("header");
-  header.className = "controller-header";
-  const title = document.createElement("h1");
-  title.textContent = "Star Odyssey";
-  const status = document.createElement("p");
-  status.className = `controller-status controller-status--${connectionStatus}`;
-  status.textContent = getStatusLabel();
-  header.append(title, status);
-
-  const meta = document.createElement("div");
-  meta.className = "controller-meta";
-  meta.append(createMetaItem("Session", sessionId || "fehlt"));
-  meta.append(createMetaItem("Phase", gameState?.phaseLabel || "Warte auf Spiel"));
-  meta.append(createMetaItem("Aktiv", gameState?.activePlayerName || "-"));
+  const currentPlayer = getSelectedPlayer();
+  const header = renderControllerHeader(currentPlayer);
+  const content = document.createElement("div");
+  content.className = "player-hud-content controller-content";
 
   if (gameState?.view === "controllers" && gameState.controllerLobby) {
-    shell.append(header, meta, renderSetupPanel(), renderReconnectFooter());
+    content.append(renderSetupPanel(), renderReconnectFooter());
+    shell.append(header, content);
     root.replaceChildren(shell);
     return;
   }
 
-  const currentPlayer = getSelectedPlayer();
   const tabs = renderTabs();
-  const content = renderActiveTab(currentPlayer);
+  const activeContent = renderActiveTab(currentPlayer);
 
-  shell.append(header, meta, tabs, content, renderReconnectFooter());
+  content.append(tabs, activeContent, renderReconnectFooter());
+  shell.append(header, content);
   root.replaceChildren(shell);
+}
+
+function renderControllerHeader(player) {
+  const header = document.createElement("header");
+  header.className = "player-hud-header controller-header";
+
+  const titleGroup = document.createElement("div");
+  titleGroup.className = "player-hud-title controller-title";
+  const title = document.createElement("h2");
+  const slot = getOwnLobbySlot();
+  title.textContent = player?.name || (slot ? `Spieler ${slot.slotNumber}` : "Star Odyssey");
+  const status = document.createElement("p");
+  status.className = `controller-status controller-status--${connectionStatus}`;
+  status.textContent = getStatusLabel();
+  titleGroup.append(title, status);
+  if (player) titleGroup.append(renderControllerResources(player));
+
+  const meta = document.createElement("div");
+  meta.className = "controller-header-meta";
+  meta.append(createMetaItem("Phase", gameState?.phaseLabel || "Warte auf Spiel"));
+  meta.append(createMetaItem("Aktiv", gameState?.activePlayerName || "-"));
+  meta.append(createMetaItem("Session", sessionId || "fehlt"));
+
+  header.append(titleGroup, meta);
+  return header;
+}
+
+function renderControllerResources(player) {
+  const list = document.createElement("dl");
+  list.className = "player-hud-resources controller-resource-list";
+  for (const [resource, amount] of Object.entries(player.resources ?? {})) {
+    const term = document.createElement("dt");
+    term.textContent = resourceLabels[resource] ?? resource;
+    const value = document.createElement("dd");
+    value.textContent = String(amount);
+    list.append(term, value);
+  }
+  return list;
 }
 
 function renderSetupPanel() {
   const section = document.createElement("section");
-  section.className = "controller-section controller-setup";
+  section.className = "player-hud-tab-content controller-section controller-setup";
   const slot = getOwnLobbySlot();
   const title = document.createElement("h2");
   title.textContent = slot ? `Verbunden als Spieler ${slot.slotNumber}` : "Spieler-Setup";
@@ -257,7 +286,7 @@ function renderSetupPanel() {
 
 function renderTabs() {
   const tabs = document.createElement("nav");
-  tabs.className = "controller-tabs";
+  tabs.className = "player-hud-tabs controller-tabs";
   const definitions = [
     ["turn", "Zug"],
     ["trade", "Handeln"],
@@ -273,7 +302,8 @@ function renderTabs() {
     const button = createButton(label, () => {
       activeTab = tabId;
       render();
-    }, `controller-tab-button${activeTab === tabId ? " is-active" : ""}`);
+    }, "hud-tab-button controller-tab-button");
+    button.setAttribute("aria-pressed", String(activeTab === tabId));
     tabs.append(button);
   }
   return tabs;
@@ -292,7 +322,7 @@ function renderActiveTab(player) {
 
 function renderTurnTab(player) {
   const section = document.createElement("section");
-  section.className = "controller-section";
+  section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
   title.textContent = "Zug";
   section.append(title, renderPlayerSummary(player), renderEncounterPanel(), renderActionGrid(getFilteredActions()));
@@ -301,7 +331,7 @@ function renderTurnTab(player) {
 
 function renderActionTab(titleText, prefixes) {
   const section = document.createElement("section");
-  section.className = "controller-section";
+  section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
   title.textContent = titleText;
   const actions = getFilteredActions().filter((action) => prefixes.some((prefix) => action.id.startsWith(prefix)));
@@ -311,7 +341,7 @@ function renderActionTab(titleText, prefixes) {
 
 function renderInfoTab(titleText, text) {
   const section = document.createElement("section");
-  section.className = "controller-section";
+  section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
   title.textContent = titleText;
   const body = document.createElement("p");
@@ -323,7 +353,7 @@ function renderInfoTab(titleText, text) {
 
 function renderOverviewTab(player) {
   const section = document.createElement("section");
-  section.className = "controller-section";
+  section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
   title.textContent = "Übersicht";
   section.append(title, renderPlayerSummary(player));
@@ -332,7 +362,7 @@ function renderOverviewTab(player) {
 
 function renderSettingsTab() {
   const section = document.createElement("section");
-  section.className = "controller-section";
+  section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
   title.textContent = "Einstellungen";
   const actions = getFilteredActions().filter((action) => action.adminOnly || action.id === "app.exit");
@@ -343,7 +373,7 @@ function renderSettingsTab() {
 function renderEncounterPanel() {
   if (!gameState?.encounter?.active) return document.createDocumentFragment();
   const panel = document.createElement("div");
-  panel.className = "controller-encounter-panel";
+  panel.className = "selection-panel controller-encounter-panel";
   const title = document.createElement("strong");
   title.textContent = "Begegnung";
   const hint = document.createElement("p");
@@ -364,7 +394,7 @@ function renderEncounterPanel() {
 
 function renderBoardTab() {
   const section = document.createElement("section");
-  section.className = "controller-section controller-board-section";
+  section.className = "player-hud-tab-content controller-section controller-board-section";
   const header = document.createElement("div");
   header.className = "controller-board-header";
   const title = document.createElement("h2");
@@ -391,7 +421,7 @@ function renderBoardTab() {
 
 function renderPlayerSummary(player) {
   const summary = document.createElement("div");
-  summary.className = "controller-summary";
+  summary.className = "turn-summary controller-summary";
   if (!player) {
     summary.textContent = "Warte auf Spielstand.";
     return summary;
@@ -408,7 +438,7 @@ function renderPlayerSummary(player) {
 
 function renderActionGrid(actions) {
   const actionGrid = document.createElement("div");
-  actionGrid.className = "controller-action-grid";
+  actionGrid.className = "phase-actions controller-action-grid";
   if (actions.length === 0) {
     const empty = document.createElement("p");
     empty.className = "controller-empty";
@@ -426,7 +456,7 @@ function renderActionGrid(actions) {
 
 function renderReconnectFooter() {
   const footer = document.createElement("footer");
-  footer.className = "controller-footer";
+  footer.className = "selection-panel controller-footer";
   footer.append(createButton("Neu verbinden", connect, "controller-button controller-button--secondary"));
   return footer;
 }

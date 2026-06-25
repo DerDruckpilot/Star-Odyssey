@@ -1,79 +1,51 @@
 :root {
-  color-scheme: dark;
-  font-family: Arial, Helvetica, sans-serif;
-  background: #05070d;
-  color: #f8fafc;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
 }
 
-* {
-  box-sizing: border-box;
-}
-
 body {
-  min-height: 100dvh;
-  margin: 0;
-  background:
-    radial-gradient(circle at 18% 10%, rgba(14, 165, 233, 0.28), transparent 18rem),
-    radial-gradient(circle at 90% 18%, rgba(168, 85, 247, 0.22), transparent 18rem),
-    #05070d;
-}
-
-button {
-  font: inherit;
+  place-items: stretch;
 }
 
 .controller-shell {
+  position: relative;
+  z-index: 1;
+  width: 100vw;
+  height: var(--app-viewport-height);
   min-height: 100dvh;
   padding:
-    max(1rem, var(--safe-top))
-    max(1rem, var(--safe-right))
-    max(1rem, var(--safe-bottom))
-    max(1rem, var(--safe-left));
+    var(--safe-top)
+    var(--safe-right)
+    var(--safe-bottom)
+    var(--safe-left);
 }
 
-.controller-panel {
-  width: min(100%, 46rem);
-  min-height: calc(100dvh - max(1rem, var(--safe-top)) - max(1rem, var(--safe-bottom)));
-  margin: 0 auto;
-  display: grid;
-  align-content: start;
-  gap: 1rem;
+.controller-panel.player-hud-panel {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(8, 13, 26, 0.98)),
+    rgba(15, 23, 42, 0.96);
 }
 
-.controller-header,
-.controller-meta,
-.controller-section,
-.controller-footer {
-  border: 1px solid rgba(148, 163, 184, 0.38);
-  background: rgba(15, 23, 42, 0.86);
-  box-shadow: 0 1rem 2rem rgba(2, 6, 23, 0.3);
+.controller-header.player-hud-header {
+  padding: clamp(0.65rem, 2.5vw, 1rem);
+  gap: clamp(0.45rem, 2vw, 0.85rem);
+  background: rgba(2, 6, 23, 0.34);
 }
 
-.controller-header {
-  padding: 1.1rem;
-}
-
-.controller-header h1,
-.controller-section h2,
-.controller-header p,
-.controller-meta p,
-.controller-empty {
-  margin: 0;
-}
-
-.controller-header h1 {
-  font-size: clamp(2rem, 10vw, 3.2rem);
-  line-height: 1;
+.controller-title h2 {
+  font-size: clamp(1.35rem, 5vw, 2.35rem);
 }
 
 .controller-status {
-  margin-top: 0.7rem;
+  margin: 0;
   color: #facc15;
-  font-weight: 700;
+  font-size: clamp(0.78rem, 2.8vw, 0.98rem);
+  font-weight: 800;
 }
 
 .controller-status--connected {
@@ -86,89 +58,105 @@ button {
   color: #fca5a5;
 }
 
-.controller-meta {
+.controller-header-meta {
   display: grid;
-  gap: 0.35rem;
-  padding: 0.9rem 1rem;
-  color: #cbd5e1;
-}
-
-.controller-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.45rem;
-}
-
-.controller-tab-button {
-  min-height: 3.2rem;
-  border: 1px solid rgba(148, 163, 184, 0.42);
+  gap: 0.25rem;
+  min-width: min(42vw, 18rem);
+  border: 1px solid rgba(148, 163, 184, 0.24);
   padding: 0.55rem 0.65rem;
-  color: #dbeafe;
-  background: rgba(15, 23, 42, 0.82);
-  font-weight: 800;
+  background: rgba(15, 23, 42, 0.62);
+  color: #cbd5e1;
+  font-size: clamp(0.72rem, 2.35vw, 0.88rem);
 }
 
-.controller-tab-button.is-active {
-  border-color: rgba(250, 204, 21, 0.9);
-  color: #fef9c3;
-  background: rgba(30, 41, 59, 0.95);
+.controller-header-meta p,
+.controller-summary p,
+.controller-empty,
+.controller-encounter-panel p {
+  margin: 0;
 }
 
-.controller-section {
-  display: grid;
-  gap: 0.8rem;
-  padding: 1rem;
+.controller-resource-list {
+  font-size: clamp(0.74rem, 2.6vw, 0.92rem);
+}
+
+.controller-content.player-hud-content {
+  gap: clamp(0.45rem, 1.8vw, 0.75rem);
+  padding: clamp(0.6rem, 2.3vw, 0.9rem);
+}
+
+.controller-tabs.player-hud-tabs {
+  grid-template-columns: repeat(auto-fit, minmax(min(8rem, 42vw), 1fr));
+  gap: 0.28rem;
+}
+
+.controller-tab-button.hud-tab-button {
+  min-height: clamp(2.65rem, 8vw, 3.4rem);
+  font-size: clamp(0.86rem, 3.4vw, 1.08rem);
+}
+
+.controller-section.player-hud-tab-content {
+  gap: clamp(0.55rem, 2vw, 0.9rem);
 }
 
 .controller-section h2 {
-  font-size: 1.15rem;
+  margin: 0;
   color: #e0f2fe;
+  font-size: clamp(1.05rem, 4vw, 1.45rem);
 }
 
-.controller-player-grid,
+.controller-summary.turn-summary,
+.controller-action-grid.phase-actions,
+.controller-footer.selection-panel,
+.controller-encounter-panel.selection-panel {
+  flex: initial;
+  max-height: none;
+  overflow: visible;
+}
+
+.controller-summary {
+  color: #dbeafe;
+}
+
 .controller-action-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.controller-action-grid {
   grid-template-columns: 1fr;
+  gap: clamp(0.45rem, 1.8vw, 0.7rem);
 }
 
 .controller-button,
-.controller-player-button {
-  min-height: 4.25rem;
+.controller-player-button,
+.controller-board-back-button {
+  min-height: clamp(3.1rem, 11vw, 4.15rem);
   border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 0.55rem 0.7rem;
   color: #f8fafc;
-  background: rgba(30, 41, 59, 0.9);
-  font-weight: 800;
-  font-size: clamp(1.05rem, 5vw, 1.35rem);
+  background: rgba(2, 6, 23, 0.72);
+  font: inherit;
+  font-size: clamp(0.98rem, 4.1vw, 1.28rem);
+  font-weight: 900;
   cursor: pointer;
 }
 
 .controller-button:disabled,
 .controller-player-button:disabled,
-.controller-tab-button:disabled {
+.controller-tab-button:disabled,
+.controller-board-back-button:disabled {
   border-color: rgba(100, 116, 139, 0.32);
-  color: rgba(203, 213, 225, 0.45);
-  background: rgba(15, 23, 42, 0.5);
+  color: rgba(203, 213, 225, 0.42);
+  background: rgba(15, 23, 42, 0.44);
   cursor: not-allowed;
 }
 
-.controller-player-button.is-active {
-  border-color: #facc15;
-  background: rgba(250, 204, 21, 0.16);
-}
-
 .controller-button:active,
-.controller-player-button:active {
-  transform: scale(0.98);
+.controller-player-button:active,
+.controller-board-back-button:active {
+  transform: scale(0.985);
 }
 
 .controller-button--secondary {
   width: 100%;
-  min-height: 3.5rem;
+  min-height: 3rem;
   background: rgba(15, 23, 42, 0.78);
 }
 
@@ -178,28 +166,28 @@ button {
 
 .controller-field {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.42rem;
   color: #cbd5e1;
-  font-weight: 800;
+  font-weight: 900;
 }
 
 .controller-field input {
-  min-height: 3.4rem;
-  border: 1px solid rgba(148, 163, 184, 0.48);
+  min-height: 3.35rem;
+  border: 1px solid rgba(148, 163, 184, 0.42);
   padding: 0.7rem 0.8rem;
   color: #f8fafc;
-  background: rgba(2, 6, 23, 0.78);
+  background: rgba(2, 6, 23, 0.75);
   font: inherit;
 }
 
 .controller-color-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.6rem;
+  gap: 0.5rem;
 }
 
 .controller-color-button {
-  min-height: 3.6rem;
+  min-height: 3.25rem;
 }
 
 .controller-color-button--red {
@@ -211,77 +199,60 @@ button {
 }
 
 .controller-color-button--yellow {
-  border-color: rgba(250, 204, 21, 0.75);
+  border-color: rgba(250, 204, 21, 0.78);
 }
 
 .controller-color-button--green {
-  border-color: rgba(34, 197, 94, 0.7);
+  border-color: rgba(34, 197, 94, 0.72);
 }
 
 .controller-color-button.is-active {
-  box-shadow: inset 0 0 0 2px rgba(248, 250, 252, 0.72);
-  background: rgba(250, 204, 21, 0.18);
-}
-
-.controller-summary {
-  display: grid;
-  gap: 0.35rem;
-  border: 1px solid rgba(148, 163, 184, 0.26);
-  padding: 0.75rem;
-  background: rgba(2, 6, 23, 0.35);
-  color: #cbd5e1;
-}
-
-.controller-summary p {
-  margin: 0;
+  border-color: rgba(250, 204, 21, 0.95);
+  color: #fef9c3;
+  background: rgba(30, 41, 59, 0.94);
+  box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.45);
 }
 
 .controller-encounter-panel {
-  display: grid;
-  gap: 0.7rem;
-  border: 1px solid rgba(250, 204, 21, 0.45);
-  padding: 0.85rem;
-  background: rgba(120, 53, 15, 0.26);
+  border-color: rgba(250, 204, 21, 0.52);
+  background: rgba(120, 53, 15, 0.2);
 }
 
 .controller-encounter-panel p {
-  margin: 0;
   color: #fde68a;
 }
 
 .controller-board-section {
-  min-height: min(72dvh, 38rem);
+  min-height: min(72dvh, 44rem);
 }
 
 .controller-board-header {
   display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
   align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
 .controller-board-header p {
   margin: 0;
   color: #bae6fd;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .controller-board-back-button {
-  min-height: 2.8rem;
   width: auto;
-  padding: 0.55rem 0.85rem;
-  font-size: 0.95rem;
-  background: rgba(15, 23, 42, 0.8);
+  min-height: 2.8rem;
+  font-size: clamp(0.8rem, 3vw, 0.98rem);
 }
 
 .controller-board-viewport {
   position: relative;
-  min-height: min(66dvh, 34rem);
+  min-height: min(64dvh, 38rem);
   overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.35);
   background:
-    radial-gradient(circle at 20% 20%, rgba(14, 165, 233, 0.2), transparent 18rem),
+    radial-gradient(circle at 20% 20%, rgba(14, 165, 233, 0.18), transparent 18rem),
     rgba(2, 6, 23, 0.72);
   touch-action: none;
 }
@@ -300,31 +271,43 @@ button {
 }
 
 .controller-footer {
-  padding: 1rem;
+  padding: 0.55rem 0.65rem;
 }
 
 @media (orientation: landscape) and (max-height: 520px) {
-  .controller-shell {
-    padding: 0.65rem;
+  .controller-header.player-hud-header {
+    grid-template-columns: minmax(0, 1fr) minmax(12rem, 0.72fr);
+    padding: 0.5rem 0.65rem;
   }
 
-  .controller-panel {
-    grid-template-columns: 0.8fr 1.2fr;
-    align-items: start;
+  .controller-content.player-hud-content {
+    padding: 0.55rem 0.65rem;
   }
 
-  .controller-header,
-  .controller-meta,
-  .controller-footer {
-    grid-column: 1;
+  .controller-tabs.player-hud-tabs {
+    grid-template-columns: repeat(auto-fit, minmax(6.7rem, 1fr));
   }
 
-  .controller-tabs,
-  .controller-section {
-    grid-column: 2;
+  .controller-tab-button.hud-tab-button {
+    min-height: 2.35rem;
   }
 
-  .controller-tabs {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .controller-button,
+  .controller-player-button {
+    min-height: 2.85rem;
+  }
+
+  .controller-board-viewport {
+    min-height: 58dvh;
+  }
+}
+
+@media (max-width: 520px) {
+  .controller-header.player-hud-header {
+    grid-template-columns: 1fr;
+  }
+
+  .controller-header-meta {
+    min-width: 0;
   }
 }
