@@ -3,6 +3,7 @@ package de.derdruckpilot.starodyssey.tv;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -25,6 +26,7 @@ import android.widget.LinearLayout;
 public class MainActivity extends Activity {
     private static final String PREFS_NAME = "star_odyssey_tv";
     private static final String PREF_URL = "url";
+    private static final String EXTRA_URL = "star_odyssey_url";
     private static final String GITHUB_PAGES_URL = "https://derdruckpilot.github.io/Star-Odyssey/";
     private static final String LAN_PLACEHOLDER_URL = "http://192.168.178.20:5173/";
 
@@ -39,6 +41,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         currentUrl = preferences.getString(PREF_URL, GITHUB_PAGES_URL);
+        applyUrlFromIntent(getIntent());
 
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -55,13 +58,6 @@ public class MainActivity extends Activity {
         ));
 
         controls = createControls();
-        FrameLayout.LayoutParams controlsParams = new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.TOP | Gravity.RIGHT
-        );
-        controlsParams.setMargins(dp(12), dp(12), dp(12), dp(12));
-        root.addView(controls, controlsParams);
         controls.setVisibility(View.GONE);
 
         toggleButton = createButton("TV");
@@ -71,9 +67,6 @@ public class MainActivity extends Activity {
                 toggleControls();
             }
         });
-        FrameLayout.LayoutParams toggleParams = new FrameLayout.LayoutParams(dp(54), dp(44), Gravity.TOP | Gravity.RIGHT);
-        toggleParams.setMargins(dp(12), dp(12), dp(12), dp(12));
-        root.addView(toggleButton, toggleParams);
 
         setContentView(root);
         loadCurrentUrl(false);
@@ -114,6 +107,28 @@ public class MainActivity extends Activity {
                 @Override
                 public void run() {
                     finish();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void reload() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    loadCurrentUrl(false);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void hardReload() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    webView.clearCache(true);
+                    webView.clearHistory();
+                    loadCurrentUrl(true);
                 }
             });
         }
@@ -219,6 +234,14 @@ public class MainActivity extends Activity {
         loadCurrentUrl(true);
     }
 
+    private void applyUrlFromIntent(Intent intent) {
+        if (intent == null) return;
+        String url = intent.getStringExtra(EXTRA_URL);
+        if (url == null || url.trim().isEmpty()) return;
+        currentUrl = normalizeUrl(url.trim());
+        preferences.edit().putString(PREF_URL, currentUrl).apply();
+    }
+
     private String normalizeUrl(String url) {
         if (url.endsWith("/")) return url;
         return url + "/";
@@ -299,7 +322,7 @@ public class MainActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getAction() == KeyEvent.ACTION_UP && event.getKeyCode() == KeyEvent.KEYCODE_MENU) {
-            toggleControls();
+            showUrlDialog();
             return true;
         }
         return super.dispatchKeyEvent(event);
@@ -307,7 +330,7 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (controls.getVisibility() == View.VISIBLE) {
+        if (controls != null && controls.getVisibility() == View.VISIBLE) {
             hideControls();
         } else if (webView.canGoBack()) {
             webView.goBack();
@@ -320,5 +343,13 @@ public class MainActivity extends Activity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) hideSystemUi();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        applyUrlFromIntent(intent);
+        loadCurrentUrl(true);
     }
 }

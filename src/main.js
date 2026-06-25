@@ -6393,7 +6393,9 @@ function getRemoteControllerActions() {
 
   actions.push(
     createRemoteAction("save.quick", t("save"), {}, { adminOnly: true }),
-    createRemoteAction("openControllers", t("connectControllers"), {}, { adminOnly: true })
+    createRemoteAction("openControllers", t("connectControllers"), {}, { adminOnly: true }),
+    createRemoteAction("admin.tvReload", "TV neu laden", {}, { adminOnly: true }),
+    createRemoteAction("admin.tvHardReload", "Hard Reload / Cache löschen", {}, { adminOnly: true })
   );
 
   if (state.gameState.activeEncounter) {
@@ -6552,6 +6554,12 @@ function executeRemoteAction(actionId, payload = {}) {
     case "save.quick":
       if (isPlayerAdmin(playerId)) saveCurrentGame(t("defaultSaveName"), { returnToSettings: false });
       break;
+    case "admin.tvReload":
+      if (isPlayerAdmin(playerId)) requestTvReload();
+      break;
+    case "admin.tvHardReload":
+      if (isPlayerAdmin(playerId)) requestTvHardReload();
+      break;
     case "finishEncounter":
       if (isRemoteActionPlayerActive(playerId)) finishActiveEncounter();
       break;
@@ -6606,6 +6614,24 @@ function requestAppExit() {
   }
   state.notice = t("fireTvExitUnavailable");
   render();
+}
+
+function requestTvReload() {
+  if (window.FireTvBridge?.reload) {
+    window.FireTvBridge.reload();
+    return;
+  }
+  window.location.reload();
+}
+
+function requestTvHardReload() {
+  if (window.FireTvBridge?.hardReload) {
+    window.FireTvBridge.hardReload();
+    return;
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set("tvReload", String(Date.now()));
+  window.location.replace(url.toString());
 }
 
 function render() {

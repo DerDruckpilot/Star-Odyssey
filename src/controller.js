@@ -929,6 +929,8 @@ function getTurnActions() {
     if (action.adminOnly) return false;
     return ![
       "openControllers",
+      "admin.tvReload",
+      "admin.tvHardReload",
       "openPlayerHud",
       "closeHud",
       "hudTab",
