@@ -230,8 +230,7 @@ function renderControllerHeader(player) {
   const titleGroup = document.createElement("div");
   titleGroup.className = "player-hud-title controller-title";
   const title = document.createElement("h2");
-  const slot = getOwnLobbySlot();
-  title.textContent = player?.name || (slot ? `Spieler ${slot.slotNumber}` : "Controller");
+  title.textContent = player?.name || getFallbackPlayerName();
 
   const status = document.createElement("div");
   status.className = `controller-status-line controller-status-line--${connectionStatus}`;
@@ -243,8 +242,7 @@ function renderControllerHeader(player) {
   statusLabel.textContent = getStatusLabel();
   status.append(statusDot, statusLabel, createButton("Neu verbinden", connect, "small-button controller-reconnect-inline"));
 
-  titleGroup.append(title, status);
-  if (player) titleGroup.append(renderControllerResources(player));
+  titleGroup.append(title, status, renderControllerResources(player));
 
   const actions = document.createElement("div");
   actions.className = "controller-header-actions";
@@ -262,11 +260,12 @@ function renderControllerHeader(player) {
 function renderControllerResources(player) {
   const list = document.createElement("dl");
   list.className = "player-hud-resources controller-resource-list";
-  for (const [resource, amount] of Object.entries(player.resources ?? {})) {
+  const resources = player?.resources ?? {};
+  for (const resource of resourceTypes) {
     const term = document.createElement("dt");
     term.textContent = resourceLabels[resource] ?? resource;
     const value = document.createElement("dd");
-    value.textContent = String(amount);
+    value.textContent = String(resources[resource] ?? 0);
     list.append(term, value);
   }
   return list;
@@ -611,6 +610,26 @@ function renderResourceOverview(player) {
   return wrapper;
 }
 
+function renderResourceSelect(labelText, selectedResource, onChange) {
+  const label = document.createElement("label");
+  label.className = "resource-select";
+  const caption = document.createElement("span");
+  caption.textContent = labelText;
+
+  const select = document.createElement("select");
+  for (const resource of resourceTypes) {
+    const option = document.createElement("option");
+    option.value = resource;
+    option.textContent = getResourceLabel(resource);
+    option.selected = resource === selectedResource;
+    select.append(option);
+  }
+  select.addEventListener("change", () => onChange(select.value));
+
+  label.append(caption, select);
+  return label;
+}
+
 function renderBankTradeControls(player) {
   const wrapper = document.createElement("div");
   wrapper.className = "trade-build-section";
@@ -947,6 +966,14 @@ function getPlayerById(playerId) {
 
 function getOwnLobbySlot() {
   return (gameState?.controllerLobby?.slots ?? []).find((slot) => slot.playerId === selectedPlayerId) ?? null;
+}
+
+function getFallbackPlayerName() {
+  const slot = getOwnLobbySlot();
+  if (slot) return `Spieler ${slot.slotNumber}`;
+  const match = /^player-(\d+)$/.exec(selectedPlayerId || "");
+  if (match) return `Spieler ${match[1]}`;
+  return "Warte auf Spielstand";
 }
 
 function getSetupStatus(slot) {
