@@ -53,8 +53,22 @@ function notifyHost(session) {
   if (!session.host) return;
   sendJson(session.host.socket, {
     type: "controllerCount",
-    controllerCount: session.controllers.size
+    controllerCount: session.controllers.size,
+    controllerSlots: getControllerSlots(session)
   });
+}
+
+function getControllerSlots(session) {
+  return [...session.controllers.values()].map((controller) => ({
+    controllerId: controller.controllerId,
+    playerId: controller.playerId,
+    connected: true
+  }));
+}
+
+function findControllerByPlayerId(session, playerId) {
+  return [...session.controllers.entries()]
+    .find(([, controller]) => controller.playerId === playerId) ?? null;
 }
 
 function cleanupSocket(socket) {
@@ -66,7 +80,10 @@ function cleanupSocket(socket) {
   }
 
   if (socket.starOdysseyRole === "controller") {
-    session.controllers.delete(socket.starOdysseyClientId);
+    const controller = session.controllers.get(socket.starOdysseyClientId);
+    if (controller?.socket === socket) {
+      session.controllers.delete(socket.starOdysseyClientId);
+    }
     notifyHost(session);
   }
 
@@ -101,22 +118,38 @@ function handleSocketMessage(socket, rawMessage) {
         type: "helloAck",
         role: "host",
         sessionId: socket.starOdysseySessionId,
-        controllerCount: session.controllers.size
+        controllerCount: session.controllers.size,
+        controllerSlots: getControllerSlots(session)
       });
       return;
     }
 
     const controllerId = message.controllerId || `controller-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const playerId = typeof message.playerId === "string" ? message.playerId : null;
+    if (!playerId) {
+      sendJson(socket, { type: "error", message: "Missing player slot." });
+      return;
+    }
+
+    const existingSlot = findControllerByPlayerId(session, playerId);
+    if (existingSlot && existingSlot[0] !== controllerId) {
+      sendJson(existingSlot[1].socket, { type: "replaced", message: "Slot reconnected." });
+      existingSlot[1].socket.close();
+      session.controllers.delete(existingSlot[0]);
+    }
+
     socket.starOdysseyClientId = controllerId;
     session.controllers.set(controllerId, {
+      controllerId,
       socket,
-      playerId: message.playerId || null
+      playerId
     });
     sendJson(socket, {
       type: "helloAck",
       role: "controller",
       sessionId: socket.starOdysseySessionId,
-      controllerId
+      controllerId,
+      playerId
     });
     if (session.lastState) {
       sendJson(socket, { type: "state", state: session.lastState });
@@ -145,8 +178,12 @@ function handleSocketMessage(socket, rawMessage) {
     sendJson(session.host.socket, {
       type: "controllerAction",
       actionId: message.actionId,
-      payload: message.payload || {},
-      controllerId: socket.starOdysseyClientId
+      payload: {
+        ...(message.payload || {}),
+        playerId: session.controllers.get(socket.starOdysseyClientId)?.playerId ?? null
+      },
+      controllerId: socket.starOdysseyClientId,
+      playerId: session.controllers.get(socket.starOdysseyClientId)?.playerId ?? null
     });
   }
 }

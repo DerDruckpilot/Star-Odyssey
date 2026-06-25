@@ -81,6 +81,7 @@ button {
 }
 
 .controller-status--lost,
+.controller-status--replaced,
 .controller-status--missing-session {
   color: #fca5a5;
 }
@@ -90,6 +91,27 @@ button {
   gap: 0.35rem;
   padding: 0.9rem 1rem;
   color: #cbd5e1;
+}
+
+.controller-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.controller-tab-button {
+  min-height: 3.2rem;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  padding: 0.55rem 0.65rem;
+  color: #dbeafe;
+  background: rgba(15, 23, 42, 0.82);
+  font-weight: 800;
+}
+
+.controller-tab-button.is-active {
+  border-color: rgba(250, 204, 21, 0.9);
+  color: #fef9c3;
+  background: rgba(30, 41, 59, 0.95);
 }
 
 .controller-section {
@@ -125,6 +147,15 @@ button {
   cursor: pointer;
 }
 
+.controller-button:disabled,
+.controller-player-button:disabled,
+.controller-tab-button:disabled {
+  border-color: rgba(100, 116, 139, 0.32);
+  color: rgba(203, 213, 225, 0.45);
+  background: rgba(15, 23, 42, 0.5);
+  cursor: not-allowed;
+}
+
 .controller-player-button.is-active {
   border-color: #facc15;
   background: rgba(250, 204, 21, 0.16);
@@ -143,6 +174,129 @@ button {
 
 .controller-empty {
   color: #94a3b8;
+}
+
+.controller-field {
+  display: grid;
+  gap: 0.45rem;
+  color: #cbd5e1;
+  font-weight: 800;
+}
+
+.controller-field input {
+  min-height: 3.4rem;
+  border: 1px solid rgba(148, 163, 184, 0.48);
+  padding: 0.7rem 0.8rem;
+  color: #f8fafc;
+  background: rgba(2, 6, 23, 0.78);
+  font: inherit;
+}
+
+.controller-color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.controller-color-button {
+  min-height: 3.6rem;
+}
+
+.controller-color-button--red {
+  border-color: rgba(248, 113, 113, 0.7);
+}
+
+.controller-color-button--blue {
+  border-color: rgba(56, 189, 248, 0.7);
+}
+
+.controller-color-button--yellow {
+  border-color: rgba(250, 204, 21, 0.75);
+}
+
+.controller-color-button--green {
+  border-color: rgba(34, 197, 94, 0.7);
+}
+
+.controller-color-button.is-active {
+  box-shadow: inset 0 0 0 2px rgba(248, 250, 252, 0.72);
+  background: rgba(250, 204, 21, 0.18);
+}
+
+.controller-summary {
+  display: grid;
+  gap: 0.35rem;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  padding: 0.75rem;
+  background: rgba(2, 6, 23, 0.35);
+  color: #cbd5e1;
+}
+
+.controller-summary p {
+  margin: 0;
+}
+
+.controller-encounter-panel {
+  display: grid;
+  gap: 0.7rem;
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  padding: 0.85rem;
+  background: rgba(120, 53, 15, 0.26);
+}
+
+.controller-encounter-panel p {
+  margin: 0;
+  color: #fde68a;
+}
+
+.controller-board-section {
+  min-height: min(72dvh, 38rem);
+}
+
+.controller-board-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.controller-board-header p {
+  margin: 0;
+  color: #bae6fd;
+  font-weight: 700;
+}
+
+.controller-board-back-button {
+  min-height: 2.8rem;
+  width: auto;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.95rem;
+  background: rgba(15, 23, 42, 0.8);
+}
+
+.controller-board-viewport {
+  position: relative;
+  min-height: min(66dvh, 34rem);
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(14, 165, 233, 0.2), transparent 18rem),
+    rgba(2, 6, 23, 0.72);
+  touch-action: none;
+}
+
+.controller-board-content {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: max-content;
+  transform-origin: 0 0;
+}
+
+.controller-board-content svg {
+  display: block;
+  max-width: none;
 }
 
 .controller-footer {
@@ -165,7 +319,12 @@ button {
     grid-column: 1;
   }
 
+  .controller-tabs,
   .controller-section {
     grid-column: 2;
+  }
+
+  .controller-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }

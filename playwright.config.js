@@ -7,12 +7,12 @@ export default defineConfig({
     timeout: 5000
   },
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: "http://127.0.0.1:5173",
     trace: "on-first-retry"
   },
   webServer: {
-    command: "npm start",
-    url: "http://127.0.0.1:4173",
+    command: "npm run tv:serve",
+    url: "http://127.0.0.1:5173",
     reuseExistingServer: true,
     timeout: 20000
   },

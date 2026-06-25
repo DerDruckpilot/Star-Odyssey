@@ -13,6 +13,7 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -100,9 +101,22 @@ public class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         }
+        view.addJavascriptInterface(new FireTvBridge(), "FireTvBridge");
         view.setWebViewClient(new WebViewClient());
         view.setFocusable(true);
         view.setFocusableInTouchMode(true);
+    }
+
+    private class FireTvBridge {
+        @JavascriptInterface
+        public void closeApp() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    finish();
+                }
+            });
+        }
     }
 
     private LinearLayout createControls() {
@@ -303,7 +317,7 @@ public class MainActivity extends Activity {
     }
 
     @Override
-    protected void onWindowFocusChanged(boolean hasFocus) {
+    public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) hideSystemUi();
     }

@@ -125,7 +125,9 @@ const state = {
   hudTab: "turn",
   hudScrollPositions: {},
   encounterBoardSelectionActive: false,
-  notice: initialGame.fromAutosave ? (initialGame.language === "de" ? "Autosave geladen." : "Autosave loaded.") : ""
+  notice: initialGame.fromAutosave ? (initialGame.language === "de" ? "Autosave geladen." : "Autosave loaded.") : "",
+  controllerMode: initialGame.controllerMode,
+  controllerLobby: null
 };
 
 const remoteHost = {
@@ -133,6 +135,7 @@ const remoteHost = {
   socket: null,
   connected: false,
   controllerCount: 0,
+  controllerSlots: [],
   reconnectTimer: null,
   lastStateJson: ""
 };
@@ -225,12 +228,13 @@ function loadCurrentGameState() {
 }
 
 function loadInitialGameState(fallbackLanguage = defaultLanguage) {
-  const autosaveGameState = loadAutosaveGameState(fallbackLanguage);
-  if (autosaveGameState) {
+  const autosave = loadAutosaveGameState(fallbackLanguage);
+  if (autosave.gameState) {
     return {
-      gameState: autosaveGameState,
-      language: languages.includes(autosaveGameState.language) ? autosaveGameState.language : fallbackLanguage,
-      fromAutosave: true
+      gameState: autosave.gameState,
+      language: languages.includes(autosave.gameState.language) ? autosave.gameState.language : fallbackLanguage,
+      fromAutosave: true,
+      controllerMode: autosave.controllerMode
     };
   }
 
@@ -238,22 +242,28 @@ function loadInitialGameState(fallbackLanguage = defaultLanguage) {
   return {
     gameState: currentGameState,
     language: languages.includes(currentGameState?.language) ? currentGameState.language : fallbackLanguage,
-    fromAutosave: false
+    fromAutosave: false,
+    controllerMode: false
   };
 }
 
 function loadAutosaveGameState(fallbackLanguage = defaultLanguage) {
   try {
     const parsedAutosave = JSON.parse(localStorage.getItem(autosaveStorageKey) ?? "null");
-    if (!parsedAutosave || parsedAutosave.version !== autosaveVersion || !parsedAutosave.gameState) return null;
+    if (!parsedAutosave || parsedAutosave.version !== autosaveVersion || !parsedAutosave.gameState) {
+      return { gameState: null, controllerMode: false };
+    }
 
-    return normalizeGameState(parsedAutosave.gameState, {
-      language: parsedAutosave.gameState.language || parsedAutosave.language || fallbackLanguage,
-      playerCount: parsedAutosave.gameState.playerCount || 2,
-      boardLayout
-    });
+    return {
+      gameState: normalizeGameState(parsedAutosave.gameState, {
+        language: parsedAutosave.gameState.language || parsedAutosave.language || fallbackLanguage,
+        playerCount: parsedAutosave.gameState.playerCount || 2,
+        boardLayout
+      }),
+      controllerMode: Boolean(parsedAutosave.controllerMode)
+    };
   } catch {
-    return null;
+    return { gameState: null, controllerMode: false };
   }
 }
 
@@ -286,6 +296,7 @@ function writeAutosaveNow() {
       savedAt: new Date().toISOString(),
       language: state.language,
       view: "board",
+      controllerMode: state.controllerMode,
       gameState: state.gameState
     }));
   } catch {
@@ -321,8 +332,13 @@ function loadOrCreateControllerSessionId() {
 function getControllerUrl(playerId = null) {
   const url = new URL("/controller.html", window.location.origin);
   url.searchParams.set("session", remoteHost.sessionId);
-  if (playerId) url.searchParams.set("player", playerId);
+  if (playerId) url.searchParams.set("player", getControllerSlotNumber(playerId));
   return url.toString();
+}
+
+function getControllerSlotNumber(playerId) {
+  const match = String(playerId).match(/^player-(\d+)$/);
+  return match ? match[1] : String(playerId);
 }
 
 function getQrCodeUrl(text) {
@@ -439,12 +455,105 @@ function resetTradeOfferDraft() {
 function startNewGameSetup() {
   clearAutosave();
   state.gameState = null;
+  state.controllerMode = false;
+  state.controllerLobby = null;
   state.selectedPlayers = null;
   state.playerSetup = [];
   setView("players");
 }
 
-function startGameNow() {
+function enterControllerLobby() {
+  if (!state.selectedPlayers) return;
+  state.controllerMode = true;
+  state.controllerLobby = createControllerLobby(state.selectedPlayers);
+  state.playerSetup = [];
+  setView("controllers");
+}
+
+function createControllerLobby(playerCount) {
+  return {
+    playerCount,
+    started: false,
+    slots: Array.from({ length: playerCount }, (_, index) => ({
+      playerId: `player-${index + 1}`,
+      slotNumber: index + 1,
+      name: "",
+      color: "",
+      ready: false,
+      connected: false,
+      connectionState: "disconnected"
+    }))
+  };
+}
+
+function getControllerLobbySlot(playerId) {
+  return state.controllerLobby?.slots?.find((slot) => slot.playerId === playerId) ?? null;
+}
+
+function getControllerLobbyColorsInUse(exceptPlayerId = null) {
+  return new Set((state.controllerLobby?.slots ?? [])
+    .filter((slot) => slot.playerId !== exceptPlayerId && slot.color)
+    .map((slot) => slot.color));
+}
+
+function updateControllerLobbyConnections() {
+  if (!state.controllerLobby) return;
+  const connectedPlayerIds = new Set((remoteHost.controllerSlots ?? [])
+    .filter((slot) => slot.connected)
+    .map((slot) => slot.playerId));
+  state.controllerLobby = {
+    ...state.controllerLobby,
+    slots: state.controllerLobby.slots.map((slot) => ({
+      ...slot,
+      connected: connectedPlayerIds.has(slot.playerId),
+      connectionState: connectedPlayerIds.has(slot.playerId)
+        ? (slot.ready ? "ready" : "connected")
+        : (slot.ready ? "lost" : "disconnected")
+    }))
+  };
+}
+
+function updateControllerLobbySlot(playerId, changes) {
+  if (!state.controllerLobby?.slots?.some((slot) => slot.playerId === playerId)) return false;
+  state.controllerLobby = {
+    ...state.controllerLobby,
+    slots: state.controllerLobby.slots.map((slot) => {
+      if (slot.playerId !== playerId) return slot;
+      return {
+        ...slot,
+        ...changes,
+        ready: changes.ready ?? (changes.name !== undefined || changes.color !== undefined ? false : slot.ready)
+      };
+    })
+  };
+  updateControllerLobbyConnections();
+  maybeStartControllerGame();
+  render();
+  return true;
+}
+
+function maybeStartControllerGame() {
+  if (!state.controllerLobby || state.controllerLobby.started) return;
+  const slots = state.controllerLobby.slots ?? [];
+  const allReady = slots.length === state.controllerLobby.playerCount
+    && slots.every((slot) => slot.connected && slot.ready && slot.name.trim() && slot.color)
+    && new Set(slots.map((slot) => slot.name.trim().toLocaleLowerCase(state.language))).size === slots.length
+    && new Set(slots.map((slot) => slot.color)).size === slots.length;
+  if (!allReady) return;
+
+  state.controllerLobby = {
+    ...state.controllerLobby,
+    started: true
+  };
+  state.playerSetup = slots.map((slot) => ({
+    name: slot.name.trim(),
+    color: slot.color
+  }));
+  state.selectedPlayers = state.controllerLobby.playerCount;
+  startGameNow({ fromControllerLobby: true });
+}
+
+function startGameNow(options = {}) {
   const validation = validatePlayerSetup();
   if (!validation.valid) {
     state.notice = t(validation.messageKey);
@@ -461,6 +570,7 @@ function startGameNow() {
   resetTradeOfferDraft();
   state.selectedPlayers = state.gameState.playerCount;
   state.playerSetup = [];
+  state.controllerMode = options.fromControllerLobby ? true : state.controllerMode;
   saveCurrentGameState();
   setView("board");
 }
@@ -534,6 +644,8 @@ function createSvgElement(name, attributes = {}) {
 
 function enableBoardElementSelection(element, type, id) {
   element.classList.add("board-element");
+  element.dataset.boardType = type;
+  element.dataset.boardId = id;
   element.setAttribute("role", "button");
   element.setAttribute("tabindex", "0");
   element.setAttribute("aria-label", `${getBoardElementTypeLabel(type)} ${id}`);
@@ -1064,7 +1176,8 @@ function renderMenu() {
   actions.append(
     createButton(t("newGame"), startNewGameSetup),
     createButton(t("loadGame"), () => openModal("load")),
-    createButton(t("connectControllers"), () => openModal("controllers"), "secondary-button")
+    createButton(t("connectControllers"), () => openModal("controllers"), "secondary-button"),
+    createButton(t("exitGame"), requestAppExit, "secondary-button")
   );
 
   screen.append(renderLanguageToggle(), titleGroup, actions, renderNotice());
@@ -1097,7 +1210,7 @@ function renderPlayerSelect() {
 
   const actions = document.createElement("div");
   actions.className = "setup-actions";
-  const continueButton = createButton(t("continue"), () => setView("controllers"), "menu-button");
+  const continueButton = createButton(t("continue"), enterControllerLobby, "menu-button");
   continueButton.disabled = state.selectedPlayers === null;
   actions.append(
     createButton(t("back"), () => setView("menu"), "secondary-button"),
@@ -1109,6 +1222,11 @@ function renderPlayerSelect() {
 }
 
 function renderControllerConnect() {
+  if (!state.controllerLobby && state.selectedPlayers) {
+    state.controllerLobby = createControllerLobby(state.selectedPlayers);
+  }
+  updateControllerLobbyConnections();
+
   const screen = document.createElement("section");
   screen.className = "menu-screen controller-screen";
   screen.setAttribute("aria-labelledby", "screen-title");
@@ -1121,7 +1239,8 @@ function renderControllerConnect() {
   const qrGrid = document.createElement("div");
   qrGrid.className = "qr-grid";
 
-  for (let index = 1; index <= state.selectedPlayers; index += 1) {
+  const slots = state.controllerLobby?.slots ?? [];
+  for (let index = 1; index <= (state.selectedPlayers ?? slots.length); index += 1) {
     qrGrid.append(renderQrPlaceholder(index));
   }
 
@@ -1132,8 +1251,11 @@ function renderControllerConnect() {
   const actions = document.createElement("div");
   actions.className = "setup-actions";
   actions.append(
-    createButton(t("back"), () => setView("players"), "secondary-button"),
-    createButton(t("continue"), () => setView("playerSetup"), "menu-button")
+    createButton(t("back"), () => {
+      state.controllerLobby = null;
+      state.controllerMode = false;
+      setView("players");
+    }, "secondary-button")
   );
 
   screen.append(renderLanguageToggle(), title, qrGrid, hint, actions);
@@ -1228,6 +1350,7 @@ function renderQrPlaceholder(playerNumber) {
   label.textContent = t("playerNumber").replace("{number}", playerNumber);
 
   const playerId = state.gameState?.players?.[playerNumber - 1]?.id ?? `player-${playerNumber}`;
+  const slot = getControllerLobbySlot(playerId);
   const controllerUrl = getControllerUrl(playerId);
   const qrImage = document.createElement("img");
   qrImage.className = "qr-image";
@@ -1238,8 +1361,28 @@ function renderQrPlaceholder(playerNumber) {
   urlText.className = "qr-url";
   urlText.textContent = controllerUrl;
 
-  card.append(label, qrImage, urlText);
+  const status = document.createElement("p");
+  status.className = `qr-status qr-status--${getControllerSlotStatusClass(slot)}`;
+  status.textContent = getControllerSlotStatusLabel(slot);
+
+  card.append(label, qrImage, urlText, status);
   return card;
+}
+
+function getControllerSlotStatusClass(slot) {
+  if (!slot) return "disconnected";
+  if (slot.ready && slot.connected) return "ready";
+  if (slot.ready && !slot.connected) return "lost";
+  return slot.connectionState ?? "disconnected";
+}
+
+function getControllerSlotStatusLabel(slot) {
+  if (!slot) return t("controllerSlotDisconnected");
+  if (slot.ready && slot.connected) return t("controllerSlotReady").replace("{name}", slot.name || "-");
+  if (slot.ready && !slot.connected) return t("controllerSlotLost").replace("{name}", slot.name || "-");
+  if (slot.connected && (slot.name || slot.color)) return t("controllerSlotConfigured");
+  if (slot.connected) return t("controllerSlotConnected");
+  return t("controllerSlotDisconnected");
 }
 
 function renderBoardShell() {
@@ -1254,7 +1397,9 @@ function renderBoardShell() {
 
   const controls = document.createElement("div");
   controls.className = "board-overlay-controls";
-  controls.append(createButton("⚙", () => openModal("settings"), "icon-button"));
+  if (!state.controllerMode) {
+    controls.append(createButton("⚙", () => openModal("settings"), "icon-button"));
+  }
 
   const board = document.createElement("div");
   board.className = "board-placeholder";
@@ -1274,7 +1419,7 @@ function renderBoardShell() {
     renderCompactBoardStatus(),
     renderVictoryPointList(),
     renderBoardEventLog(),
-    renderPlayerHudButtons(),
+    state.controllerMode ? document.createDocumentFragment() : renderPlayerHudButtons(),
     renderPlayerHudModal(),
     renderEncounterModal(),
     renderGameOverOverlay(),
@@ -2158,6 +2303,12 @@ function renderEncounterActions(player) {
       result.textContent = t("movementAfterEncounter");
       wrapper.append(result);
     }
+    if (state.controllerMode) {
+      const waiting = document.createElement("p");
+      waiting.textContent = t("controllerEncounterDecisionHint");
+      wrapper.append(waiting);
+      return wrapper;
+    }
     if (player?.id === activePlayer?.id) {
       wrapper.append(createButton(t("finishEncounter"), finishActiveEncounter, "small-button"));
     } else {
@@ -2165,6 +2316,13 @@ function renderEncounterActions(player) {
       waiting.textContent = t("notYourTurn");
       wrapper.append(waiting);
     }
+    return wrapper;
+  }
+
+  if (state.controllerMode) {
+    const waiting = document.createElement("p");
+    waiting.textContent = t("controllerEncounterDecisionHint");
+    wrapper.append(waiting);
     return wrapper;
   }
 
@@ -5873,7 +6031,7 @@ function renderSaveItem(save) {
   return item;
 }
 
-function saveCurrentGame(name) {
+function saveCurrentGame(name, options = {}) {
   if (!state.gameState) {
     state.gameState = createGameState({
       language: state.language,
@@ -5903,7 +6061,9 @@ function saveCurrentGame(name) {
 
   writeSaves([save, ...readSaves()]);
   state.notice = t("saveSuccess");
-  state.modal = "settings";
+  if (options.returnToSettings !== false) {
+    state.modal = "settings";
+  }
   render();
 }
 
@@ -6019,7 +6179,9 @@ function handleRemoteHostMessage(rawData) {
 
   if (message.type === "helloAck" || message.type === "controllerCount") {
     remoteHost.controllerCount = message.controllerCount ?? remoteHost.controllerCount;
-    if (state.modal === "controllers") render();
+    remoteHost.controllerSlots = Array.isArray(message.controllerSlots) ? message.controllerSlots : remoteHost.controllerSlots;
+    updateControllerLobbyConnections();
+    if (state.modal === "controllers" || state.view === "controllers") render();
     return;
   }
 
@@ -6043,18 +6205,95 @@ function publishRemoteHostState() {
 }
 
 function getRemoteControllerState() {
+  const activePlayer = getActivePlayer();
   return {
     view: state.view,
+    controllerMode: state.controllerMode,
+    controllerLobby: getControllerLobbyStateForRemote(),
     phase: state.gameState?.phase ?? null,
     phaseLabel: state.gameState ? getPhaseLabel(state.gameState.phase) : "",
-    activePlayerId: getActivePlayer()?.id ?? null,
-    activePlayerName: getActivePlayer()?.name ?? "",
+    activePlayerId: activePlayer?.id ?? null,
+    activePlayerName: activePlayer?.name ?? "",
     players: (state.gameState?.players ?? []).map((player) => ({
       id: player.id,
-      name: player.name
+      name: player.name,
+      color: player.color,
+      resources: player.resources,
+      upgrades: player.upgrades,
+      victoryPoints: state.gameState ? calculateVictoryPoints(state.gameState, player.id) : 0,
+      medals: player.medals ?? 0
     })),
+    encounter: getRemoteEncounterStateForController(),
+    board: getRemoteBoardState(),
     actions: getRemoteControllerActions()
   };
+}
+
+function getControllerLobbyStateForRemote() {
+  if (!state.controllerLobby) return null;
+  return {
+    playerCount: state.controllerLobby.playerCount,
+    started: state.controllerLobby.started,
+    colors: playerPieceColors.map((color) => ({
+      id: color,
+      label: getPlayerColorLabel(color)
+    })),
+    slots: (state.controllerLobby.slots ?? []).map((slot) => ({
+      playerId: slot.playerId,
+      slotNumber: slot.slotNumber,
+      name: slot.name,
+      color: slot.color,
+      ready: slot.ready,
+      connected: slot.connected,
+      connectionState: slot.connectionState
+    }))
+  };
+}
+
+function getRemoteEncounterStateForController() {
+  const encounter = state.gameState?.activeEncounter;
+  if (!encounter) return null;
+  const card = getEncounterCardById(encounter.cardId);
+  const activePlayer = getActivePlayer();
+  return {
+    active: true,
+    playerId: getEncounterActionPlayer()?.id ?? getActivePlayer()?.id ?? null,
+    pendingType: encounter.pendingStep?.type ?? null,
+    status: encounter.status,
+    choices: (card?.choices ?? []).map((choice) => ({
+      id: choice.id,
+      label: getLocalizedEncounterText(choice.label) || choice.id,
+      available: isEncounterChoiceAvailable(choice, activePlayer)
+    }))
+  };
+}
+
+function getRemoteBoardState() {
+  if (state.view !== "board" || !state.gameState) return null;
+  return {
+    mode: getRemoteBoardMode(),
+    svg: serializeBoardSvgForController()
+  };
+}
+
+function getRemoteBoardMode() {
+  const pendingEncounterStep = state.gameState?.activeEncounter?.pendingStep;
+  if (state.encounterBoardSelectionActive && pendingEncounterStep?.type === "shipJumpSelection") return t("selectOwnShip");
+  if (state.encounterBoardSelectionActive && pendingEncounterStep?.type === "boardTargetSelection") return t("encounterSelectTargetPoint");
+  if (state.gameState?.board?.pendingShipPlacement) return t("chooseStartPointHint");
+  if (state.gameState?.board?.pendingSpaceportUpgrade) return t("chooseStartPointHint");
+  if (state.gameState?.phase === "flight" && getSelectedShip()) return t("encounterSelectTargetPoint");
+  return t("boardViewOnly");
+}
+
+function serializeBoardSvgForController() {
+  try {
+    const svg = renderBoardSvg();
+    svg.querySelectorAll("canvas, foreignObject").forEach((element) => element.remove());
+    return svg.outerHTML;
+  } catch {
+    return "";
+  }
 }
 
 function getRemoteControllerActions() {
@@ -6086,51 +6325,92 @@ function getRemoteControllerActions() {
   }
 
   for (const player of state.gameState.players ?? []) {
-    actions.push(createRemoteAction("openPlayerHud", player.name, { playerId: player.id }));
+    actions.push(createRemoteAction("openPlayerHud", player.name, { targetPlayerId: player.id }));
   }
 
   actions.push(
-    createRemoteAction("openSettings", t("ingameMenu")),
-    createRemoteAction("openControllers", t("connectControllers"))
+    createRemoteAction("save.quick", t("save"), {}, { adminOnly: true }),
+    createRemoteAction("openControllers", t("connectControllers"), {}, { adminOnly: true })
   );
 
   if (state.gameState.activeEncounter) {
-    actions.push(createRemoteAction("finishEncounter", t("finishEncounter")));
+    for (const choice of getRemoteEncounterStateForController()?.choices ?? []) {
+      actions.push(createRemoteAction("encounter.choose", choice.label, { choiceId: choice.id }, {
+        disabled: !choice.available,
+        requiresActivePlayer: true
+      }));
+    }
+    actions.push(createRemoteAction("finishEncounter", t("finishEncounter"), {}, { requiresActivePlayer: true }));
     return actions;
   }
 
   if (state.gameState.phase === "placement" && state.gameState.placement?.step === "rollStartPlayer" && !isDiceRollAnimating()) {
-    actions.push(createRemoteAction("rollPlacement", t("rollStartPlayer")));
+    actions.push(createRemoteAction("rollPlacement", t("rollStartPlayer"), {}, { requiresActivePlayer: true }));
   }
 
   if (state.gameState.phase === "production" && !isDiceRollAnimating()) {
-    actions.push(createRemoteAction("rollProduction", t("rollProduction")));
+    actions.push(createRemoteAction("rollProduction", t("rollProduction"), {}, { requiresActivePlayer: true }));
   }
 
   if (state.gameState.phase === "tradeBuild") {
     const drawCount = getSupplyDrawCount(getActivePlayer());
     if (drawCount > 0 && !hasActivePlayerDrawnSupplyThisTurn()) {
-      actions.push(createRemoteAction("drawSupply", t("drawSupply").replace("{count}", drawCount)));
+      actions.push(createRemoteAction("drawSupply", t("drawSupply").replace("{count}", drawCount), {}, { requiresActivePlayer: true }));
     }
-    actions.push(createRemoteAction("toFlightPhase", t("toFlightPhase")));
+    actions.push(createRemoteAction("toFlightPhase", t("toFlightPhase"), {}, { requiresActivePlayer: true }));
+    actions.push(
+      createRemoteAction("build.colonyShip", t("build_colonyShip"), {}, { requiresActivePlayer: true }),
+      createRemoteAction("build.tradeShip", t("build_tradeShip"), {}, { requiresActivePlayer: true }),
+      createRemoteAction("build.spaceport", t("build_spaceport"), {}, { requiresActivePlayer: true })
+    );
+    for (const upgrade of upgradeDefinitions) {
+      actions.push(createRemoteAction("upgrade.buy", `${t("build")} ${getUpgradeLabel(upgrade.id)}`, { upgradeId: upgrade.id }, {
+        requiresActivePlayer: true
+      }));
+    }
   }
 
   if (state.gameState.phase === "flight") {
     if (!state.gameState.hasRolledFlightSpeed && !isMothershipSpeedAnimating()) {
-      actions.push(createRemoteAction("determineSpeed", t("determineSpeed")));
+      actions.push(createRemoteAction("determineSpeed", t("determineSpeed"), {}, { requiresActivePlayer: true }));
     }
-    actions.push(createRemoteAction("endTurn", t("endTurn")));
+    actions.push(createRemoteAction("endTurn", t("endTurn"), {}, { requiresActivePlayer: true }));
+  }
+
+  if (state.gameState.players?.[0]) {
+    actions.push(createRemoteAction("app.exit", t("exitGame"), {}, { adminOnly: true }));
   }
 
   return actions;
 }
 
-function createRemoteAction(id, label, payload = {}) {
-  return { id, label, payload };
+function createRemoteAction(id, label, payload = {}, options = {}) {
+  return { id, label, payload, ...options };
+}
+
+function isPlayerAdmin(playerId) {
+  return Boolean(playerId && state.gameState?.players?.[0]?.id === playerId);
+}
+
+function isRemoteActionPlayerActive(playerId) {
+  return Boolean(playerId && getActivePlayer()?.id === playerId);
 }
 
 function executeRemoteAction(actionId, payload = {}) {
+  const playerId = payload.playerId;
   switch (actionId) {
+    case "player.setName":
+      updateControllerName(playerId, payload.name);
+      break;
+    case "player.selectColor":
+      updateControllerColor(playerId, payload.color);
+      break;
+    case "player.ready":
+      setControllerReady(playerId, true);
+      break;
+    case "player.edit":
+      setControllerReady(playerId, false);
+      break;
     case "newGame":
       startNewGameSetup();
       break;
@@ -6138,10 +6418,10 @@ function executeRemoteAction(actionId, payload = {}) {
       setView("menu");
       break;
     case "openSettings":
-      openModal("settings");
+      if (isPlayerAdmin(playerId)) openModal("settings");
       break;
     case "openControllers":
-      openModal("controllers");
+      if (isPlayerAdmin(playerId)) openModal("controllers");
       break;
     case "closeModal":
       closeModal();
@@ -6150,7 +6430,7 @@ function executeRemoteAction(actionId, payload = {}) {
       closePlayerHud();
       break;
     case "openPlayerHud":
-      openPlayerHud(payload.playerId);
+      openPlayerHud(payload.targetPlayerId || playerId);
       break;
     case "hudTab":
       if (payload.tab) {
@@ -6159,29 +6439,80 @@ function executeRemoteAction(actionId, payload = {}) {
       }
       break;
     case "rollPlacement":
-      rollPlacementForActivePlayer();
+      if (isRemoteActionPlayerActive(playerId)) rollPlacementForActivePlayer();
       break;
     case "rollProduction":
-      rollProductionForActivePlayer();
+      if (isRemoteActionPlayerActive(playerId)) rollProductionForActivePlayer();
       break;
     case "drawSupply":
-      drawSupplyForActivePlayer();
+      if (isRemoteActionPlayerActive(playerId)) drawSupplyForActivePlayer();
       break;
     case "toFlightPhase":
-      goToFlightPhase();
+      if (isRemoteActionPlayerActive(playerId)) goToFlightPhase();
       break;
     case "determineSpeed":
-      determineSpeedForActivePlayer();
+      if (isRemoteActionPlayerActive(playerId)) determineSpeedForActivePlayer();
       break;
     case "endTurn":
-      endTurn();
+      if (isRemoteActionPlayerActive(playerId)) endTurn();
+      break;
+    case "save.quick":
+      if (isPlayerAdmin(playerId)) saveCurrentGame(t("defaultSaveName"), { returnToSettings: false });
       break;
     case "finishEncounter":
-      finishActiveEncounter();
+      if (isRemoteActionPlayerActive(playerId)) finishActiveEncounter();
+      break;
+    case "build.colonyShip":
+      if (isRemoteActionPlayerActive(playerId)) buildActivePlayerShip("colonyShip");
+      break;
+    case "build.tradeShip":
+      if (isRemoteActionPlayerActive(playerId)) buildActivePlayerShip("tradeShip");
+      break;
+    case "build.spaceport":
+      if (isRemoteActionPlayerActive(playerId)) buildActivePlayerSpaceport();
+      break;
+    case "upgrade.buy":
+      if (isRemoteActionPlayerActive(playerId) && payload.upgradeId) buyActivePlayerUpgrade(payload.upgradeId);
+      break;
+    case "encounter.choose":
+      if (isRemoteActionPlayerActive(playerId) && payload.choiceId) resolveActiveEncounterChoice(payload.choiceId);
+      break;
+    case "board.select":
+      if (isRemoteActionPlayerActive(playerId) && payload.type && payload.id) selectBoardElement(payload.type, payload.id);
+      break;
+    case "app.exit":
+      if (isPlayerAdmin(playerId)) requestAppExit();
       break;
     default:
       break;
   }
+}
+
+function updateControllerName(playerId, name) {
+  const trimmedName = String(name || "").trim().slice(0, 32);
+  updateControllerLobbySlot(playerId, { name: trimmedName });
+}
+
+function updateControllerColor(playerId, color) {
+  if (!playerPieceColors.includes(color)) return;
+  if (getControllerLobbyColorsInUse(playerId).has(color)) return;
+  updateControllerLobbySlot(playerId, { color });
+}
+
+function setControllerReady(playerId, ready) {
+  const slot = getControllerLobbySlot(playerId);
+  if (!slot) return;
+  if (ready && (!slot.name.trim() || !slot.color || getControllerLobbyColorsInUse(playerId).has(slot.color))) return;
+  updateControllerLobbySlot(playerId, { ready });
+}
+
+function requestAppExit() {
+  if (window.FireTvBridge?.closeApp) {
+    window.FireTvBridge.closeApp();
+    return;
+  }
+  state.notice = t("fireTvExitUnavailable");
+  render();
 }
 
 function render() {
