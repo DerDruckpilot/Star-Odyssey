@@ -8,6 +8,7 @@ const sessionId = params.get("session") || "";
 const storedControllerIdKey = "star-odyssey-controller-id";
 const storedPlayerIdKey = `star-odyssey-controller-player-${sessionId || "default"}`;
 const reconnectDelayMs = 1400;
+const localControllerStoragePrefix = "star-odyssey-controller-channel";
 const resourceLabels = {
   ore: "Erz",
   fuel: "Treibstoff",
@@ -27,6 +28,10 @@ const buildLabels = {
 };
 
 let socket = null;
+let localChannel = null;
+let localTransport = "";
+let localFallbackActive = false;
+let webSocketConnectedOnce = false;
 let reconnectTimer = null;
 let controllerId = loadStoredControllerId();
 let selectedPlayerId = normalizePlayerParam(params.get("player")) || loadStoredPlayerId();
@@ -90,12 +95,20 @@ function connect() {
   }
 
   clearTimeout(reconnectTimer);
+  localFallbackActive = false;
+  webSocketConnectedOnce = false;
   connectionStatus = "connecting";
   render();
 
-  socket = new WebSocket(getWebSocketUrl());
+  try {
+    socket = new WebSocket(getWebSocketUrl());
+  } catch {
+    activateLocalFallback();
+    return;
+  }
   socket.addEventListener("open", () => {
     replacedByReconnect = false;
+    webSocketConnectedOnce = true;
     connectionStatus = "waiting";
     sendHello();
     render();
@@ -105,13 +118,16 @@ function connect() {
   });
   socket.addEventListener("close", () => {
     if (replacedByReconnect) return;
-    connectionStatus = "lost";
-    render();
-    reconnectTimer = setTimeout(connect, reconnectDelayMs);
+    if (webSocketConnectedOnce) {
+      connectionStatus = "lost";
+      render();
+      reconnectTimer = setTimeout(connect, reconnectDelayMs);
+    } else {
+      activateLocalFallback();
+    }
   });
   socket.addEventListener("error", () => {
-    connectionStatus = "lost";
-    render();
+    if (socket?.readyState !== WebSocket.OPEN) activateLocalFallback();
   });
 }
 
@@ -126,8 +142,77 @@ function sendHello() {
 }
 
 function send(data) {
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
-  socket.send(JSON.stringify(data));
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(data));
+    return;
+  }
+  if (localFallbackActive) {
+    sendLocalHostMessage(data);
+  }
+}
+
+function activateLocalFallback() {
+  if (!sessionId) return;
+  initializeLocalControllerChannel();
+  localFallbackActive = true;
+  connectionStatus = "waiting";
+  render();
+  sendHello();
+}
+
+function initializeLocalControllerChannel() {
+  if (localTransport) return;
+  if ("BroadcastChannel" in window) {
+    localTransport = "broadcast";
+    localChannel = new BroadcastChannel(getLocalControllerChannelName());
+    localChannel.addEventListener("message", (event) => handleLocalHostMessage(event.data));
+    return;
+  }
+  localTransport = "storage";
+  window.addEventListener("storage", (event) => {
+    if (event.key !== getLocalControllerStorageKey("host") || !event.newValue) return;
+    try {
+      handleLocalHostMessage(JSON.parse(event.newValue));
+    } catch {
+      // Ignore unrelated local host messages.
+    }
+  });
+}
+
+function sendLocalHostMessage(data) {
+  const payload = {
+    ...data,
+    source: "controller",
+    controllerId,
+    playerId: selectedPlayerId,
+    sessionId,
+    sentAt: Date.now()
+  };
+  if (localTransport === "broadcast" && localChannel) {
+    localChannel.postMessage(payload);
+    return;
+  }
+  if (localTransport === "storage") {
+    try {
+      localStorage.setItem(getLocalControllerStorageKey("controller"), JSON.stringify(payload));
+    } catch {
+      // Local test transport is best-effort.
+    }
+  }
+}
+
+function handleLocalHostMessage(message) {
+  if (!message || message.source !== "host" || message.sessionId !== sessionId) return;
+  if (message.targetControllerId && message.targetControllerId !== controllerId) return;
+  handleMessage(JSON.stringify(message));
+}
+
+function getLocalControllerChannelName() {
+  return `${localControllerStoragePrefix}:${sessionId}`;
+}
+
+function getLocalControllerStorageKey(direction) {
+  return `${localControllerStoragePrefix}:${sessionId}:${direction}`;
 }
 
 function handleMessage(rawData) {

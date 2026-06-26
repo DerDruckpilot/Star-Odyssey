@@ -140,6 +140,9 @@ const state = {
 const remoteHost = {
   sessionId: loadOrCreateControllerSessionId(),
   socket: null,
+  localChannel: null,
+  localTransport: "",
+  localControllers: new Map(),
   connected: false,
   controllerCount: 0,
   controllerSlots: [],
@@ -148,6 +151,7 @@ const remoteHost = {
 };
 
 const controllerReconnectMs = 1600;
+const localControllerStoragePrefix = "star-odyssey-controller-channel";
 let autosaveTimer = null;
 
 const placementVfxDuration = 1650;
@@ -337,7 +341,7 @@ function loadOrCreateControllerSessionId() {
 }
 
 function getControllerUrl(playerId = null) {
-  const url = new URL("/controller.html", window.location.origin);
+  const url = new URL("controller.html", document.baseURI);
   url.searchParams.set("session", remoteHost.sessionId);
   if (playerId) url.searchParams.set("player", getControllerSlotNumber(playerId));
   return url.toString();
@@ -349,7 +353,7 @@ function getControllerSlotNumber(playerId) {
 }
 
 function getQrCodeUrl(text) {
-  const url = new URL("/api/qr", window.location.origin);
+  const url = new URL("api/qr", document.baseURI);
   url.searchParams.set("text", text);
   return url.toString();
 }
@@ -1397,6 +1401,7 @@ function renderQrPlaceholder(playerNumber) {
   qrImage.className = "qr-image";
   qrImage.alt = t("controllerQrAlt").replace("{player}", label.textContent);
   qrImage.src = getQrCodeUrl(controllerUrl);
+  qrImage.title = controllerUrl;
 
   const urlText = document.createElement("p");
   urlText.className = "qr-url";
@@ -1407,7 +1412,23 @@ function renderQrPlaceholder(playerNumber) {
   status.textContent = getControllerSlotStatusLabel(slot);
 
   card.append(label, qrImage, urlText, status);
+  card.title = controllerUrl;
+  card.setAttribute("role", "button");
+  card.setAttribute("tabindex", "0");
+  card.setAttribute("aria-label", qrImage.alt);
+  card.addEventListener("click", () => openControllerWindow(controllerUrl));
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openControllerWindow(controllerUrl);
+    }
+  });
   return card;
+}
+
+function openControllerWindow(controllerUrl) {
+  const opened = window.open(controllerUrl, "_blank", "noopener,noreferrer,width=430,height=900");
+  if (!opened) console.warn("Controller-Fenster wurde vom Browser blockiert.", controllerUrl);
 }
 
 function getControllerSlotStatusClass(slot) {
@@ -6170,6 +6191,7 @@ function renderNotice() {
 }
 
 function connectRemoteHost() {
+  initializeLocalHostChannel();
   if (!("WebSocket" in window)) return;
   if (remoteHost.socket && [WebSocket.CONNECTING, WebSocket.OPEN].includes(remoteHost.socket.readyState)) return;
 
@@ -6226,17 +6248,120 @@ function handleRemoteHostMessage(rawData) {
 }
 
 function publishRemoteHostState() {
-  if (!remoteHost.connected || !remoteHost.socket || remoteHost.socket.readyState !== WebSocket.OPEN) return;
-
   const controllerState = getRemoteControllerState();
   const stateJson = JSON.stringify(controllerState);
   if (stateJson === remoteHost.lastStateJson) return;
   remoteHost.lastStateJson = stateJson;
-  remoteHost.socket.send(JSON.stringify({
+  const message = {
     type: "state",
     sessionId: remoteHost.sessionId,
     state: controllerState
+  };
+  if (remoteHost.connected && remoteHost.socket?.readyState === WebSocket.OPEN) {
+    remoteHost.socket.send(JSON.stringify(message));
+  }
+  if (remoteHost.localControllers.size > 0) {
+    sendLocalControllerMessage(message);
+  }
+}
+
+function initializeLocalHostChannel() {
+  if (remoteHost.localTransport) return;
+  if ("BroadcastChannel" in window) {
+    remoteHost.localTransport = "broadcast";
+    remoteHost.localChannel = new BroadcastChannel(getLocalControllerChannelName());
+    remoteHost.localChannel.addEventListener("message", (event) => handleLocalControllerMessage(event.data));
+    return;
+  }
+  remoteHost.localTransport = "storage";
+  window.addEventListener("storage", (event) => {
+    if (event.key !== getLocalControllerStorageKey("controller") || !event.newValue) return;
+    try {
+      handleLocalControllerMessage(JSON.parse(event.newValue));
+    } catch {
+      // Ignore unrelated or partial local controller messages.
+    }
+  });
+}
+
+function handleLocalControllerMessage(message) {
+  if (!message || message.sessionId !== remoteHost.sessionId || message.source !== "controller") return;
+  if (message.type === "hello") {
+    const controllerId = message.controllerId || `controller-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const playerId = message.playerId || null;
+    for (const [existingControllerId, controller] of remoteHost.localControllers.entries()) {
+      if (existingControllerId !== controllerId && controller.playerId === playerId) {
+        remoteHost.localControllers.delete(existingControllerId);
+      }
+    }
+    remoteHost.localControllers.set(controllerId, {
+      controllerId,
+      playerId,
+      lastSeen: Date.now()
+    });
+    syncLocalControllerSlots();
+    sendLocalControllerMessage({
+      type: "helloAck",
+      sessionId: remoteHost.sessionId,
+      targetControllerId: controllerId,
+      controllerId,
+      controllerCount: remoteHost.controllerCount,
+      controllerSlots: remoteHost.controllerSlots
+    });
+    remoteHost.lastStateJson = "";
+    publishRemoteHostState();
+    if (state.modal === "controllers" || state.view === "controllers") render();
+    return;
+  }
+
+  if (message.type === "action") {
+    const controller = remoteHost.localControllers.get(message.controllerId);
+    if (!controller) return;
+    executeRemoteAction(message.actionId, {
+      ...(message.payload || {}),
+      playerId: controller.playerId
+    });
+  }
+}
+
+function syncLocalControllerSlots() {
+  const socketSlots = remoteHost.controllerSlots.filter((slot) => (
+    ![...remoteHost.localControllers.values()].some((controller) => controller.playerId === slot.playerId)
+  ));
+  const localSlots = [...remoteHost.localControllers.values()].map((controller) => ({
+    controllerId: controller.controllerId,
+    playerId: controller.playerId
   }));
+  remoteHost.controllerSlots = [...socketSlots, ...localSlots];
+  remoteHost.controllerCount = remoteHost.controllerSlots.length;
+  updateControllerLobbyConnections();
+}
+
+function sendLocalControllerMessage(message) {
+  const payload = {
+    ...message,
+    source: "host",
+    sentAt: Date.now()
+  };
+  if (remoteHost.localTransport === "broadcast" && remoteHost.localChannel) {
+    remoteHost.localChannel.postMessage(payload);
+    return;
+  }
+  if (remoteHost.localTransport === "storage") {
+    try {
+      localStorage.setItem(getLocalControllerStorageKey("host"), JSON.stringify(payload));
+    } catch {
+      // Local test transport is best-effort.
+    }
+  }
+}
+
+function getLocalControllerChannelName() {
+  return `${localControllerStoragePrefix}:${remoteHost.sessionId}`;
+}
+
+function getLocalControllerStorageKey(direction) {
+  return `${localControllerStoragePrefix}:${remoteHost.sessionId}:${direction}`;
 }
 
 function getRemoteControllerState() {

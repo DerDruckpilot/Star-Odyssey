@@ -22,6 +22,13 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   expect(controllerUrls[0]).toContain("player=1");
   expect(controllerUrls[0]).not.toContain("localhost");
 
+  const popupPromise = page.waitForEvent("popup");
+  await page.locator(".qr-card").first().click();
+  const popup = await popupPromise;
+  await popup.waitForLoadState("domcontentloaded");
+  expect(popup.url()).toBe(controllerUrls[0]);
+  await popup.close();
+
   const controllerOneContext = await browser.newContext();
   const controllerTwoContext = await browser.newContext();
   const controllerOne = await controllerOneContext.newPage();
