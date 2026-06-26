@@ -1070,7 +1070,7 @@ export function finishEncounter(gameState) {
   return placePendingGiftedShips(nextState, defaultBoardLayout);
 }
 
-export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
+export function moveShip(gameState, boardLayout, shipId, targetNodeId, options = {}) {
   if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "flight" || !gameState.hasRolledFlightSpeed || gameState.activeEncounter) return gameState;
 
@@ -1103,19 +1103,51 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
     ships: updatedShips.filter((candidate) => candidate.ownerPlayerId === player.id)
   }));
   const remaining = remainingMovement - pathCost;
+  const movedState = updateGameState(gameState, {
+    players: movedPlayers,
+    remainingMovementByShipId: {
+      ...(gameState.remainingMovementByShipId ?? {}),
+      [shipId]: remaining
+    },
+    board: {
+      ...gameState.board,
+      selectedElement: { type: "ship", id: shipId },
+      ships: updatedShips
+    },
+    logEntry: {
+      type: "flight",
+      messageKey: pathCost === 1 ? "logShipMovedOne" : "logShipMovedMany",
+      messageParams: {
+        player: activePlayer.name,
+        shipOrdinal: getPlayerShipOrdinal(ships, ship),
+        count: pathCost
+      },
+    }
+  });
+  return options.deferExploration ? movedState : completeShipExploration(movedState, boardLayout, shipId);
+}
+
+export function completeShipExploration(gameState, boardLayout, shipId) {
+  if (isGameOverState(gameState)) return gameState;
+  if (gameState.phase !== "flight") return gameState;
+
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const ships = normalizeShips(gameState.board?.ships);
+  const ship = ships.find((candidate) => candidate.id === shipId);
+  if (!activePlayer || !ship || ship.ownerPlayerId !== activePlayer.id) return gameState;
+
+  const targetNodeId = ship.locationId;
   const explorationResult = exploreAdjacentSystems(gameState, boardLayout, targetNodeId, activePlayer.name);
   const specialResult = resolveAdjacentSpecialMarkers(
     {
       ...gameState,
-      players: movedPlayers,
       board: {
         ...gameState.board,
         exploredSystems: explorationResult.exploredSystems,
         exploredOutposts: explorationResult.exploredOutposts,
         exploredEmptySlots: explorationResult.exploredEmptySlots,
         placedQuadrants: explorationResult.placedQuadrants,
-        numberTokens: explorationResult.numberTokens,
-        ships: updatedShips
+        numberTokens: explorationResult.numberTokens
       }
     },
     boardLayout,
@@ -1125,30 +1157,15 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId) {
 
   return updateGameState(gameState, {
     players: specialResult.players,
-    remainingMovementByShipId: {
-      ...(gameState.remainingMovementByShipId ?? {}),
-      [shipId]: remaining
-    },
     board: {
       ...gameState.board,
       exploredSystems: explorationResult.exploredSystems,
       exploredOutposts: explorationResult.exploredOutposts,
       exploredEmptySlots: explorationResult.exploredEmptySlots,
       placedQuadrants: explorationResult.placedQuadrants,
-      numberTokens: specialResult.numberTokens,
-      selectedElement: { type: "ship", id: shipId },
-      ships: updatedShips
+      numberTokens: specialResult.numberTokens
     },
     logEntries: [
-      {
-        type: "flight",
-        messageKey: pathCost === 1 ? "logShipMovedOne" : "logShipMovedMany",
-        messageParams: {
-          player: activePlayer.name,
-          shipOrdinal: getPlayerShipOrdinal(ships, ship),
-          count: pathCost
-        }
-      },
       ...explorationResult.logEntries,
       ...specialResult.logEntries
     ]

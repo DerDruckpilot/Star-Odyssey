@@ -42,6 +42,7 @@ let boardScale = 1;
 let boardOffset = { x: 0, y: 0 };
 let boardPointers = new Map();
 let boardPanStart = null;
+let boardViewFitted = false;
 const tabScrollPositions = new Map();
 const setupNameDrafts = new Map();
 let saveNameDraft = "";
@@ -474,6 +475,7 @@ function renderTabs() {
     const button = createButton(label, () => {
       if (tabId === "board") {
         boardFullscreen = true;
+        boardViewFitted = false;
       } else if (activeTab !== tabId) {
         captureControllerScrollPosition();
         activeTab = tabId;
@@ -512,9 +514,160 @@ function renderTurnTab(player) {
   section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
   title.textContent = gameState?.phaseLabel || "Zug";
+  if (gameState?.sevenResolution?.active) {
+    section.append(title, renderSevenResolutionPanel(player));
+    return section;
+  }
   const actions = getTurnActions();
   section.append(title, renderTurnHint(player), renderEncounterPanel(), renderActionGrid(actions));
   return section;
+}
+
+function renderSevenResolutionPanel(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "seven-resolution";
+  const sevenResolution = gameState?.sevenResolution;
+  const heading = document.createElement("strong");
+  heading.textContent = "7 gewürfelt";
+  const step = document.createElement("p");
+  step.textContent = `Aktueller Schritt: ${getSevenStepLabel(sevenResolution?.step)}`;
+  wrapper.append(heading, step);
+
+  if (sevenResolution?.step === "discard") {
+    wrapper.append(renderSevenDiscardPanel(player, sevenResolution));
+  } else if (sevenResolution?.step === "steal") {
+    wrapper.append(renderSevenStealPanel(sevenResolution));
+  } else if (sevenResolution?.step === "supply") {
+    wrapper.append(renderSevenSupplyPanel());
+  }
+  return wrapper;
+}
+
+function renderSevenDiscardPanel(player, sevenResolution) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "seven-step seven-step--discard";
+  const playerId = player?.id;
+  const required = sevenResolution?.discardRequirements?.[playerId] ?? 0;
+  const alreadyDone = Boolean(sevenResolution?.discardedPlayerIds?.includes(playerId));
+  const selection = sevenResolution?.discardSelections?.[playerId] ?? {};
+
+  if (required > 0 && !alreadyDone) {
+    const instruction = document.createElement("p");
+    instruction.textContent = `Wähle genau ${required} Rohstoffe zum Abgeben.`;
+    wrapper.append(instruction, renderSevenDiscardSelectors(player, selection, required));
+    const selected = countSelectedResources(selection);
+    const selectedInfo = document.createElement("p");
+    selectedInfo.textContent = `Ausgewählt: ${selected}/${required}`;
+    const submit = createButton("Rohstoffe abgeben", () => sendNamedAction("seven.submitDiscard"), "small-button");
+    submit.disabled = selected !== required;
+    wrapper.append(selectedInfo, submit);
+  } else {
+    const info = document.createElement("p");
+    info.textContent = alreadyDone ? "Abgabe abgeschlossen." : "Keine Abgabe nötig.";
+    wrapper.append(info);
+  }
+
+  const statusList = document.createElement("ul");
+  statusList.className = "seven-status-list";
+  for (const candidate of gameState?.players ?? []) {
+    const needed = sevenResolution?.discardRequirements?.[candidate.id] ?? 0;
+    const done = Boolean(sevenResolution?.discardedPlayerIds?.includes(candidate.id));
+    const item = document.createElement("li");
+    item.textContent = needed <= 0
+      ? `${candidate.name}: Keine Abgabe nötig.`
+      : done
+      ? `${candidate.name}: Abgabe abgeschlossen.`
+      : `${candidate.name}: ${needed} Rohstoffe abgeben.`;
+    statusList.append(item);
+  }
+  wrapper.append(statusList);
+  return wrapper;
+}
+
+function renderSevenDiscardSelectors(player, selection, required) {
+  const grid = document.createElement("div");
+  grid.className = "seven-discard-grid";
+  for (const resource of resourceTypes) {
+    const selected = selection?.[resource] ?? 0;
+    const owned = player?.resources?.[resource] ?? 0;
+    const row = document.createElement("div");
+    row.className = "seven-discard-row";
+    const label = document.createElement("span");
+    label.textContent = `${resourceLabels[resource] ?? resource}: ${selected}/${owned}`;
+    const decrease = createButton("-", () => sendNamedAction("seven.discardResource", { resource, delta: -1 }), "small-button secondary-small-button");
+    decrease.disabled = selected <= 0;
+    const increase = createButton("+", () => sendNamedAction("seven.discardResource", { resource, delta: 1 }), "small-button");
+    increase.disabled = selected >= owned || countSelectedResources(selection) >= required;
+    row.append(label, decrease, increase);
+    grid.append(row);
+  }
+  return grid;
+}
+
+function renderSevenStealPanel(sevenResolution) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "seven-step seven-step--steal";
+  const isActive = isSelectedPlayerActive();
+  if (!isActive) {
+    const waiting = document.createElement("p");
+    waiting.textContent = "Warte auf den aktiven Spieler.";
+    wrapper.append(waiting);
+    return wrapper;
+  }
+
+  const candidates = (gameState?.players ?? [])
+    .filter((player) => player.id !== gameState.activePlayerId && getPlayerResourceTotal(player) > 0);
+  if (candidates.length === 0) {
+    const hint = document.createElement("p");
+    hint.textContent = "Kein Mitspieler hat Rohstoffe zum Ziehen.";
+    wrapper.append(hint, createButton("Weiter", () => sendNamedAction("seven.resolveSteal"), "small-button"));
+    return wrapper;
+  }
+
+  const instruction = document.createElement("p");
+  instruction.textContent = "Wähle einen Mitspieler und ziehe 1 zufällige Rohstoffkarte.";
+  const targetList = document.createElement("div");
+  targetList.className = "seven-target-list";
+  for (const candidate of candidates) {
+    const button = createButton(candidate.name, () => sendNamedAction("seven.selectStealTarget", { targetPlayerId: candidate.id }), "small-button secondary-small-button");
+    button.setAttribute("aria-pressed", String(sevenResolution?.stealTargetPlayerId === candidate.id));
+    targetList.append(button);
+  }
+  const draw = createButton("Karte ziehen", () => sendNamedAction("seven.resolveSteal"), "small-button");
+  draw.disabled = !sevenResolution?.stealTargetPlayerId;
+  wrapper.append(instruction, targetList, draw);
+  return wrapper;
+}
+
+function renderSevenSupplyPanel() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "seven-step seven-step--supply";
+  const hint = document.createElement("p");
+  hint.textContent = "Alle Mitspieler ziehen jetzt 1 Nachschubkarte.";
+  wrapper.append(hint);
+  if (isSelectedPlayerActive()) {
+    wrapper.append(createButton("Nachschub verteilen", () => sendNamedAction("seven.distributeSupply"), "small-button"));
+  } else {
+    const waiting = document.createElement("p");
+    waiting.textContent = "Warte auf den aktiven Spieler.";
+    wrapper.append(waiting);
+  }
+  return wrapper;
+}
+
+function getSevenStepLabel(step) {
+  if (step === "discard") return "Rohstoffe abgeben";
+  if (step === "steal") return "Karte von Mitspieler ziehen";
+  if (step === "supply") return "Nachschub verteilen";
+  return "-";
+}
+
+function countSelectedResources(selection = {}) {
+  return Object.values(selection).reduce((sum, amount) => sum + (amount ?? 0), 0);
+}
+
+function getPlayerResourceTotal(player) {
+  return Object.values(player?.resources ?? {}).reduce((sum, amount) => sum + (amount ?? 0), 0);
 }
 
 function renderMothershipTab(player) {
@@ -1141,11 +1294,13 @@ function renderBoardFullscreen() {
   const content = document.createElement("div");
   content.className = "controller-board-content";
   content.innerHTML = gameState?.board?.svg || "";
+  prepareControllerBoardSvg(content);
   scrubBoardSelectionForInactivePlayer(content);
   applyBoardTransform(content);
   attachBoardGestures(viewport, content);
   viewport.append(content);
   section.append(header, viewport);
+  requestAnimationFrame(() => fitControllerBoardToViewport(viewport, content));
   return section;
 }
 
@@ -1272,6 +1427,42 @@ function applyBoardTransform(content) {
   content.style.transform = `translate(${boardOffset.x}px, ${boardOffset.y}px) scale(${boardScale})`;
 }
 
+function prepareControllerBoardSvg(content) {
+  const svg = content.querySelector("svg");
+  const dimensions = getControllerBoardSvgDimensions(svg);
+  if (!svg || !dimensions) return;
+  svg.setAttribute("width", String(dimensions.width));
+  svg.setAttribute("height", String(dimensions.height));
+}
+
+function getControllerBoardSvgDimensions(svg) {
+  const viewBox = svg?.getAttribute("viewBox")?.trim().split(/\s+/).map(Number);
+  if (!viewBox || viewBox.length !== 4 || viewBox.some((value) => !Number.isFinite(value))) return null;
+  return {
+    width: Math.max(1, viewBox[2]),
+    height: Math.max(1, viewBox[3])
+  };
+}
+
+function fitControllerBoardToViewport(viewport, content) {
+  if (boardViewFitted) return;
+  const dimensions = getControllerBoardSvgDimensions(content.querySelector("svg"));
+  const rect = viewport.getBoundingClientRect();
+  if (!dimensions || rect.width <= 0 || rect.height <= 0) return;
+
+  boardScale = clampBoardScale(Math.min(rect.width / dimensions.width, rect.height / dimensions.height) * 0.94);
+  boardOffset = {
+    x: (rect.width - dimensions.width * boardScale) / 2,
+    y: (rect.height - dimensions.height * boardScale) / 2
+  };
+  boardViewFitted = true;
+  applyBoardTransform(content);
+}
+
+function clampBoardScale(scale) {
+  return Math.min(4, Math.max(0.18, scale));
+}
+
 function attachBoardGestures(viewport, content) {
   content.querySelectorAll("[data-board-type][data-board-id]").forEach((element) => {
     element.addEventListener("click", (event) => {
@@ -1304,7 +1495,7 @@ function attachBoardGestures(viewport, content) {
     if (boardPointers.size >= 2) {
       const nextDistance = getPointerDistance();
       if (boardPanStart?.distance) {
-        boardScale = Math.min(3.2, Math.max(0.45, boardScale * (nextDistance / boardPanStart.distance)));
+        boardScale = clampBoardScale(boardScale * (nextDistance / boardPanStart.distance));
         boardPanStart.distance = nextDistance;
       }
     } else if (boardPanStart) {
@@ -1315,6 +1506,19 @@ function attachBoardGestures(viewport, content) {
     }
     applyBoardTransform(content);
   });
+  viewport.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const previousScale = boardScale;
+    boardScale = clampBoardScale(boardScale * (event.deltaY < 0 ? 1.12 : 0.89));
+    const cursorX = event.clientX - rect.left;
+    const cursorY = event.clientY - rect.top;
+    boardOffset = {
+      x: cursorX - ((cursorX - boardOffset.x) / previousScale) * boardScale,
+      y: cursorY - ((cursorY - boardOffset.y) / previousScale) * boardScale
+    };
+    applyBoardTransform(content);
+  }, { passive: false });
   viewport.addEventListener("pointerup", (event) => boardPointers.delete(event.pointerId));
   viewport.addEventListener("pointercancel", (event) => boardPointers.delete(event.pointerId));
 }

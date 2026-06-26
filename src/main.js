@@ -49,6 +49,7 @@ import {
   cancelTradeOffer,
   confirmPendingTradeStationPlacement,
   confirmPendingSpaceportUpgrade,
+  completeShipExploration,
   createTradeOffer,
   createGameState,
   currentGameStorageKey,
@@ -875,15 +876,18 @@ function moveSelectedShipTo(targetNodeId) {
   state.notice = "";
   const fromPoint = getBoardPointById(selectedShip.locationId);
   const toPoint = getBoardPointById(targetNodeId);
-  state.gameState = moveShip(state.gameState, boardLayout, selectedShip.id, targetNodeId);
-  queueShipFlightAnimation(selectedShip, fromPoint, toPoint);
-  saveCurrentGameState();
+  state.gameState = moveShip(state.gameState, boardLayout, selectedShip.id, targetNodeId, { deferExploration: true });
+  queueShipFlightAnimation(selectedShip, fromPoint, toPoint, () => {
+    state.gameState = completeShipExploration(state.gameState, boardLayout, selectedShip.id);
+    saveCurrentGameState();
+  });
   render();
   return true;
 }
 
 function rollProductionForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "production") return;
+  if (state.gameState.sevenResolution?.active) return;
   if (isDiceRollAnimating()) return;
 
   const rollingPlayer = getActivePlayer();
@@ -1130,6 +1134,26 @@ function foundTradeStationWithSelectedShip() {
   if (isShipFlightAnimating(selectedShip.id)) return;
 
   state.gameState = foundTradeStation(state.gameState, boardLayout, selectedShip.id);
+  saveCurrentGameState();
+  render();
+}
+
+function foundColonyWithShip(shipId) {
+  const ship = (state.gameState?.board?.ships ?? []).find((candidate) => candidate.id === shipId);
+  if (!state.gameState || !ship || !canFoundColonyWithShip(ship)) return;
+
+  const previousGameState = state.gameState;
+  state.gameState = foundColony(state.gameState, boardLayout, ship.id);
+  queuePlacementVfxForStateChange(previousGameState, state.gameState);
+  saveCurrentGameState();
+  render();
+}
+
+function foundTradeStationWithShip(shipId) {
+  const ship = (state.gameState?.board?.ships ?? []).find((candidate) => candidate.id === shipId);
+  if (!state.gameState || !ship || !canFoundTradeStationWithShip(ship)) return;
+
+  state.gameState = foundTradeStation(state.gameState, boardLayout, ship.id);
   saveCurrentGameState();
   render();
 }
@@ -4349,7 +4373,7 @@ function seededRandom(seed, index) {
   return value - Math.floor(value);
 }
 
-function queueShipFlightAnimation(ship, fromPoint, toPoint) {
+function queueShipFlightAnimation(ship, fromPoint, toPoint, onComplete = null) {
   if (!ship || !fromPoint || !toPoint || fromPoint.id === toPoint.id) return;
 
   const distance = getDistance(fromPoint, toPoint);
@@ -4376,7 +4400,8 @@ function queueShipFlightAnimation(ship, fromPoint, toPoint) {
     controlPoint2,
     startAngle,
     startTime: getAnimationNow(),
-    duration
+    duration,
+    onComplete
   });
   startShipFlightLoop();
 }
@@ -4389,17 +4414,20 @@ function startShipFlightLoop() {
 function updateShipFlightAnimations(now) {
   shipFlightAnimation.currentTime = now;
   const activeAnimations = [];
+  const completedCallbacks = [];
   for (const item of shipFlightAnimation.items) {
     if (now - item.startTime >= item.duration) {
       const finalPose = getShipFlightPose(item, 1);
       shipVisualAngles.set(item.shipId, finalPose.angle);
       queueShipEngineTrail(item.shipId, finalPose, now);
+      if (typeof item.onComplete === "function") completedCallbacks.push(item.onComplete);
     } else {
       activeAnimations.push(item);
     }
   }
   shipFlightAnimation.items = activeAnimations;
   shipFlightAnimation.frameRequestId = null;
+  for (const callback of completedCallbacks) callback();
   render();
   if (shipFlightAnimation.items.length > 0) {
     shipFlightAnimation.frameRequestId = requestAnimationFrame(updateShipFlightAnimations);
@@ -4874,6 +4902,20 @@ function canFoundTradeStationWithShip(ship) {
     getAvailableTradeStationDocks(outpost.id).length > 0 &&
     getCargoValueForPlayer(state.gameState, getActivePlayer()?.id) >= getTradeStationRequirement(ship.locationId)
   );
+}
+
+function getFoundableColonyShipsForActivePlayer() {
+  const activePlayer = getActivePlayer();
+  if (!activePlayer) return [];
+  return (state.gameState?.board?.ships ?? [])
+    .filter((ship) => ship.ownerPlayerId === activePlayer.id && canFoundColonyWithShip(ship));
+}
+
+function getFoundableTradeStationShipsForActivePlayer() {
+  const activePlayer = getActivePlayer();
+  if (!activePlayer) return [];
+  return (state.gameState?.board?.ships ?? [])
+    .filter((ship) => ship.ownerPlayerId === activePlayer.id && canFoundTradeStationWithShip(ship));
 }
 
 function getTradeStationRequirement(nodeId) {
@@ -6383,6 +6425,7 @@ function getRemoteControllerState() {
     phaseLabel: state.gameState ? getPhaseLabel(state.gameState.phase) : "",
     activePlayerId: activePlayer?.id ?? null,
     activePlayerName: activePlayer?.name ?? "",
+    sevenResolution: state.gameState?.sevenResolution ?? null,
     players: (state.gameState?.players ?? []).map((player) => getRemotePlayerState(player)),
     trade: getRemoteTradeState(),
     encounter: getRemoteEncounterStateForController(),
@@ -6615,6 +6658,10 @@ function getRemoteControllerActions() {
     actions.push(createRemoteAction("rollPlacement", t("rollStartPlayer"), {}, { requiresActivePlayer: true }));
   }
 
+  if (state.gameState.sevenResolution?.active) {
+    return actions;
+  }
+
   if (state.gameState.phase === "production" && !isDiceRollAnimating()) {
     actions.push(createRemoteAction("rollProduction", t("rollProduction"), {}, { requiresActivePlayer: true }));
   }
@@ -6640,6 +6687,12 @@ function getRemoteControllerActions() {
   if (state.gameState.phase === "flight") {
     if (!state.gameState.hasRolledFlightSpeed && !isMothershipSpeedAnimating()) {
       actions.push(createRemoteAction("determineSpeed", t("determineSpeed"), {}, { requiresActivePlayer: true }));
+    }
+    for (const ship of getFoundableColonyShipsForActivePlayer()) {
+      actions.push(createRemoteAction("found.colony", t("foundColony"), { shipId: ship.id }, { requiresActivePlayer: true }));
+    }
+    for (const ship of getFoundableTradeStationShipsForActivePlayer()) {
+      actions.push(createRemoteAction("found.tradeStation", t("foundTradeStation"), { shipId: ship.id }, { requiresActivePlayer: true }));
     }
     actions.push(createRemoteAction("endTurn", t("endTurn"), {}, { requiresActivePlayer: true }));
   }
@@ -6727,6 +6780,21 @@ function executeRemoteAction(actionId, payload = {}) {
     case "drawSupply":
       if (isRemoteActionPlayerActive(playerId)) drawSupplyForActivePlayer();
       break;
+    case "seven.discardResource":
+      if (payload.resource && Number.isInteger(payload.delta)) updateSevenDiscardForPlayer(playerId, payload.resource, payload.delta);
+      break;
+    case "seven.submitDiscard":
+      submitSevenDiscardForPlayer(playerId);
+      break;
+    case "seven.selectStealTarget":
+      if (isRemoteActionPlayerActive(playerId) && payload.targetPlayerId) chooseSevenStealTarget(payload.targetPlayerId);
+      break;
+    case "seven.resolveSteal":
+      if (isRemoteActionPlayerActive(playerId)) resolveSevenStealForActivePlayer();
+      break;
+    case "seven.distributeSupply":
+      if (isRemoteActionPlayerActive(playerId)) distributeSevenSupplyForActivePlayer();
+      break;
     case "trade.setBankResources":
       if (isRemoteActionPlayerActive(playerId)) {
         if (resourceTypes.includes(payload.fromResource)) state.tradeFromResource = payload.fromResource;
@@ -6759,6 +6827,12 @@ function executeRemoteAction(actionId, payload = {}) {
       break;
     case "toFlightPhase":
       if (isRemoteActionPlayerActive(playerId)) goToFlightPhase();
+      break;
+    case "found.colony":
+      if (isRemoteActionPlayerActive(playerId) && payload.shipId) foundColonyWithShip(payload.shipId);
+      break;
+    case "found.tradeStation":
+      if (isRemoteActionPlayerActive(playerId) && payload.shipId) foundTradeStationWithShip(payload.shipId);
       break;
     case "determineSpeed":
       if (isRemoteActionPlayerActive(playerId)) determineSpeedForActivePlayer();
