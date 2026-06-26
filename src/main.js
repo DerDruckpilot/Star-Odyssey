@@ -6541,12 +6541,50 @@ function getRemoteEncounterStateForController() {
     prompt: promptText || "",
     resultText: resultText || "",
     pendingType: encounter.pendingStep?.type ?? null,
+    pendingStep: getRemoteEncounterPendingStep(encounter.pendingStep),
     status: encounter.status,
     choices: canChoose ? (card?.choices ?? []).map((choice) => ({
       id: choice.id,
       label: getLocalizedEncounterText(choice.label) || choice.id,
       available: isEncounterChoiceAvailable(choice, activePlayer)
     })) : []
+  };
+}
+
+function getRemoteEncounterPendingStep(pendingStep) {
+  if (!pendingStep) return null;
+  if (pendingStep.type === "resourceSelection") {
+    return {
+      type: "resourceSelection",
+      mode: pendingStep.mode,
+      amount: pendingStep.amount,
+      selectedResources: pendingStep.selectedResources ?? {}
+    };
+  }
+  if (pendingStep.type === "upgradeSelection") {
+    return {
+      type: "upgradeSelection",
+      mode: pendingStep.mode,
+      amount: pendingStep.amount
+    };
+  }
+  if (pendingStep.type === "opponentResourceGiftSelection") {
+    return {
+      type: "opponentResourceGiftSelection",
+      amount: pendingStep.amount,
+      receiverPlayerId: pendingStep.receiverPlayerId,
+      currentGiverPlayerId: pendingStep.currentGiverPlayerId
+    };
+  }
+  if (pendingStep.type === "globalUpgradeLossSelection") {
+    return {
+      type: "globalUpgradeLossSelection",
+      amount: pendingStep.amount,
+      currentTargetPlayerId: pendingStep.currentTargetPlayerId
+    };
+  }
+  return {
+    type: pendingStep.type
   };
 }
 
@@ -6650,7 +6688,9 @@ function getRemoteControllerActions() {
         requiresActivePlayer: true
       }));
     }
-    actions.push(createRemoteAction("finishEncounter", t("finishEncounter"), {}, { requiresActivePlayer: true }));
+    if (state.gameState.activeEncounter.status === "resolved") {
+      actions.push(createRemoteAction("finishEncounter", t("finishEncounter"), {}, { requiresActivePlayer: true }));
+    }
     return actions;
   }
 
@@ -6726,6 +6766,10 @@ function isPlayerAdmin(playerId) {
 
 function isRemoteActionPlayerActive(playerId) {
   return Boolean(playerId && getActivePlayer()?.id === playerId);
+}
+
+function isRemoteEncounterActionPlayer(playerId) {
+  return Boolean(playerId && getEncounterActionPlayer()?.id === playerId);
 }
 
 function executeRemoteAction(actionId, payload = {}) {
@@ -6886,6 +6930,14 @@ function executeRemoteAction(actionId, payload = {}) {
       break;
     case "encounter.choose":
       if (isRemoteActionPlayerActive(playerId) && payload.choiceId) resolveActiveEncounterChoice(payload.choiceId);
+      break;
+    case "encounter.resourceDelta":
+      if (isRemoteEncounterActionPlayer(playerId) && payload.resource && Number.isInteger(payload.delta)) {
+        updateEncounterPendingResourceChoice(payload.resource, payload.delta);
+      }
+      break;
+    case "encounter.submitPending":
+      if (isRemoteEncounterActionPlayer(playerId)) submitEncounterPendingAction(payload);
       break;
     case "encounter.startBoardSelection":
       if (

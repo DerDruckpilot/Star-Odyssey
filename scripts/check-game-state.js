@@ -892,6 +892,44 @@ assert(pendingEncounterGame.players[0].halfMedals === 2, "Encounter medal reward
 pendingEncounterGame = finishEncounter(pendingEncounterGame);
 assert(pendingEncounterGame.encounterDiscard.includes("spreadsheet-02"), "Completed pending encounters should also move to the discard pile.");
 
+let tradeLordGiftGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+tradeLordGiftGame = {
+  ...tradeLordGiftGame,
+  phase: "flight",
+  currentPlayerIndex: 0,
+  players: tradeLordGiftGame.players.map((player, index) => ({
+    ...player,
+    resources: index === 0
+      ? { ore: 2, fuel: 0, carbon: 0, food: 0, goods: 0 }
+      : player.resources,
+    halfMedals: index === 0 ? 1 : player.halfMedals
+  }))
+};
+tradeLordGiftGame = determineFlightSpeed(tradeLordGiftGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "spreadsheet-05"
+});
+tradeLordGiftGame = revealPendingFlightEncounter(tradeLordGiftGame);
+tradeLordGiftGame = resolveEncounterChoice(tradeLordGiftGame, { choiceId: "gift-2" });
+assert(tradeLordGiftGame.activeEncounter?.pendingStep?.type === "resourceSelection", "Trade lord gifts should first request the concrete resources to pay.");
+assert(tradeLordGiftGame.activeEncounter?.pendingStep?.mode === "loss", "Trade lord gift payment should be a resource loss selection.");
+tradeLordGiftGame = updateEncounterResourceSelection(tradeLordGiftGame, "ore", 1);
+tradeLordGiftGame = updateEncounterResourceSelection(tradeLordGiftGame, "ore", 1);
+assert(tradeLordGiftGame.players[0].resources.ore === 2, "Encounter payments should not remove resources before confirmation.");
+tradeLordGiftGame = submitEncounterPending(tradeLordGiftGame);
+assert(tradeLordGiftGame.players[0].resources.ore === 0, "Confirmed encounter payments should remove the selected resources.");
+assert(tradeLordGiftGame.activeEncounter?.pendingStep?.type === "resourceSelection", "Trade lord gift rewards should request a resource choice after payment.");
+assert(tradeLordGiftGame.activeEncounter?.pendingStep?.mode === "gain", "Trade lord gift reward should be a resource gain selection.");
+tradeLordGiftGame = updateEncounterResourceSelection(tradeLordGiftGame, "fuel", 1);
+tradeLordGiftGame = submitEncounterPending(tradeLordGiftGame);
+assert(tradeLordGiftGame.players[0].resources.fuel === 1, "Chosen encounter reward resources should be added after confirmation.");
+assert(tradeLordGiftGame.players[0].halfMedals === 2, "Trade lord reward should grant the half medal after the resource choice.");
+assert(tradeLordGiftGame.activeEncounter?.status === "resolved", "Trade lord gift encounter should be finishable after all pending choices.");
+
 let combatEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
   playerCount: 2,

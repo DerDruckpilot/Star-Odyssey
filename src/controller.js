@@ -500,6 +500,7 @@ function commitSetupNameDraft(slot, name) {
 }
 
 function renderActiveTab(player) {
+  if (gameState?.encounter?.active) return renderTurnTab(player);
   if (activeTab === "settings") return renderSettingsTab();
   if (activeTab === "overview") return renderOverviewTab(player);
   if (activeTab === "build") return renderBuildTab(player);
@@ -516,6 +517,10 @@ function renderTurnTab(player) {
   title.textContent = gameState?.phaseLabel || "Zug";
   if (gameState?.sevenResolution?.active) {
     section.append(title, renderSevenResolutionPanel(player));
+    return section;
+  }
+  if (gameState?.encounter?.active) {
+    section.append(title, renderTurnHint(player), renderEncounterPanel());
     return section;
   }
   const actions = getTurnActions();
@@ -832,6 +837,14 @@ function renderEncounterPanel() {
   if (isOwner && gameState.encounter.status === "resolved") {
     const finishAction = findAction("finishEncounter");
     if (finishAction) panel.append(renderActionGrid([finishAction]));
+  } else if (isOwner && gameState.encounter.pendingStep?.type === "resourceSelection") {
+    panel.append(renderControllerEncounterResourceSelection(gameState.encounter.pendingStep));
+  } else if (isOwner && gameState.encounter.pendingStep?.type === "upgradeSelection") {
+    panel.append(renderControllerEncounterUpgradeSelection(gameState.encounter.pendingStep));
+  } else if (isOwner && gameState.encounter.pendingStep?.type === "opponentResourceGiftSelection") {
+    panel.append(renderControllerEncounterOpponentGiftSelection(gameState.encounter.pendingStep));
+  } else if (isOwner && gameState.encounter.pendingStep?.type === "globalUpgradeLossSelection") {
+    panel.append(renderControllerEncounterGlobalUpgradeSelection(gameState.encounter.pendingStep));
   } else if (isOwner && ["shipJumpSelection", "boardTargetSelection"].includes(gameState.encounter.pendingType)) {
     panel.append(createButton(
       gameState.encounter.pendingType === "shipJumpSelection" ? "Schiff wählen" : "Ziel wählen",
@@ -858,6 +871,143 @@ function getEncounterStatusLabel() {
   if (gameState?.encounter?.status === "resolved") return "Begegnung abschließen.";
   if (gameState?.encounter?.pendingType) return "Folge den nächsten Begegnungsschritten.";
   return "Wähle eine Antwort.";
+}
+
+function renderControllerEncounterResourceSelection(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "seven-step seven-step--discard";
+  const player = getSelectedPlayer();
+  const selectedResources = pendingStep.selectedResources ?? {};
+  const selectedTotal = countSelectedResources(selectedResources);
+  const amount = pendingStep.amount ?? 0;
+  const isLoss = pendingStep.mode === "loss";
+
+  const instruction = document.createElement("p");
+  instruction.textContent = isLoss
+    ? `Wähle genau ${amount} Rohstoffe, die du abgeben möchtest.`
+    : `Wähle genau ${amount} Rohstoff${amount === 1 ? "" : "e"}.`;
+
+  const selectionInfo = document.createElement("p");
+  selectionInfo.textContent = `Ausgewählt: ${selectedTotal}/${amount}`;
+
+  const grid = document.createElement("div");
+  grid.className = "seven-discard-grid";
+  for (const resource of resourceTypes) {
+    const owned = player?.resources?.[resource] ?? 0;
+    const selected = selectedResources?.[resource] ?? 0;
+    const row = document.createElement("div");
+    row.className = "seven-discard-row";
+
+    const label = document.createElement("span");
+    label.textContent = isLoss
+      ? `${getResourceLabel(resource)}: ${owned} (${selected})`
+      : `${getResourceLabel(resource)}: ${selected}`;
+
+    const decrease = createButton("-", () => {
+      sendNamedAction("encounter.resourceDelta", { resource, delta: -1 });
+    }, "small-button secondary-small-button");
+    decrease.disabled = selected <= 0;
+
+    const increase = createButton("+", () => {
+      sendNamedAction("encounter.resourceDelta", { resource, delta: 1 });
+    }, "small-button");
+    increase.disabled = selectedTotal >= amount || (isLoss && selected >= owned);
+
+    row.append(label, decrease, increase);
+    grid.append(row);
+  }
+
+  const submit = createButton(
+    isLoss ? "Rohstoffe abgeben" : "Rohstoff wählen",
+    () => sendNamedAction("encounter.submitPending"),
+    "small-button"
+  );
+  submit.disabled = selectedTotal !== amount;
+  wrapper.append(instruction, selectionInfo, grid, submit);
+  return wrapper;
+}
+
+function renderControllerEncounterUpgradeSelection(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  const player = getSelectedPlayer();
+  const isLoss = pendingStep.mode === "loss";
+  const hasLossTarget = upgradeDefinitions.some((upgrade) => (player?.upgrades?.[upgrade.id] ?? 0) > 0);
+
+  if (isLoss && !hasLossTarget) {
+    wrapper.append(createButton("Weiter", () => sendNamedAction("encounter.submitPending"), "small-button"));
+    return wrapper;
+  }
+
+  for (const upgrade of upgradeDefinitions) {
+    const currentAmount = player?.upgrades?.[upgrade.id] ?? 0;
+    const button = createButton(
+      `${isLoss ? "Ausbau abgeben" : "Ausbau wählen"} · ${getUpgradeLabel(upgrade.id)}`,
+      () => sendNamedAction("encounter.submitPending", { upgrade: upgrade.id }),
+      "small-button"
+    );
+    button.disabled = isLoss ? currentAmount <= 0 : currentAmount >= upgrade.limit;
+    wrapper.append(button);
+  }
+  return wrapper;
+}
+
+function renderControllerEncounterOpponentGiftSelection(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  const giver = gameState?.players?.find((player) => player.id === pendingStep.currentGiverPlayerId);
+  const receiver = gameState?.players?.find((player) => player.id === pendingStep.receiverPlayerId);
+  const hint = document.createElement("p");
+  hint.textContent = `${giver?.name ?? "Mitspieler"}: Wähle einen Rohstoff für ${receiver?.name ?? "den aktiven Spieler"}.`;
+  wrapper.append(hint);
+
+  let hasResource = false;
+  for (const resource of resourceTypes) {
+    const owned = giver?.resources?.[resource] ?? 0;
+    const button = createButton(
+      `${getResourceLabel(resource)} (${owned})`,
+      () => sendNamedAction("encounter.submitPending", { resource }),
+      "small-button"
+    );
+    button.disabled = owned <= 0;
+    if (owned > 0) hasResource = true;
+    wrapper.append(button);
+  }
+  if (!hasResource) {
+    wrapper.append(createButton("Weiter", () => sendNamedAction("encounter.submitPending", { skip: true }), "small-button"));
+  }
+  return wrapper;
+}
+
+function renderControllerEncounterGlobalUpgradeSelection(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  const targetPlayer = gameState?.players?.find((player) => player.id === pendingStep.currentTargetPlayerId);
+  const hint = document.createElement("p");
+  hint.textContent = `Betroffener Spieler: ${targetPlayer?.name ?? "keiner"}`;
+  wrapper.append(hint);
+
+  if (!targetPlayer) {
+    wrapper.append(createButton("Weiter", () => sendNamedAction("encounter.submitPending"), "small-button"));
+    return wrapper;
+  }
+
+  let hasUpgrade = false;
+  for (const upgrade of upgradeDefinitions) {
+    const currentAmount = targetPlayer.upgrades?.[upgrade.id] ?? 0;
+    const button = createButton(
+      `${getUpgradeLabel(upgrade.id)} (${currentAmount})`,
+      () => sendNamedAction("encounter.submitPending", { upgrade: upgrade.id }),
+      "small-button"
+    );
+    button.disabled = currentAmount <= 0;
+    if (currentAmount > 0) hasUpgrade = true;
+    wrapper.append(button);
+  }
+  if (!hasUpgrade) {
+    wrapper.append(createButton("Weiter", () => sendNamedAction("encounter.submitPending"), "small-button"));
+  }
+  return wrapper;
 }
 
 function renderTurnHint(player) {
