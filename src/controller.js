@@ -525,6 +525,7 @@ function renderTurnTab(player) {
   }
   const actions = getTurnActions();
   const placementHint = getPlacementTurnHint();
+  const flightHint = getFlightTurnHint();
   section.append(title, renderTurnHint(player), renderEncounterPanel());
   if (placementHint && actions.length === 0) {
     const hint = document.createElement("div");
@@ -532,6 +533,12 @@ function renderTurnTab(player) {
     hint.textContent = placementHint;
     section.append(hint);
     return section;
+  }
+  if (flightHint) {
+    const hint = document.createElement("div");
+    hint.className = "turn-summary controller-summary";
+    hint.textContent = flightHint;
+    section.append(hint);
   }
   section.append(renderActionGrid(actions));
   return section;
@@ -1604,7 +1611,7 @@ function prepareControllerBoardSvg(content) {
   svg.setAttribute("width", String(dimensions.width));
   svg.setAttribute("height", String(dimensions.height));
 
-  if (isPlacementBoardMode()) {
+  if (isPlacementBoardMode() || isFlightMovementBoardMode()) {
     svg.classList.add("controller-board-svg--placement");
     content.querySelectorAll(".planet.is-selected, .planet-system.is-selected, .start-system.is-selected").forEach((element) => {
       element.classList.remove("is-selected");
@@ -1647,12 +1654,20 @@ function clampBoardScale(scale) {
 
 function attachBoardGestures(viewport, content) {
   viewport.addEventListener("click", (event) => {
-    if (!isPlacementBoardMode()) return;
+    if (!isPlacementBoardMode() && !isFlightMovementBoardMode()) return;
+    if (isFlightMovementBoardMode() && event.target?.closest?.("[data-board-type][data-board-id]")) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     if (!canUseBoardSelection()) {
       flashBoardFeedback(viewport);
       return;
+    }
+    if (isFlightMovementBoardMode()) {
+      const reachableTarget = findNearestReachableTarget(content, event.clientX, event.clientY);
+      if (reachableTarget) {
+        sendFlightMoveSelection(reachableTarget.dataset.boardId);
+        return;
+      }
     }
     const placementTarget = findNearestPlacementTarget(content, event.clientX, event.clientY);
     if (!placementTarget) {
@@ -1676,6 +1691,22 @@ function attachBoardGestures(viewport, content) {
           return;
         }
         sendPlacementSelection(placementTarget.dataset.boardId);
+        return;
+      }
+      if (isFlightMovementBoardMode()) {
+        if (element.dataset.boardType === "ship") {
+          sendNamedAction("board.select", {
+            type: "ship",
+            id: element.dataset.boardId
+          });
+          return;
+        }
+        const reachableTarget = getReachableTargetElement(element) ?? findNearestReachableTarget(content, event.clientX, event.clientY);
+        if (reachableTarget) {
+          sendFlightMoveSelection(reachableTarget.dataset.boardId);
+          return;
+        }
+        flashBoardFeedback(viewport);
         return;
       }
       sendNamedAction("board.select", {
@@ -1733,6 +1764,9 @@ function attachBoardGestures(viewport, content) {
 function getControllerBoardModeLabel() {
   if (!gameState?.board) return "Nur ansehen";
   if (canUseBoardSelection()) return gameState.board.mode || "Ziel wählen";
+  if (gameState.phase === "flight" && gameState.flight?.activePlayerName) {
+    return gameState.flight.waitHint || `Warte auf Flugphase von ${gameState.flight.activePlayerName}.`;
+  }
   if (gameState.phase === "placement" && gameState.placement?.waitHint) {
     return gameState.placement.waitHint;
   }
@@ -1747,6 +1781,14 @@ function isPlacementBoardMode() {
     gameState?.phase === "placement" &&
     gameState?.placement &&
     ["placeSpaceport", "placeColonyShip", "placeFirstColony", "placeSecondColony"].includes(gameState.placement.step)
+  );
+}
+
+function isFlightMovementBoardMode() {
+  return Boolean(
+    gameState?.phase === "flight" &&
+    gameState?.flight?.hasRolledSpeed &&
+    !gameState?.encounter?.active
   );
 }
 
@@ -1784,6 +1826,35 @@ function findNearestPlacementTarget(content, clientX, clientY) {
   return nearest;
 }
 
+function getReachableTargetElement(element) {
+  const candidate = element?.closest?.("[data-board-type='spacePoint'][data-board-id]");
+  if (!candidate?.classList?.contains("is-reachable")) return null;
+  return candidate;
+}
+
+function findNearestReachableTarget(content, clientX, clientY) {
+  let nearest = null;
+  let nearestDistance = Infinity;
+  content.querySelectorAll("[data-board-type='spacePoint'][data-board-id].is-reachable").forEach((element) => {
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const distance = Math.hypot(clientX - centerX, clientY - centerY);
+    const threshold = Math.max(18, Math.max(rect.width, rect.height) * 2.2);
+    if (distance <= threshold && distance < nearestDistance) {
+      nearest = element;
+      nearestDistance = distance;
+    }
+  });
+  return nearest;
+}
+
+function sendFlightMoveSelection(nodeId) {
+  if (!nodeId) return;
+  sendNamedAction("board.moveShip", { targetNodeId: nodeId });
+}
+
 function sendPlacementSelection(nodeId) {
   if (!nodeId) return;
   console.debug("[controller] placement target clicked", {
@@ -1801,6 +1872,17 @@ function getPlacementTurnHint() {
   }
   if (gameState.placement.actionPlayerId && gameState.placement.actionPlayerId !== selectedPlayerId) {
     return gameState.placement.waitHint || "";
+  }
+  return "";
+}
+
+function getFlightTurnHint() {
+  if (gameState?.phase !== "flight" || !gameState.flight?.hasRolledSpeed || gameState.encounter?.active) return "";
+  if (gameState.flight.activePlayerId === selectedPlayerId && isSelectedPlayerActive()) {
+    return gameState.flight.turnHint || "";
+  }
+  if (gameState.flight.activePlayerName) {
+    return gameState.flight.waitHint || `Warte, bis ${gameState.flight.activePlayerName} seine Flugphase beendet.`;
   }
   return "";
 }

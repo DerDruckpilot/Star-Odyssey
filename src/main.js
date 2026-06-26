@@ -6541,6 +6541,7 @@ function getRemoteControllerState() {
     activePlayerId: activePlayer?.id ?? null,
     activePlayerName: activePlayer?.name ?? "",
     placement: getRemotePlacementStateForController(),
+    flight: getRemoteFlightStateForController(),
     sevenResolution: state.gameState?.sevenResolution ?? null,
     players: (state.gameState?.players ?? []).map((player) => getRemotePlayerState(player)),
     trade: getRemoteTradeState(),
@@ -6548,6 +6549,26 @@ function getRemoteControllerState() {
     board: getRemoteBoardState(),
     saves: getRemoteSaveList(),
     actions: getRemoteControllerActions()
+  };
+}
+
+function getRemoteFlightStateForController() {
+  if (state.view !== "board" || !state.gameState || state.gameState.phase !== "flight") return null;
+  const activePlayer = getActivePlayer();
+  const selectedShip = getSelectedShip();
+  const movableShips = getMovableShipsForActivePlayer();
+  const totalSpeed = Number(state.gameState.flightSpeedTotal);
+  return {
+    hasRolledSpeed: Boolean(state.gameState.hasRolledFlightSpeed),
+    totalSpeed: Number.isFinite(totalSpeed) ? totalSpeed : null,
+    activePlayerId: activePlayer?.id ?? null,
+    activePlayerName: activePlayer?.name ?? "",
+    movableShipCount: movableShips.length,
+    selectedShipId: selectedShip?.id ?? null,
+    selectedShipRemaining: selectedShip ? getShipRemainingMovement(selectedShip.id) : null,
+    turnHint: getControllerFlightTurnHint(),
+    boardHint: getControllerFlightBoardHint(),
+    waitHint: t("controllerFlightWait").replace("{playerName}", activePlayer?.name ?? t("activePlayer"))
   };
 }
 
@@ -6747,7 +6768,12 @@ function getRemoteBoardActionPlayerId() {
       ? getActivePlayer()?.id ?? null
       : null;
   }
-  if (state.gameState?.phase === "flight" && getSelectedShip()) {
+  if (
+    state.gameState?.phase === "flight" &&
+    state.gameState.hasRolledFlightSpeed &&
+    !state.gameState.activeEncounter &&
+    getMovableShipsForActivePlayer().length > 0
+  ) {
     return getActivePlayer()?.id ?? null;
   }
   return null;
@@ -6763,8 +6789,48 @@ function getRemoteBoardMode() {
     const hint = getControllerPlacementBoardHint(state.gameState.placement?.step);
     if (hint) return hint;
   }
-  if (state.gameState?.phase === "flight" && getSelectedShip()) return t("encounterSelectTargetPoint");
+  if (state.gameState?.phase === "flight") return getControllerFlightBoardHint();
   return t("boardViewOnly");
+}
+
+function getMovableShipsForActivePlayer() {
+  const activePlayer = getActivePlayer();
+  if (
+    !activePlayer ||
+    state.gameState?.phase !== "flight" ||
+    !state.gameState.hasRolledFlightSpeed ||
+    state.gameState.activeEncounter
+  ) {
+    return [];
+  }
+
+  return (state.gameState.board?.ships ?? [])
+    .filter((ship) => ship.ownerPlayerId === activePlayer.id)
+    .filter((ship) => !isShipFlightAnimating(ship.id))
+    .filter((ship) => getShipRemainingMovement(ship.id) > 0);
+}
+
+function getControllerFlightTurnHint() {
+  if (state.gameState?.phase !== "flight") return "";
+  const activePlayer = getActivePlayer();
+  if (!state.gameState.hasRolledFlightSpeed) return "";
+  if (getMovableShipsForActivePlayer().length === 0) return t("controllerFlightNoMovableShips");
+  const speed = Number(state.gameState.flightSpeedTotal);
+  return `${t("controllerFlightTurnMoveShips")} ${t("controllerFlightSpeed").replace("{speed}", Number.isFinite(speed) ? speed : "-")} ${t("controllerFlightTurnChooseTarget")}`;
+}
+
+function getControllerFlightBoardHint() {
+  if (state.gameState?.phase !== "flight") return t("boardViewOnly");
+  const activePlayer = getActivePlayer();
+  if (!activePlayer) return t("boardViewOnly");
+  if (!state.gameState.hasRolledFlightSpeed) return t("boardViewOnly");
+  if (state.gameState.activeEncounter) return t("boardViewOnly");
+  if (getSelectedShip()) {
+    const remaining = getShipRemainingMovement(getSelectedShip().id);
+    return `${t("controllerFlightBoardChooseTarget")} ${t("remainingMovement")}: ${remaining}`;
+  }
+  if (getMovableShipsForActivePlayer().length > 0) return t("controllerFlightBoardChooseShip");
+  return t("controllerFlightNoMovableShips");
 }
 
 function serializeBoardSvgForController() {
@@ -7086,7 +7152,18 @@ function executeRemoteAction(actionId, payload = {}) {
       }
       break;
     case "board.select":
-      if (isRemoteActionPlayerActive(playerId) && payload.type && payload.id) selectBoardElement(payload.type, payload.id);
+      if (isRemoteActionPlayerActive(playerId) && payload.type && payload.id) {
+        if (payload.type === "ship" && state.gameState?.phase === "flight") {
+          selectRemoteFlightShip(playerId, payload.id);
+        } else {
+          selectBoardElement(payload.type, payload.id);
+        }
+      }
+      break;
+    case "board.moveShip":
+      if (isRemoteActionPlayerActive(playerId) && typeof payload.targetNodeId === "string") {
+        moveRemoteSelectedShip(playerId, payload.targetNodeId);
+      }
       break;
     case "placement.select":
       if (isRemoteActionPlayerActive(playerId) && typeof payload.nodeId === "string") {
@@ -7107,6 +7184,30 @@ function executeRemoteAction(actionId, payload = {}) {
     default:
       break;
   }
+}
+
+function selectRemoteFlightShip(playerId, shipId) {
+  if (
+    !state.gameState ||
+    state.gameState.phase !== "flight" ||
+    state.gameState.activeEncounter ||
+    !state.gameState.hasRolledFlightSpeed
+  ) {
+    return;
+  }
+
+  const ship = state.gameState.board?.ships?.find((candidate) => candidate.id === shipId);
+  if (!ship || ship.ownerPlayerId !== playerId || getShipRemainingMovement(ship.id) <= 0 || isShipFlightAnimating(ship.id)) {
+    return;
+  }
+
+  selectBoardElement("ship", ship.id);
+}
+
+function moveRemoteSelectedShip(playerId, targetNodeId) {
+  const selectedShip = getSelectedShip();
+  if (!selectedShip || selectedShip.ownerPlayerId !== playerId) return;
+  moveSelectedShipTo(targetNodeId);
 }
 
 function updateControllerName(playerId, name) {
