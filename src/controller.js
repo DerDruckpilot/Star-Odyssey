@@ -1635,6 +1635,12 @@ function applyStructuredFlightBoardState(content) {
     selectedShip?.classList.add("is-selected");
   }
 
+  const movableShipIds = new Set(Array.isArray(flight.movableShipIds) ? flight.movableShipIds : []);
+  for (const shipId of movableShipIds) {
+    const ship = content.querySelector(`[data-board-type='ship'][data-board-id='${cssEscape(shipId)}']`);
+    ship?.classList.add("is-controller-movable-ship");
+  }
+
   const reachableNodeIds = new Set(Array.isArray(flight.reachableNodeIds) ? flight.reachableNodeIds : []);
   for (const nodeId of reachableNodeIds) {
     const target = content.querySelector(`[data-board-type='spacePoint'][data-board-id='${cssEscape(nodeId)}']`);
@@ -1678,7 +1684,6 @@ function clampBoardScale(scale) {
 function attachBoardGestures(viewport, content) {
   viewport.addEventListener("click", (event) => {
     if (!isPlacementBoardMode() && !isFlightMovementBoardMode()) return;
-    if (isFlightMovementBoardMode() && event.target?.closest?.("[data-board-type][data-board-id]")) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     if (!canUseBoardSelection()) {
@@ -1686,6 +1691,25 @@ function attachBoardGestures(viewport, content) {
       return;
     }
     if (isFlightMovementBoardMode()) {
+      const directElement = getBoardElementFromEventTarget(event.target);
+      const directShip = getMovableShipElement(directElement);
+      if (directShip) {
+        sendFlightShipSelection(directShip.dataset.boardId);
+        return;
+      }
+
+      const directReachableTarget = getReachableTargetElement(directElement);
+      if (directReachableTarget) {
+        sendFlightMoveSelection(directReachableTarget.dataset.boardId);
+        return;
+      }
+
+      const nearestShip = findNearestMovableShip(content, event.clientX, event.clientY);
+      if (nearestShip) {
+        sendFlightShipSelection(nearestShip.dataset.boardId);
+        return;
+      }
+
       const reachableTarget = findNearestReachableTarget(content, event.clientX, event.clientY);
       if (reachableTarget) {
         sendFlightMoveSelection(reachableTarget.dataset.boardId);
@@ -1718,10 +1742,7 @@ function attachBoardGestures(viewport, content) {
       }
       if (isFlightMovementBoardMode()) {
         if (element.dataset.boardType === "ship") {
-          sendNamedAction("board.select", {
-            type: "ship",
-            id: element.dataset.boardId
-          });
+          sendFlightShipSelection(element.dataset.boardId);
           return;
         }
         const reachableTarget = getReachableTargetElement(element) ?? findNearestReachableTarget(content, event.clientX, event.clientY);
@@ -1821,6 +1842,16 @@ function getPlacementTargetElement(element) {
   return candidate;
 }
 
+function getBoardElementFromEventTarget(target) {
+  return target?.closest?.("[data-board-type][data-board-id]") ?? null;
+}
+
+function getMovableShipElement(element) {
+  const candidate = element?.closest?.("[data-board-type='ship'][data-board-id]");
+  if (!candidate || !isMovableShipId(candidate.dataset.boardId)) return null;
+  return candidate;
+}
+
 function findNearestPlacementTarget(content, clientX, clientY) {
   let nearest = null;
   let nearestDistance = Infinity;
@@ -1874,10 +1905,42 @@ function findNearestReachableTarget(content, clientX, clientY) {
   return nearest;
 }
 
+function findNearestMovableShip(content, clientX, clientY) {
+  let nearest = null;
+  let nearestDistance = Infinity;
+  content.querySelectorAll("[data-board-type='ship'][data-board-id]").forEach((element) => {
+    if (!isMovableShipId(element.dataset.boardId)) return;
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const distance = Math.hypot(clientX - centerX, clientY - centerY);
+    const threshold = Math.max(24, Math.max(rect.width, rect.height) * 0.72);
+    if (distance <= threshold && distance < nearestDistance) {
+      nearest = element;
+      nearestDistance = distance;
+    }
+  });
+  return nearest;
+}
+
+function isMovableShipId(shipId) {
+  if (!shipId) return false;
+  return Boolean(gameState?.flight?.movableShipIds?.includes(shipId));
+}
+
 function isReachableTargetId(nodeId) {
   if (!nodeId) return false;
   if (gameState?.flight?.reachableNodeIds?.includes(nodeId)) return true;
   return Boolean(document.querySelector(`[data-board-type='spacePoint'][data-board-id='${cssEscape(nodeId)}'].is-reachable`));
+}
+
+function sendFlightShipSelection(shipId) {
+  if (!shipId) return;
+  sendNamedAction("board.select", {
+    type: "ship",
+    id: shipId
+  });
 }
 
 function sendFlightMoveSelection(nodeId) {
