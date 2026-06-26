@@ -524,7 +524,16 @@ function renderTurnTab(player) {
     return section;
   }
   const actions = getTurnActions();
-  section.append(title, renderTurnHint(player), renderEncounterPanel(), renderActionGrid(actions));
+  const placementHint = getPlacementTurnHint();
+  section.append(title, renderTurnHint(player), renderEncounterPanel());
+  if (placementHint && actions.length === 0) {
+    const hint = document.createElement("div");
+    hint.className = "turn-summary controller-summary";
+    hint.textContent = placementHint;
+    section.append(hint);
+    return section;
+  }
+  section.append(renderActionGrid(actions));
   return section;
 }
 
@@ -1676,10 +1685,24 @@ function attachBoardGestures(viewport, content) {
 function getControllerBoardModeLabel() {
   if (!gameState?.board) return "Nur ansehen";
   if (canUseBoardSelection()) return gameState.board.mode || "Ziel wählen";
+  if (gameState.phase === "placement" && gameState.placement?.waitHint) {
+    return gameState.placement.waitHint;
+  }
   if (gameState.board.actionPlayerId && gameState.board.actionPlayerId !== selectedPlayerId) {
     return `${gameState.activePlayerName || "Ein anderer Spieler"} ist am Zug.`;
   }
   return "Nur ansehen";
+}
+
+function getPlacementTurnHint() {
+  if (gameState?.phase !== "placement" || !gameState.placement) return "";
+  if (gameState.placement.actionPlayerId === selectedPlayerId && isSelectedPlayerActive()) {
+    return gameState.placement.activeTurnHint || "";
+  }
+  if (gameState.placement.actionPlayerId && gameState.placement.actionPlayerId !== selectedPlayerId) {
+    return gameState.placement.waitHint || "";
+  }
+  return "";
 }
 
 function canUseBoardSelection() {

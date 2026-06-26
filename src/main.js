@@ -757,6 +757,10 @@ function selectBoardElement(type, id) {
   if (type === "spacePoint" && state.gameState.board?.pendingTradeStationPlacement) return;
   if (type === "spacePoint" && placePendingShipAt(id)) return;
   if (type === "structure" && confirmPendingSpaceportAt(id)) return;
+  if (state.gameState.phase === "placement") {
+    if (type === "spacePoint") handlePlacementPointSelection(id);
+    return;
+  }
   if (type === "spacePoint" && handlePlacementPointSelection(id)) return;
   if (type === "spacePoint" && moveSelectedShipTo(id)) return;
 
@@ -1260,6 +1264,7 @@ function returnToMenuFromGameOver() {
 }
 
 function isSelectedElement(type, id) {
+  if (state.gameState?.phase === "placement" && ["planet", "planetSystem"].includes(type)) return false;
   const selectedElement = state.gameState?.board?.selectedElement;
   return selectedElement?.type === type && selectedElement?.id === id;
 }
@@ -3228,6 +3233,20 @@ function getPlacementInstruction(placement) {
   if (placement?.step === "rollStartPlayer") return t("placementRollInstruction");
   if (placement?.step === "placeColonyShip") return t("placementSelectLaunchNode");
   if (["placeSpaceport", "placeFirstColony", "placeSecondColony"].includes(placement?.step)) return t("placementSelectColonySite");
+  return "";
+}
+
+function getControllerPlacementTurnHint(step) {
+  if (step === "placeSpaceport") return t("controllerPlacementTurnSpaceport");
+  if (step === "placeColonyShip") return t("controllerPlacementTurnColonyShip");
+  if (["placeFirstColony", "placeSecondColony"].includes(step)) return t("controllerPlacementTurnColony");
+  return "";
+}
+
+function getControllerPlacementBoardHint(step) {
+  if (step === "placeSpaceport") return t("controllerPlacementBoardSpaceport");
+  if (step === "placeColonyShip") return t("controllerPlacementBoardColonyShip");
+  if (["placeFirstColony", "placeSecondColony"].includes(step)) return t("controllerPlacementBoardColony");
   return "";
 }
 
@@ -6517,6 +6536,7 @@ function getRemoteControllerState() {
     phaseLabel: state.gameState ? getPhaseLabel(state.gameState.phase) : "",
     activePlayerId: activePlayer?.id ?? null,
     activePlayerName: activePlayer?.name ?? "",
+    placement: getRemotePlacementStateForController(),
     sevenResolution: state.gameState?.sevenResolution ?? null,
     players: (state.gameState?.players ?? []).map((player) => getRemotePlayerState(player)),
     trade: getRemoteTradeState(),
@@ -6524,6 +6544,21 @@ function getRemoteControllerState() {
     board: getRemoteBoardState(),
     saves: getRemoteSaveList(),
     actions: getRemoteControllerActions()
+  };
+}
+
+function getRemotePlacementStateForController() {
+  if (state.view !== "board" || !state.gameState || state.gameState.phase !== "placement") return null;
+
+  const step = state.gameState.placement?.step ?? "";
+  const actionPlayer = getActivePlayer();
+  return {
+    step,
+    actionPlayerId: actionPlayer?.id ?? null,
+    actionPlayerName: actionPlayer?.name ?? "",
+    activeTurnHint: getControllerPlacementTurnHint(step),
+    boardHint: getControllerPlacementBoardHint(step),
+    waitHint: t("controllerPlacementWait").replace("{playerName}", actionPlayer?.name ?? t("activePlayer"))
   };
 }
 
@@ -6704,7 +6739,9 @@ function getRemoteBoardActionPlayerId() {
     return state.gameState.board.pendingSpaceportUpgrade.ownerPlayerId ?? null;
   }
   if (state.gameState?.phase === "placement") {
-    return getActivePlayer()?.id ?? null;
+    return ["placeSpaceport", "placeColonyShip", "placeFirstColony", "placeSecondColony"].includes(state.gameState.placement?.step)
+      ? getActivePlayer()?.id ?? null
+      : null;
   }
   if (state.gameState?.phase === "flight" && getSelectedShip()) {
     return getActivePlayer()?.id ?? null;
@@ -6718,6 +6755,10 @@ function getRemoteBoardMode() {
   if (state.encounterBoardSelectionActive && pendingEncounterStep?.type === "boardTargetSelection") return t("encounterSelectTargetPoint");
   if (state.gameState?.board?.pendingShipPlacement) return t("chooseStartPointHint");
   if (state.gameState?.board?.pendingSpaceportUpgrade) return t("chooseStartPointHint");
+  if (state.gameState?.phase === "placement") {
+    const hint = getControllerPlacementBoardHint(state.gameState.placement?.step);
+    if (hint) return hint;
+  }
   if (state.gameState?.phase === "flight" && getSelectedShip()) return t("encounterSelectTargetPoint");
   return t("boardViewOnly");
 }
