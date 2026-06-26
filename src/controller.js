@@ -5,8 +5,6 @@ import { mothershipUpgradeSlots, upgradeMenuAssetPaths, upgradeMenuOrder } from 
 const root = document.querySelector("#controller-root");
 const params = new URLSearchParams(window.location.search);
 const sessionId = params.get("session") || "";
-const storedControllerIdKey = "star-odyssey-controller-id";
-const storedPlayerIdKey = `star-odyssey-controller-player-${sessionId || "default"}`;
 const reconnectDelayMs = 1400;
 const localControllerStoragePrefix = "star-odyssey-controller-channel";
 const resourceLabels = {
@@ -33,8 +31,8 @@ let localTransport = "";
 let localFallbackActive = false;
 let webSocketConnectedOnce = false;
 let reconnectTimer = null;
-let controllerId = loadStoredControllerId();
-let selectedPlayerId = normalizePlayerParam(params.get("player")) || loadStoredPlayerId();
+let selectedPlayerId = normalizePlayerParam(params.get("player"));
+let controllerId = loadStoredControllerId(selectedPlayerId);
 let connectionStatus = "connecting";
 let replacedByReconnect = false;
 let gameState = null;
@@ -48,7 +46,12 @@ const tabScrollPositions = new Map();
 const setupNameDrafts = new Map();
 let saveNameDraft = "";
 
-function loadStoredControllerId() {
+function getStoredControllerIdKey(playerId) {
+  return `star-odyssey-controller-id-${sessionId || "default"}-${playerId || "unknown"}`;
+}
+
+function loadStoredControllerId(playerId) {
+  const storedControllerIdKey = getStoredControllerIdKey(playerId);
   try {
     const existing = localStorage.getItem(storedControllerIdKey);
     if (existing) return existing;
@@ -60,26 +63,15 @@ function loadStoredControllerId() {
   }
 }
 
-function loadStoredPlayerId() {
-  try {
-    return localStorage.getItem(storedPlayerIdKey) || "";
-  } catch {
-    return "";
-  }
-}
-
 function normalizePlayerParam(value) {
   if (!value) return "";
   return /^\d+$/.test(value) ? `player-${value}` : value;
 }
 
 function saveSelectedPlayerId(playerId) {
+  if (selectedPlayerId === playerId) return;
   selectedPlayerId = playerId;
-  try {
-    localStorage.setItem(storedPlayerIdKey, playerId);
-  } catch {
-    // Controller selection persistence is best-effort.
-  }
+  controllerId = loadStoredControllerId(playerId);
 }
 
 function getWebSocketUrl() {
@@ -90,6 +82,11 @@ function getWebSocketUrl() {
 function connect() {
   if (!sessionId) {
     connectionStatus = "missing-session";
+    render();
+    return;
+  }
+  if (!selectedPlayerId) {
+    connectionStatus = "missing-player";
     render();
     return;
   }
@@ -1428,6 +1425,7 @@ function getStatusLabel() {
   if (connectionStatus === "lost") return "Getrennt";
   if (connectionStatus === "replaced") return "Ersetzt";
   if (connectionStatus === "missing-session") return "Keine Session in der URL";
+  if (connectionStatus === "missing-player") return "Kein Spieler in der URL";
   return "Verbinde ...";
 }
 

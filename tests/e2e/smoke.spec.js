@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("main menu, QR controller lobby, board, and phone menu work", async ({ page, browser }) => {
+test("main menu, QR controller lobby, board, and phone menu work", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "Star Odyssey" })).toBeVisible();
@@ -29,10 +29,8 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   expect(popup.url()).toBe(controllerUrls[0]);
   await popup.close();
 
-  const controllerOneContext = await browser.newContext();
-  const controllerTwoContext = await browser.newContext();
-  const controllerOne = await controllerOneContext.newPage();
-  const controllerTwo = await controllerTwoContext.newPage();
+  const controllerOne = await page.context().newPage();
+  const controllerTwo = await page.context().newPage();
 
   await controllerOne.goto(controllerUrls[0]);
   await controllerTwo.goto(controllerUrls[1]);
@@ -42,6 +40,7 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await controllerOne.getByLabel("Name").fill("Alice");
   await controllerOne.getByRole("button", { name: "Red" }).click();
   await controllerOne.getByRole("button", { name: "Bereit" }).click();
+  await expect(page.getByText("Alice is ready")).toBeVisible();
 
   await controllerTwo.getByLabel("Name").fill("Bob");
   await controllerTwo.getByRole("button", { name: "Blue" }).click();
@@ -63,8 +62,8 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await expect(controllerOne.locator(".controller-board-viewport")).toBeVisible();
   await expect(controllerOne.getByRole("button", { name: "Zurück zum Menü" })).toBeVisible();
 
-  await controllerOneContext.close();
-  await controllerTwoContext.close();
+  await controllerOne.close();
+  await controllerTwo.close();
 });
 
 test("card debug review pages load and filter cards", async ({ page }) => {

@@ -6296,6 +6296,7 @@ function handleLocalControllerMessage(message) {
   if (message.type === "hello") {
     const controllerId = message.controllerId || `controller-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const playerId = message.playerId || null;
+    if (!getControllerLobbySlot(playerId)) return;
     for (const [existingControllerId, controller] of remoteHost.localControllers.entries()) {
       if (existingControllerId !== controllerId && controller.playerId === playerId) {
         remoteHost.localControllers.delete(existingControllerId);
@@ -6337,7 +6338,8 @@ function syncLocalControllerSlots() {
   ));
   const localSlots = [...remoteHost.localControllers.values()].map((controller) => ({
     controllerId: controller.controllerId,
-    playerId: controller.playerId
+    playerId: controller.playerId,
+    connected: true
   }));
   remoteHost.controllerSlots = [...socketSlots, ...localSlots];
   remoteHost.controllerCount = remoteHost.controllerSlots.length;
