@@ -7084,6 +7084,19 @@ function executeRemoteAction(actionId, payload = {}) {
     case "board.select":
       if (isRemoteActionPlayerActive(playerId) && payload.type && payload.id) selectBoardElement(payload.type, payload.id);
       break;
+    case "placement.select":
+      if (isRemoteActionPlayerActive(playerId) && typeof payload.nodeId === "string") {
+        const previousStep = state.gameState?.placement?.step;
+        const placed = handlePlacementPointSelection(payload.nodeId);
+        console.debug("[host] placement target received", {
+          playerId,
+          nodeId: payload.nodeId,
+          previousStep,
+          placed,
+          nextStep: state.gameState?.placement?.step
+        });
+      }
+      break;
     case "app.exit":
       if (isPlayerAdmin(playerId)) requestAppExit();
       break;

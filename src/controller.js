@@ -1592,6 +1592,18 @@ function prepareControllerBoardSvg(content) {
   if (!svg || !dimensions) return;
   svg.setAttribute("width", String(dimensions.width));
   svg.setAttribute("height", String(dimensions.height));
+
+  if (isPlacementBoardMode()) {
+    svg.classList.add("controller-board-svg--placement");
+    content.querySelectorAll(".planet.is-selected, .planet-system.is-selected, .start-system.is-selected").forEach((element) => {
+      element.classList.remove("is-selected");
+    });
+    content.querySelectorAll(".planet, .planet-system, .start-system, .hidden-system").forEach((element) => {
+      element.style.pointerEvents = "none";
+      element.removeAttribute("role");
+      element.removeAttribute("tabindex");
+    });
+  }
 }
 
 function getControllerBoardSvgDimensions(svg) {
@@ -1628,6 +1640,22 @@ function attachBoardGestures(viewport, content) {
       event.stopPropagation();
       if (!canUseBoardSelection()) {
         flashBoardFeedback(viewport);
+        return;
+      }
+      if (isPlacementBoardMode()) {
+        const placementTarget = getPlacementTargetElement(element);
+        if (!placementTarget) {
+          flashBoardFeedback(viewport);
+          return;
+        }
+        console.debug("[controller] placement target clicked", {
+          playerId: selectedPlayerId,
+          placementStep: gameState?.placement?.step,
+          nodeId: placementTarget.dataset.boardId
+        });
+        sendNamedAction("placement.select", {
+          nodeId: placementTarget.dataset.boardId
+        });
         return;
       }
       sendNamedAction("board.select", {
@@ -1692,6 +1720,20 @@ function getControllerBoardModeLabel() {
     return `${gameState.activePlayerName || "Ein anderer Spieler"} ist am Zug.`;
   }
   return "Nur ansehen";
+}
+
+function isPlacementBoardMode() {
+  return Boolean(
+    gameState?.phase === "placement" &&
+    gameState?.placement &&
+    ["placeSpaceport", "placeColonyShip", "placeFirstColony", "placeSecondColony"].includes(gameState.placement.step)
+  );
+}
+
+function getPlacementTargetElement(element) {
+  const candidate = element?.closest?.("[data-board-type='spacePoint'][data-board-id]");
+  if (!candidate?.classList?.contains("is-placement-target")) return null;
+  return candidate;
 }
 
 function getPlacementTurnHint() {
