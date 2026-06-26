@@ -1402,6 +1402,13 @@ function renderQrPlaceholder(playerNumber) {
   qrImage.alt = t("controllerQrAlt").replace("{player}", label.textContent);
   qrImage.src = getQrCodeUrl(controllerUrl);
   qrImage.title = controllerUrl;
+  qrImage.addEventListener("error", () => {
+    const placeholder = document.createElement("div");
+    placeholder.className = "qr-placeholder";
+    placeholder.setAttribute("aria-label", qrImage.alt);
+    placeholder.title = controllerUrl;
+    qrImage.replaceWith(placeholder);
+  }, { once: true });
 
   const urlText = document.createElement("p");
   urlText.className = "qr-url";
