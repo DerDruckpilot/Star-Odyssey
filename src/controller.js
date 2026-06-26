@@ -831,6 +831,17 @@ function renderEncounterPanel() {
   const isOwner = gameState.encounter.playerId === selectedPlayerId;
   panel.append(title);
 
+  if (!isOwner) {
+    const activeName = gameState.activePlayerName || "Ein anderer Spieler";
+    const neutral = document.createElement("p");
+    neutral.className = "encounter-prompt";
+    neutral.textContent = `${activeName} ist noch in einer Begegnung.`;
+    const wait = document.createElement("p");
+    wait.textContent = `Warte, bis ${activeName} die Begegnung abgeschlossen hat.`;
+    panel.append(neutral, wait);
+    return panel;
+  }
+
   const promptText = gameState.encounter.resultText || gameState.encounter.prompt || "";
   if (promptText) {
     const prompt = document.createElement("p");
@@ -840,7 +851,7 @@ function renderEncounterPanel() {
   }
 
   const hint = document.createElement("p");
-  hint.textContent = isOwner ? getEncounterStatusLabel() : `${gameState.activePlayerName || "Ein anderer Spieler"} entscheidet.`;
+  hint.textContent = getEncounterStatusLabel();
   panel.append(hint);
 
   if (isOwner && gameState.encounter.status === "resolved") {
@@ -909,8 +920,8 @@ function renderControllerEncounterResourceSelection(pendingStep) {
 
     const label = document.createElement("span");
     label.textContent = isLoss
-      ? `${getResourceLabel(resource)}: ${owned} (${selected})`
-      : `${getResourceLabel(resource)}: ${selected}`;
+      ? `${getResourceLabel(resource)}: Bestand ${owned} · ausgewählt ${selected}`
+      : `${getResourceLabel(resource)}: ausgewählt ${selected}`;
 
     const decrease = createButton("-", () => {
       sendNamedAction("encounter.resourceDelta", { resource, delta: -1 });

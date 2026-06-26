@@ -930,6 +930,40 @@ assert(tradeLordGiftGame.players[0].resources.fuel === 1, "Chosen encounter rewa
 assert(tradeLordGiftGame.players[0].halfMedals === 2, "Trade lord reward should grant the half medal after the resource choice.");
 assert(tradeLordGiftGame.activeEncounter?.status === "resolved", "Trade lord gift encounter should be finishable after all pending choices.");
 
+let giftedTradeShipGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+giftedTradeShipGame = {
+  ...giftedTradeShipGame,
+  phase: "flight",
+  currentPlayerIndex: 0,
+  players: giftedTradeShipGame.players.map((player, index) => ({
+    ...player,
+    resources: index === 0
+      ? { ore: 3, fuel: 0, carbon: 0, food: 0, goods: 0 }
+      : player.resources,
+    halfMedals: index === 0 ? 1 : player.halfMedals
+  }))
+};
+giftedTradeShipGame = determineFlightSpeed(giftedTradeShipGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "spreadsheet-05"
+});
+giftedTradeShipGame = revealPendingFlightEncounter(giftedTradeShipGame);
+giftedTradeShipGame = resolveEncounterChoice(giftedTradeShipGame, { choiceId: "gift-3" });
+giftedTradeShipGame = updateEncounterResourceSelection(giftedTradeShipGame, "ore", 1);
+giftedTradeShipGame = updateEncounterResourceSelection(giftedTradeShipGame, "ore", 1);
+giftedTradeShipGame = updateEncounterResourceSelection(giftedTradeShipGame, "ore", 1);
+giftedTradeShipGame = submitEncounterPending(giftedTradeShipGame);
+const giftedTradeShip = giftedTradeShipGame.board.ships.find((ship) => ship.type === "tradeShip" && ship.ownerPlayerId === "player-1");
+assert(giftedTradeShip, "Gifted trade ship should be placed when a launch point is available.");
+assert(
+  giftedTradeShipGame.remainingMovementByShipId[giftedTradeShip.id] === giftedTradeShipGame.flightSpeedTotal,
+  "Gifted trade ship should be movable in the same flight phase."
+);
+
 let combatEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
   playerCount: 2,
@@ -1005,11 +1039,22 @@ wanderingFollowUpGame = determineFlightSpeed(wanderingFollowUpGame, {
 wanderingFollowUpGame = revealPendingFlightEncounter(wanderingFollowUpGame);
 wanderingFollowUpGame = resolveEncounterChoice(wanderingFollowUpGame, { choiceId: "donate-2" });
 assert(
-  wanderingFollowUpGame.activeEncounter?.resultText?.de === wanderingDonationJumpText,
-  "Encounter follow-up state should show the spreadsheet text before technical pending actions."
+  !wanderingFollowUpGame.activeEncounter?.resultText,
+  "Encounter follow-up text should wait until concrete donated resources are confirmed."
 );
 assert(
   wanderingFollowUpGame.activeEncounter?.pendingStep?.type === "resourceSelection",
+  "Encounter donation choices should first request the concrete resources to pay."
+);
+wanderingFollowUpGame = updateEncounterResourceSelection(wanderingFollowUpGame, "ore", 1);
+wanderingFollowUpGame = updateEncounterResourceSelection(wanderingFollowUpGame, "ore", 1);
+wanderingFollowUpGame = submitEncounterPending(wanderingFollowUpGame);
+assert(
+  wanderingFollowUpGame.activeEncounter?.resultText?.de === wanderingDonationJumpText,
+  "Encounter follow-up state should show the spreadsheet text after resource payment."
+);
+assert(
+  wanderingFollowUpGame.activeEncounter?.pendingStep?.type === "shipJumpSelection",
   "Encounter follow-up effects should continue after the spreadsheet text is available."
 );
 

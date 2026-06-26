@@ -2675,6 +2675,7 @@ function normalizePendingEncounterStep(pendingStep) {
       mode: pendingStep.mode === "loss" ? "loss" : "gain",
       amount: Number.isInteger(pendingStep.amount) ? Math.max(0, pendingStep.amount) : 1,
       selectedResources: normalizeResources(pendingStep.selectedResources),
+      deferredResultText: normalizeLocalizedText(pendingStep.deferredResultText),
       remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
     };
   }
@@ -3002,6 +3003,9 @@ function runEncounterEffectSequence(gameState, state, activePlayerId, effects, c
     if (result.resultText) resultText = result.resultText;
 
     if (result.pendingStep) {
+      const deferResultText = result.pendingStep.type === "resourceSelection"
+        && result.pendingStep.mode === "loss"
+        && resultText;
       return {
         players: workingState.players,
         board: workingState.board,
@@ -3009,10 +3013,11 @@ function runEncounterEffectSequence(gameState, state, activePlayerId, effects, c
         remainingMovementByShipId: workingState.remainingMovementByShipId,
         logEntries,
         combat,
-        resultText,
+        resultText: deferResultText ? null : resultText,
         status: "pending",
         pendingStep: {
           ...result.pendingStep,
+          deferredResultText: deferResultText ? resultText : result.pendingStep.deferredResultText,
           remainingEffects: [
             ...(result.pendingStep.remainingEffects ?? []),
             ...effects.slice(index + 1)
@@ -3141,9 +3146,9 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
 
       return {
         state: nextState,
-        logEntries: [createEncounterLog("logEncounterResourceSelectionLoss", {
+        logEntries: [createEncounterLog(getEncounterResourceSelectionLogKey("loss", countResources(selectedResources)), {
           player: activePlayer.name,
-          resources: formatResourceSelectionForLog(selectedResources)
+          count: countResources(selectedResources)
         })]
       };
     }
@@ -3166,9 +3171,9 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
 
       return {
         state: nextState,
-        logEntries: [createEncounterLog("logEncounterResourceSelectionGain", {
+        logEntries: [createEncounterLog(getEncounterResourceSelectionLogKey("gain", countResources(selectedResources)), {
           player: activePlayer.name,
-          resources: formatResourceSelectionForLog(selectedResources)
+          count: countResources(selectedResources)
         })]
       };
     }
@@ -3571,12 +3576,11 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
       );
     }
 
-    const stepLogKey = pendingStep.mode === "loss"
-      ? "logEncounterResourceSelectionLoss"
-      : "logEncounterResourceSelectionGain";
+    const selectedCount = countResources(selectedResources);
+    const stepLogKey = getEncounterResourceSelectionLogKey(pendingStep.mode, selectedCount);
     const baseLog = createEncounterLog(stepLogKey, {
       player: activePlayer.name,
-      resources: formatResourceSelectionForLog(selectedResources)
+      count: selectedCount
     });
     const followUp = runEncounterEffectSequence(
       gameState,
@@ -3589,7 +3593,9 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
         lastSelectedResources: selectedResources,
         lastSelectionMode: pendingStep.mode
       },
-      {}
+      {
+        resultText: pendingStep.deferredResultText ?? null
+      }
     );
     if (!followUp) return null;
 
@@ -4107,7 +4113,7 @@ function applyEncounterShipGift(gameState, state, activePlayerId, shipType) {
       },
       remainingMovementByShipId: {
         ...state.remainingMovementByShipId,
-        [ship.id]: 0
+        [ship.id]: getGiftedShipInitialMovement(gameState, activePlayerId)
       }
     },
     logEntries: [createEncounterLog("logEncounterShipGift", {
@@ -4129,6 +4135,20 @@ function addPendingGiftedShip(state, ownerPlayerId, shipType) {
       }
     ]
   };
+}
+
+function getGiftedShipInitialMovement(gameState, ownerPlayerId) {
+  const activePlayer = gameState.players?.[gameState.currentPlayerIndex];
+  if (
+    gameState.phase !== "flight" ||
+    activePlayer?.id !== ownerPlayerId ||
+    gameState.activeEncounter?.status === "resolved"
+  ) {
+    return 0;
+  }
+
+  const remainingSpeed = Number(gameState.flightSpeedTotal);
+  return Number.isFinite(remainingSpeed) ? Math.max(0, remainingSpeed) : 0;
 }
 
 function placePendingGiftedShips(gameState, boardLayout) {
@@ -4179,7 +4199,7 @@ function placePendingGiftedShips(gameState, boardLayout) {
       },
       remainingMovementByShipId: {
         ...(workingState.remainingMovementByShipId ?? {}),
-        [ship.id]: 0
+        [ship.id]: getGiftedShipInitialMovement(gameState, pendingShip.ownerPlayerId)
       }
     };
     logEntries.push(createEncounterLog("logEncounterShipGift", {
@@ -4351,8 +4371,11 @@ function createEncounterLog(messageKey, messageParams) {
   };
 }
 
-function formatResourceSelectionForLog(resources) {
-  return String(countResources(resources));
+function getEncounterResourceSelectionLogKey(mode, count) {
+  const suffix = count === 1 ? "One" : "Many";
+  return mode === "loss"
+    ? `logEncounterResourceSelectionLoss${suffix}`
+    : `logEncounterResourceSelectionGain${suffix}`;
 }
 
 function formatResourceList(resources) {

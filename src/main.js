@@ -5963,9 +5963,13 @@ function getShipCoilVfxState(ship) {
     && !state.gameState.activeEncounter;
   const isActivePlayerShip = ship.ownerPlayerId === activePlayer?.id;
   const isFlying = isShipFlightAnimating(ship.id);
+  const movementLeft = getShipRemainingMovement(ship.id);
   if (isFlying) return { visible: true, active: true, opacity: 0.95 };
+  if (ship.type === "tradeShip" && state.gameState?.phase === "flight" && isActivePlayerShip && movementLeft > 0) {
+    return { visible: true, active: true, opacity: 0.82 };
+  }
   if (relevantFlightPhase && isActivePlayerShip) {
-    const hasMovementLeft = getShipRemainingMovement(ship.id) > 0;
+    const hasMovementLeft = movementLeft > 0;
     return {
       visible: true,
       active: hasMovementLeft,
