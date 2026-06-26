@@ -115,6 +115,7 @@ const planetAssetPaths = {
 const preloadedAssetUrls = new Set();
 
 const initialLanguage = loadLanguage();
+const startupAutosaveReset = consumeAutosaveResetUrlParam();
 const initialGame = loadInitialGameState(initialLanguage);
 
 const state = {
@@ -133,7 +134,9 @@ const state = {
   hudTab: "turn",
   hudScrollPositions: {},
   encounterBoardSelectionActive: false,
-  notice: initialGame.fromAutosave ? (initialGame.language === "de" ? "Autosave geladen." : "Autosave loaded.") : "",
+  notice: startupAutosaveReset
+    ? (initialGame.language === "de" ? "Autosave verworfen." : "Autosave discarded.")
+    : initialGame.fromAutosave ? (initialGame.language === "de" ? "Autosave geladen." : "Autosave loaded.") : "",
   controllerMode: initialGame.controllerMode,
   controllerLobby: null
 };
@@ -179,7 +182,7 @@ const diceRollAnimation = {
   frameRequestId: null,
   currentTime: 0
 };
-const DICE_RESULT_HOLD_MS = 4000;
+const DICE_RESULT_HOLD_MS = 2000;
 const DICE_RESULT_FADE_MS = 320;
 const mothershipSpeedAnimation = {
   item: null,
@@ -224,16 +227,56 @@ function loadLanguage() {
   }
 }
 
+function consumeAutosaveResetUrlParam() {
+  const url = new URL(window.location.href);
+  const resetKeys = ["resetAutosave", "reset", "newGame"];
+  const shouldResetAutosave = resetKeys.some((key) => url.searchParams.get(key) === "1");
+  if (!shouldResetAutosave) return false;
+
+  clearStoredAutosaveState();
+
+  resetKeys.forEach((key) => url.searchParams.delete(key));
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  return true;
+}
+
+function clearStoredAutosaveState() {
+  try {
+    localStorage.removeItem(autosaveStorageKey);
+    localStorage.removeItem(currentGameStorageKey);
+  } catch {
+    // ignore storage cleanup failures
+  }
+}
+
+function repairLoadedGameState(gameState) {
+  if (!gameState?.activeEncounter) return gameState;
+
+  const card = getEncounterCardById(gameState.activeEncounter.cardId);
+  const pendingStep = gameState.activeEncounter.pendingStep;
+  const hasChoices = Array.isArray(card?.choices) && card.choices.length > 0;
+  const canFinish = gameState.activeEncounter.status === "resolved";
+  if (card && (pendingStep || hasChoices || canFinish)) return gameState;
+
+  return touchGameState({
+    ...gameState,
+    activeEncounter: null,
+    encounterStep: null,
+    encounterTriggered: false,
+    pendingFlightEncounter: null
+  });
+}
+
 function loadCurrentGameState() {
   try {
     const parsedGameState = JSON.parse(localStorage.getItem(currentGameStorageKey) ?? "null");
     if (!parsedGameState) return null;
 
-    return normalizeGameState(parsedGameState, {
+    return repairLoadedGameState(normalizeGameState(parsedGameState, {
       language: parsedGameState.language || loadLanguage(),
       playerCount: parsedGameState.playerCount || 2,
       boardLayout
-    });
+    }));
   } catch {
     return null;
   }
@@ -267,11 +310,11 @@ function loadAutosaveGameState(fallbackLanguage = defaultLanguage) {
     }
 
     return {
-      gameState: normalizeGameState(parsedAutosave.gameState, {
+      gameState: repairLoadedGameState(normalizeGameState(parsedAutosave.gameState, {
         language: parsedAutosave.gameState.language || parsedAutosave.language || fallbackLanguage,
         playerCount: parsedAutosave.gameState.playerCount || 2,
         boardLayout
-      }),
+      })),
       controllerMode: Boolean(parsedAutosave.controllerMode)
     };
   } catch {
@@ -321,12 +364,7 @@ function clearAutosave() {
     clearTimeout(autosaveTimer);
     autosaveTimer = null;
   }
-  try {
-    localStorage.removeItem(autosaveStorageKey);
-    localStorage.removeItem(currentGameStorageKey);
-  } catch {
-    // ignore storage cleanup failures
-  }
+  clearStoredAutosaveState();
 }
 
 function loadOrCreateControllerSessionId() {
@@ -763,12 +801,30 @@ function determineSpeedForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "flight") return;
   if (state.gameState.hasRolledFlightSpeed || isMothershipSpeedAnimating()) return;
 
-  state.gameState = determineFlightSpeed(state.gameState);
+  const rollingPlayer = getActivePlayer();
+  const nextGameState = determineFlightSpeed(state.gameState);
   state.hudPlayerId = null;
   state.hudTab = "turn";
   state.encounterBoardSelectionActive = false;
-  queueMothershipSpeedAnimation(getActivePlayer(), state.gameState.flightRoll);
-  saveCurrentGameState();
+  const queued = queueMothershipSpeedAnimation(rollingPlayer, nextGameState.flightRoll, {
+    totalSpeed: nextGameState.flightSpeedTotal,
+    onComplete: () => {
+      state.gameState = nextGameState;
+      if (state.gameState?.phase === "flight" && state.gameState.pendingFlightEncounter) {
+        state.gameState = startPendingFlightEncounter(state.gameState);
+        state.hudPlayerId = null;
+        state.encounterBoardSelectionActive = false;
+      }
+      saveCurrentGameState();
+    }
+  });
+  if (!queued) {
+    state.gameState = nextGameState;
+    if (state.gameState.pendingFlightEncounter) {
+      state.gameState = startPendingFlightEncounter(state.gameState);
+    }
+    saveCurrentGameState();
+  }
   render();
 }
 
@@ -891,9 +947,15 @@ function rollProductionForActivePlayer() {
   if (isDiceRollAnimating()) return;
 
   const rollingPlayer = getActivePlayer();
-  state.gameState = rollProduction(state.gameState, boardLayout);
-  queueDiceRollAnimation(rollingPlayer, state.gameState.lastRoll?.dice);
-  saveCurrentGameState();
+  const nextGameState = rollProduction(state.gameState, boardLayout);
+  const queued = queueDiceRollAnimation(rollingPlayer, nextGameState.lastRoll?.dice, () => {
+    state.gameState = nextGameState;
+    saveCurrentGameState();
+  });
+  if (!queued) {
+    state.gameState = nextGameState;
+    saveCurrentGameState();
+  }
   render();
 }
 
@@ -902,11 +964,17 @@ function rollPlacementForActivePlayer() {
   if (isDiceRollAnimating()) return;
 
   const previousGameState = state.gameState;
-  const rollingPlayer = getActivePlayer();
   const rollingPlayerId = previousGameState.placement?.rollPlayerIds?.[previousGameState.placement?.currentRollIndex ?? 0];
-  state.gameState = rollPlacementStart(state.gameState);
-  queueDiceRollAnimation(rollingPlayer, getPlacementRollDice(state.gameState, rollingPlayerId));
-  saveCurrentGameState();
+  const rollingPlayer = previousGameState.players.find((player) => player.id === rollingPlayerId) ?? getActivePlayer();
+  const nextGameState = rollPlacementStart(state.gameState);
+  const queued = queueDiceRollAnimation(rollingPlayer, getPlacementRollDice(nextGameState, rollingPlayerId), () => {
+    state.gameState = nextGameState;
+    saveCurrentGameState();
+  });
+  if (!queued) {
+    state.gameState = nextGameState;
+    saveCurrentGameState();
+  }
   render();
 }
 
@@ -3742,8 +3810,8 @@ function createPlacementTransform(centerX, centerY, rotation, pop) {
   return transforms.join(" ");
 }
 
-function queueDiceRollAnimation(player, dice) {
-  if (!player || !Array.isArray(dice) || dice.length !== 2 || isDiceRollAnimating()) return;
+function queueDiceRollAnimation(player, dice, onComplete = null) {
+  if (!player || !Array.isArray(dice) || dice.length !== 2 || isDiceRollAnimating()) return false;
 
   const now = getAnimationNow();
   const seed = createDiceRollSeed(player.id, dice, now);
@@ -3758,6 +3826,7 @@ function queueDiceRollAnimation(player, dice) {
     holdDuration: DICE_RESULT_HOLD_MS,
     fadeDuration: DICE_RESULT_FADE_MS,
     seed,
+    onComplete,
     start: {
       x: 0.24 + seededRandom(seed, 2) * 0.2,
       y: 0.16 + seededRandom(seed, 3) * 0.18
@@ -3775,6 +3844,7 @@ function queueDiceRollAnimation(player, dice) {
     ]
   };
   startDiceRollLoop();
+  return true;
 }
 
 function getPlacementRollDice(gameState, playerId) {
@@ -3801,8 +3871,10 @@ function updateDiceRollAnimation(now) {
   const item = diceRollAnimation.item;
   diceRollAnimation.frameRequestId = null;
   if (!item || now - item.startTime >= item.duration + item.holdDuration + item.fadeDuration) {
+    const onComplete = item?.onComplete;
     diceRollAnimation.item = null;
     diceRollAnimation.currentTime = 0;
+    if (typeof onComplete === "function") onComplete();
     render();
     return;
   }
@@ -3825,10 +3897,11 @@ function drawShipEngineVfxOverlays() {
   }
 }
 
-function queueMothershipSpeedAnimation(player, flightRoll) {
-  if (!player || !Array.isArray(flightRoll?.balls) || flightRoll.balls.length !== 2) return;
+function queueMothershipSpeedAnimation(player, flightRoll, options = {}) {
+  if (!player || !Array.isArray(flightRoll?.balls) || flightRoll.balls.length !== 2) return false;
 
   const now = getAnimationNow();
+  const animationOptions = typeof options === "function" ? { onComplete: options } : options;
   const seed = createMothershipSpeedSeed(player.id, flightRoll.balls, now);
   const shakeCycles = MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES
     + Math.floor(Math.random() * (MOTHERSHIP_SPEED_MAX_SHAKE_CYCLES - MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES + 1));
@@ -3837,13 +3910,15 @@ function queueMothershipSpeedAnimation(player, flightRoll) {
     playerId: player.id,
     balls: flightRoll.balls.slice(0, 2),
     baseSpeed: flightRoll.baseSpeed,
-    totalSpeed: state.gameState?.flightSpeedTotal ?? flightRoll.baseSpeed,
+    totalSpeed: animationOptions.totalSpeed ?? state.gameState?.flightSpeedTotal ?? flightRoll.baseSpeed,
     encounterTriggered: Boolean(flightRoll.encounterTriggered),
     startTime: now,
     seed,
-    shakeCycles
+    shakeCycles,
+    onComplete: animationOptions.onComplete
   };
   startMothershipSpeedLoop();
+  return true;
 }
 
 function isMothershipSpeedAnimating() {
@@ -3862,9 +3937,12 @@ function updateMothershipSpeedAnimation(now) {
   const item = mothershipSpeedAnimation.item;
   mothershipSpeedAnimation.frameRequestId = null;
   if (!item || now - item.startTime >= getMothershipSpeedTotalDuration(item)) {
+    const onComplete = item?.onComplete;
     mothershipSpeedAnimation.item = null;
     mothershipSpeedAnimation.currentTime = 0;
-    if (state.gameState?.phase === "flight" && state.gameState.pendingFlightEncounter) {
+    if (typeof onComplete === "function") {
+      onComplete();
+    } else if (state.gameState?.phase === "flight" && state.gameState.pendingFlightEncounter) {
       state.gameState = startPendingFlightEncounter(state.gameState);
       state.hudPlayerId = null;
       state.encounterBoardSelectionActive = false;
@@ -5987,6 +6065,7 @@ function renderSettingsMenu() {
     createButton(t("connectControllers"), () => openModal("controllers"), "menu-button"),
     createButton(t("save"), () => openModal("save"), "menu-button"),
     createButton(t("loadGame"), () => openModal("load"), "menu-button"),
+    createButton(t("discardAutosave"), confirmDiscardAutosave, "secondary-button"),
     createButton(t("backToMenu"), confirmBackToMenu, "secondary-button"),
     createButton(t("close"), closeModal, "secondary-button")
   );
@@ -6213,6 +6292,19 @@ function confirmBackToMenu() {
     clearAutosave();
     setView("menu");
   }
+}
+
+function confirmDiscardAutosave() {
+  if (!window.confirm(t("confirmDiscardAutosave"))) return;
+
+  state.gameState = null;
+  state.controllerMode = false;
+  clearAutosave();
+  state.view = "menu";
+  state.modal = null;
+  state.hudPlayerId = null;
+  state.notice = t("autosaveDiscarded");
+  render();
 }
 
 function formatSavedAt(value) {
