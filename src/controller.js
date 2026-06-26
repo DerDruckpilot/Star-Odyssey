@@ -1635,6 +1635,22 @@ function clampBoardScale(scale) {
 }
 
 function attachBoardGestures(viewport, content) {
+  viewport.addEventListener("click", (event) => {
+    if (!isPlacementBoardMode()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (!canUseBoardSelection()) {
+      flashBoardFeedback(viewport);
+      return;
+    }
+    const placementTarget = findNearestPlacementTarget(content, event.clientX, event.clientY);
+    if (!placementTarget) {
+      flashBoardFeedback(viewport);
+      return;
+    }
+    sendPlacementSelection(placementTarget.dataset.boardId);
+  }, true);
+
   content.querySelectorAll("[data-board-type][data-board-id]").forEach((element) => {
     element.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -1643,19 +1659,12 @@ function attachBoardGestures(viewport, content) {
         return;
       }
       if (isPlacementBoardMode()) {
-        const placementTarget = getPlacementTargetElement(element);
+        const placementTarget = getPlacementTargetElement(element) ?? findNearestPlacementTarget(content, event.clientX, event.clientY);
         if (!placementTarget) {
           flashBoardFeedback(viewport);
           return;
         }
-        console.debug("[controller] placement target clicked", {
-          playerId: selectedPlayerId,
-          placementStep: gameState?.placement?.step,
-          nodeId: placementTarget.dataset.boardId
-        });
-        sendNamedAction("placement.select", {
-          nodeId: placementTarget.dataset.boardId
-        });
+        sendPlacementSelection(placementTarget.dataset.boardId);
         return;
       }
       sendNamedAction("board.select", {
@@ -1734,6 +1743,44 @@ function getPlacementTargetElement(element) {
   const candidate = element?.closest?.("[data-board-type='spacePoint'][data-board-id]");
   if (!candidate?.classList?.contains("is-placement-target")) return null;
   return candidate;
+}
+
+function findNearestPlacementTarget(content, clientX, clientY) {
+  let nearest = null;
+  let nearestDistance = Infinity;
+  let nearestThreshold = 0;
+  content.querySelectorAll("[data-board-type='spacePoint'][data-board-id].is-placement-target").forEach((element) => {
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const distance = Math.hypot(clientX - centerX, clientY - centerY);
+    const threshold = Math.max(18, Math.max(rect.width, rect.height) * 2.35);
+    if (distance <= threshold && distance < nearestDistance) {
+      nearest = element;
+      nearestDistance = distance;
+      nearestThreshold = threshold;
+    }
+  });
+  if (!nearest) return null;
+  console.debug("[controller] nearest placement target", {
+    playerId: selectedPlayerId,
+    placementStep: gameState?.placement?.step,
+    nodeId: nearest.dataset.boardId,
+    distance: Math.round(nearestDistance),
+    threshold: Math.round(nearestThreshold)
+  });
+  return nearest;
+}
+
+function sendPlacementSelection(nodeId) {
+  if (!nodeId) return;
+  console.debug("[controller] placement target clicked", {
+    playerId: selectedPlayerId,
+    placementStep: gameState?.placement?.step,
+    nodeId
+  });
+  sendNamedAction("placement.select", { nodeId });
 }
 
 function getPlacementTurnHint() {
