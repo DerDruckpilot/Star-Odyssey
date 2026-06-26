@@ -6557,6 +6557,7 @@ function getRemoteFlightStateForController() {
   const activePlayer = getActivePlayer();
   const selectedShip = getSelectedShip();
   const movableShips = getMovableShipsForActivePlayer();
+  const reachableNodes = selectedShip ? [...getReachableNodeMap().values()] : [];
   const totalSpeed = Number(state.gameState.flightSpeedTotal);
   return {
     hasRolledSpeed: Boolean(state.gameState.hasRolledFlightSpeed),
@@ -6564,8 +6565,10 @@ function getRemoteFlightStateForController() {
     activePlayerId: activePlayer?.id ?? null,
     activePlayerName: activePlayer?.name ?? "",
     movableShipCount: movableShips.length,
+    movableShipIds: movableShips.map((ship) => ship.id),
     selectedShipId: selectedShip?.id ?? null,
     selectedShipRemaining: selectedShip ? getShipRemainingMovement(selectedShip.id) : null,
+    reachableNodeIds: reachableNodes.map((node) => node.id),
     turnHint: getControllerFlightTurnHint(),
     boardHint: getControllerFlightBoardHint(),
     waitHint: t("controllerFlightWait").replace("{playerName}", activePlayer?.name ?? t("activePlayer"))

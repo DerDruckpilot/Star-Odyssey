@@ -1610,6 +1610,7 @@ function prepareControllerBoardSvg(content) {
   if (!svg || !dimensions) return;
   svg.setAttribute("width", String(dimensions.width));
   svg.setAttribute("height", String(dimensions.height));
+  applyStructuredFlightBoardState(content);
 
   if (isPlacementBoardMode() || isFlightMovementBoardMode()) {
     svg.classList.add("controller-board-svg--placement");
@@ -1624,6 +1625,23 @@ function prepareControllerBoardSvg(content) {
   }
 }
 
+function applyStructuredFlightBoardState(content) {
+  const flight = gameState?.flight;
+  if (!flight?.hasRolledSpeed) return;
+
+  const selectedShipId = flight.selectedShipId;
+  if (selectedShipId) {
+    const selectedShip = content.querySelector(`[data-board-type='ship'][data-board-id='${cssEscape(selectedShipId)}']`);
+    selectedShip?.classList.add("is-selected");
+  }
+
+  const reachableNodeIds = new Set(Array.isArray(flight.reachableNodeIds) ? flight.reachableNodeIds : []);
+  for (const nodeId of reachableNodeIds) {
+    const target = content.querySelector(`[data-board-type='spacePoint'][data-board-id='${cssEscape(nodeId)}']`);
+    target?.classList.add("is-reachable");
+  }
+}
+
 function getControllerBoardSvgDimensions(svg) {
   const viewBox = svg?.getAttribute("viewBox")?.trim().split(/\s+/).map(Number);
   if (!viewBox || viewBox.length !== 4 || viewBox.some((value) => !Number.isFinite(value))) return null;
@@ -1631,6 +1649,11 @@ function getControllerBoardSvgDimensions(svg) {
     width: Math.max(1, viewBox[2]),
     height: Math.max(1, viewBox[3])
   };
+}
+
+function cssEscape(value) {
+  if (window.CSS?.escape) return window.CSS.escape(String(value));
+  return String(value).replace(/["\\]/g, "\\$&");
 }
 
 function fitControllerBoardToViewport(viewport, content) {
@@ -1828,14 +1851,15 @@ function findNearestPlacementTarget(content, clientX, clientY) {
 
 function getReachableTargetElement(element) {
   const candidate = element?.closest?.("[data-board-type='spacePoint'][data-board-id]");
-  if (!candidate?.classList?.contains("is-reachable")) return null;
+  if (!candidate || !isReachableTargetId(candidate.dataset.boardId)) return null;
   return candidate;
 }
 
 function findNearestReachableTarget(content, clientX, clientY) {
   let nearest = null;
   let nearestDistance = Infinity;
-  content.querySelectorAll("[data-board-type='spacePoint'][data-board-id].is-reachable").forEach((element) => {
+  content.querySelectorAll("[data-board-type='spacePoint'][data-board-id]").forEach((element) => {
+    if (!isReachableTargetId(element.dataset.boardId)) return;
     const rect = element.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     const centerX = rect.left + rect.width / 2;
@@ -1848,6 +1872,12 @@ function findNearestReachableTarget(content, clientX, clientY) {
     }
   });
   return nearest;
+}
+
+function isReachableTargetId(nodeId) {
+  if (!nodeId) return false;
+  if (gameState?.flight?.reachableNodeIds?.includes(nodeId)) return true;
+  return Boolean(document.querySelector(`[data-board-type='spacePoint'][data-board-id='${cssEscape(nodeId)}'].is-reachable`));
 }
 
 function sendFlightMoveSelection(nodeId) {
