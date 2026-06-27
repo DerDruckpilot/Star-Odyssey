@@ -75,10 +75,35 @@ test("card debug review pages load and filter cards", async ({ page }) => {
 
   await page.goto("/debug-encounter-cards.html");
   await expect(page.getByRole("heading", { name: "Begegnungskarten" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Spielfeld-Vorschau" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Spieler-Menü-Vorschau" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Begegnungen" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Editor" })).toBeVisible();
   await expect(page.locator("#card-list details").first()).toBeVisible();
   await expect(page.locator("#encounter-simulator")).toBeVisible();
+  await expect(page.locator("#card-list details")).toHaveCount(32);
+  await page.getByRole("button", { name: "Simulation starten" }).click();
+  await page.locator(".encounter-preview-actions button").first().click();
+  await expect(page.locator(".debug-sim-history")).toBeVisible();
+  await page.getByRole("button", { name: "Export selected encounter" }).click();
+  await expect(page.locator("#export-output")).toHaveValue(/"encounterNumber": 1/);
   await page.locator("#card-search").fill("pirate");
   await expect(page.locator("#card-list details").first()).toBeVisible();
+
+  await page.goto("/debug-encounter-simulator.html");
+  await expect(page.getByRole("heading", { name: "Encounter Simulator" })).toBeVisible();
+  await expect(page.locator(".encounter-sim-board-stage")).toBeVisible();
+  await expect(page.locator("#sim-controller")).toBeVisible();
+  await page.locator("#encounter-menu-toggle").click();
+  await expect(page.locator(".encounter-review-row")).toHaveCount(32);
+  await page.locator(".encounter-review-row input").first().check();
+  await page.reload();
+  await page.locator("#encounter-menu-toggle").click();
+  await expect(page.locator(".encounter-review-row input").first()).toBeChecked();
+  await page.locator(".encounter-review-row").nth(1).click();
+  await expect(page.locator("#sim-controller")).toContainText("2.");
+  await page.locator(".encounter-sim-actions button").first().click();
+  await expect(page.locator(".encounter-sim-history")).toBeVisible();
 });
 
 test("outpost debug page loads and exports layout", async ({ page }) => {

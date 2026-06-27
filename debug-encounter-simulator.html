@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Star Odyssey Encounter Simulator</title>
+    <link rel="stylesheet" href="./src/debug-card-review.css" />
+    <link rel="stylesheet" href="./src/debug-encounter-simulator.css" />
+  </head>
+  <body class="encounter-sim-page">
+    <main class="encounter-sim-shell">
+      <header class="encounter-sim-topbar">
+        <div>
+          <p>Star Odyssey Debug</p>
+          <h1>Encounter Simulator</h1>
+        </div>
+        <nav class="debug-card-nav" aria-label="Debug navigation">
+          <a href="./debug-upgrades.html">Upgrade Debug</a>
+          <a href="./debug-outposts.html">Outpost Debug</a>
+          <a href="./debug-colonies.html">Kolonien Debug</a>
+          <a href="./debug-spaceports.html">Raumhäfen Debug</a>
+          <a href="./debug-ship-vfx.html">Schiff VFX Debug</a>
+          <a href="./debug-mothership-speed.html">Mutterschiff Speed Debug</a>
+          <a href="./debug-friendship-cards.html">Freundschaftskarten Debug</a>
+          <a href="./debug-encounter-cards.html">Begegnungskarten Editor</a>
+          <a href="./debug-encounter-simulator.html" aria-current="page">Encounter Simulator</a>
+        </nav>
+        <button id="encounter-menu-toggle" class="encounter-menu-toggle" type="button" aria-expanded="false">☰</button>
+      </header>
+
+      <section class="encounter-sim-board" aria-label="Spielfeld-Simulation">
+        <div id="sim-board-stage" class="encounter-sim-board-stage"></div>
+        <aside id="sim-state-panel" class="encounter-sim-state-panel"></aside>
+      </section>
+
+      <section id="sim-controller" class="encounter-sim-controller" aria-label="Controller-Simulation"></section>
+
+      <aside id="encounter-menu" class="encounter-review-menu" aria-label="Begegnungsauswahl"></aside>
+    </main>
+
+    <script type="module" src="./src/debug-encounter-simulator.js"></script>
+  </body>
+</html>

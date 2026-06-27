@@ -19,11 +19,12 @@
           <a href="./debug-ship-vfx.html">Schiff VFX Debug</a>
           <a href="./debug-mothership-speed.html">Mutterschiff Speed Debug</a>
           <a href="./debug-friendship-cards.html">Freundschaftskarten Debug</a>
-          <a href="./debug-encounter-cards.html" aria-current="page">Begegnungskarten Debug</a>
+          <a href="./debug-encounter-cards.html" aria-current="page">Begegnungskarten Editor</a>
+          <a href="./debug-encounter-simulator.html">Encounter Simulator</a>
         </nav>
       </header>
 
-      <section class="debug-card-controls" aria-label="Filter">
+      <section class="debug-card-controls debug-card-controls--editor" aria-label="Filter">
         <label>
           Suche
           <input id="card-search" type="search" placeholder="ID, Titel, Text, Effekt ..." />
@@ -41,15 +42,61 @@
           </select>
         </label>
         <div class="debug-card-actions">
+          <a class="debug-editor-link" href="./debug-encounter-simulator.html">Encounter Simulator</a>
           <button id="expand-all" type="button">Alle aufklappen</button>
           <button id="collapse-all" type="button">Alle einklappen</button>
         </div>
       </section>
 
       <section id="card-stats" class="debug-card-stats" aria-label="Zählung"></section>
-      <section class="debug-encounter-layout">
-        <section id="card-list" class="debug-card-list" aria-label="Begegnungskarten"></section>
-        <aside id="encounter-simulator" class="debug-simulator" aria-label="Begegnungssimulation"></aside>
+      <section class="encounter-editor-grid" aria-label="Encounter Editor">
+        <section class="encounter-editor-panel encounter-editor-panel--board">
+          <header>
+            <h2>Spielfeld-Vorschau</h2>
+            <span id="board-preview-step"></span>
+          </header>
+          <div id="board-preview" class="encounter-board-preview"></div>
+        </section>
+
+        <section class="encounter-editor-panel encounter-editor-panel--player">
+          <header>
+            <h2>Spieler-Menü-Vorschau</h2>
+            <div class="debug-preview-toggle" role="group" aria-label="Vorschau-Spieler">
+              <button id="preview-active-player" type="button">Aktiver Spieler</button>
+              <button id="preview-other-player" type="button">Nicht aktiver Spieler</button>
+            </div>
+          </header>
+          <div id="encounter-simulator" class="encounter-player-preview"></div>
+        </section>
+
+        <section class="encounter-editor-panel encounter-editor-panel--list">
+          <header>
+            <h2>Begegnungen</h2>
+            <span id="selected-card-label"></span>
+          </header>
+          <section id="card-list" class="debug-card-list encounter-flow-list" aria-label="Begegnungskarten"></section>
+        </section>
+
+        <section class="encounter-editor-panel encounter-editor-panel--controls">
+          <header>
+            <h2>Editor</h2>
+            <div class="debug-card-actions">
+              <button id="start-simulation" type="button">Simulation starten</button>
+              <button id="reset-simulation" type="button">Zuruecksetzen</button>
+            </div>
+          </header>
+          <div id="flow-validation" class="encounter-validation"></div>
+          <form id="step-editor" class="encounter-step-editor"></form>
+          <section class="encounter-export-panel">
+            <h3>Export</h3>
+            <div class="debug-card-actions">
+              <button id="export-selected" type="button">Export selected encounter</button>
+              <button id="export-all" type="button">Export all encounters</button>
+              <button id="save-local" type="button">localStorage speichern</button>
+            </div>
+            <textarea id="export-output" readonly aria-label="Export JSON"></textarea>
+          </section>
+        </section>
       </section>
     </main>
 

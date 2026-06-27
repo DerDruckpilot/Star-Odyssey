@@ -99,6 +99,23 @@ body.debug-card-page {
   margin-bottom: 0.8rem;
 }
 
+.debug-card-controls--editor {
+  grid-template-columns: minmax(15rem, 1fr) minmax(10rem, 14rem) minmax(10rem, 14rem) minmax(18rem, auto);
+}
+
+.debug-editor-link {
+  min-height: 2.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(250, 204, 21, 0.58);
+  color: #fef3c7;
+  background: rgba(30, 41, 59, 0.64);
+  font-weight: 900;
+  text-decoration: none;
+}
+
 .debug-card-controls label {
   display: grid;
   gap: 0.35rem;
@@ -348,11 +365,288 @@ body.debug-card-page {
   color: #bfdbfe;
 }
 
+.encounter-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(24rem, 0.95fr);
+  grid-template-rows: minmax(20rem, 34vh) minmax(28rem, 1fr);
+  gap: 1rem;
+  min-height: 74rem;
+}
+
+.encounter-editor-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.78);
+  box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.24);
+  overflow: hidden;
+}
+
+.encounter-editor-panel > header {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(2, 6, 23, 0.35);
+}
+
+.encounter-editor-panel h2,
+.encounter-editor-panel h3,
+.encounter-editor-panel p {
+  margin: 0;
+}
+
+.encounter-editor-panel h2 {
+  font-size: 1rem;
+}
+
+.encounter-board-preview,
+.encounter-player-preview,
+.encounter-flow-list,
+.encounter-step-editor {
+  min-height: 0;
+  overflow: auto;
+}
+
+.encounter-board-preview {
+  position: relative;
+  flex: 1;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at 30% 32%, rgba(56, 189, 248, 0.18), transparent 16rem),
+    radial-gradient(circle at 80% 20%, rgba(168, 85, 247, 0.16), transparent 18rem),
+    #020617;
+}
+
+.debug-mini-board {
+  position: absolute;
+  inset: 0;
+  opacity: 0.55;
+}
+
+.debug-mini-board span {
+  position: absolute;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid rgba(219, 234, 254, 0.78);
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+
+.encounter-board-overlay-preview {
+  position: relative;
+  width: min(34rem, 86%);
+  margin: 3rem auto 0;
+  padding: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.3);
+}
+
+.encounter-board-overlay-preview strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #fef3c7;
+}
+
+.debug-preview-toggle {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.debug-preview-toggle button,
+.encounter-preview-actions button,
+.encounter-step-editor button,
+.encounter-export-panel button,
+.encounter-choice-editor button {
+  min-height: 2.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  color: #f8fafc;
+  background: rgba(2, 6, 23, 0.72);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.debug-preview-toggle button {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+.debug-preview-toggle button.is-active,
+.encounter-preview-actions button:hover,
+.encounter-step-row.is-active {
+  border-color: rgba(250, 204, 21, 0.85);
+  color: #fef3c7;
+  background: rgba(250, 204, 21, 0.12);
+}
+
+.encounter-player-preview {
+  flex: 1;
+  padding: 0.9rem;
+}
+
+.encounter-controller-preview-panel {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.encounter-preview-actions {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.encounter-preview-actions button {
+  padding: 0.65rem;
+}
+
+.debug-sim-history {
+  color: #bfdbfe;
+  font-size: 0.82rem;
+}
+
+.encounter-flow-list {
+  flex: 1;
+  padding: 0.75rem;
+}
+
+.encounter-step-list {
+  display: grid;
+  gap: 0.4rem;
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.encounter-step-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.75fr) minmax(7rem, 0.6fr) minmax(0, 1.4fr);
+  gap: 0.45rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #dbeafe;
+  background: rgba(2, 6, 23, 0.4);
+  text-align: left;
+}
+
+.encounter-step-row small {
+  overflow: hidden;
+  color: #cbd5e1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.encounter-step-editor,
+.encounter-export-panel,
+.encounter-validation {
+  padding: 0.85rem;
+}
+
+.encounter-step-editor {
+  flex: 1;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.encounter-editor-field {
+  display: grid;
+  gap: 0.35rem;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.encounter-editor-field input,
+.encounter-editor-field textarea,
+.encounter-editor-field select,
+.encounter-export-panel textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #f8fafc;
+  background: rgba(2, 6, 23, 0.72);
+  font: inherit;
+}
+
+.encounter-editor-field input,
+.encounter-editor-field select {
+  min-height: 2.25rem;
+  padding: 0.45rem 0.55rem;
+}
+
+.encounter-editor-field textarea {
+  min-height: 5.5rem;
+  padding: 0.55rem;
+  resize: vertical;
+}
+
+.encounter-choice-editor {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(2, 6, 23, 0.34);
+}
+
+.encounter-choice-editor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.encounter-validation-list {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.65rem;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #bbf7d0;
+  background: rgba(22, 101, 52, 0.14);
+}
+
+.encounter-validation-list.is-warning {
+  border-color: rgba(250, 204, 21, 0.45);
+  color: #fde68a;
+  background: rgba(113, 63, 18, 0.18);
+}
+
+.encounter-validation-list p {
+  font-size: 0.78rem;
+}
+
+.encounter-export-panel {
+  display: grid;
+  gap: 0.6rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.encounter-export-panel textarea {
+  min-height: 10rem;
+  padding: 0.55rem;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.76rem;
+  resize: vertical;
+}
+
 @media (max-width: 56rem) {
   .debug-card-controls,
   .debug-encounter-layout,
-  .debug-card-grid {
+  .debug-card-grid,
+  .encounter-editor-grid,
+  .encounter-choice-editor-row {
     grid-template-columns: 1fr;
+  }
+
+  .encounter-editor-grid {
+    grid-template-rows: none;
+    min-height: 0;
   }
 
   .debug-simulator {
