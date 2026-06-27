@@ -1461,6 +1461,11 @@ h1 {
   filter: drop-shadow(0 4px 7px rgba(2, 6, 23, 0.62));
 }
 
+.ship-image,
+.ship-hit-area {
+  will-change: transform;
+}
+
 .ship-coil-vfx {
   pointer-events: none;
 }

@@ -129,7 +129,7 @@ const state = {
   tradeOfferTargetPlayerId: null,
   tradeOfferedResources: createEmptyResourceSelection(),
   tradeRequestedResources: createEmptyResourceSelection(),
-  modal: null,
+  modal: initialGame.fromAutosave && initialGame.controllerMode && initialGame.gameState ? "controllers" : null,
   hudPlayerId: null,
   hudTab: "turn",
   hudScrollPositions: {},
@@ -138,7 +138,9 @@ const state = {
     ? (initialGame.language === "de" ? "Autosave verworfen." : "Autosave discarded.")
     : initialGame.fromAutosave ? (initialGame.language === "de" ? "Autosave geladen." : "Autosave loaded.") : "",
   controllerMode: initialGame.controllerMode,
-  controllerLobby: null
+  controllerLobby: initialGame.fromAutosave && initialGame.controllerMode && initialGame.gameState
+    ? createControllerReconnectLobby(initialGame.gameState)
+    : null
 };
 
 const remoteHost = {
@@ -182,20 +184,20 @@ const diceRollAnimation = {
   frameRequestId: null,
   currentTime: 0
 };
-const DICE_RESULT_HOLD_MS = 2000;
+const DICE_RESULT_HOLD_MS = 1100;
 const DICE_RESULT_FADE_MS = 320;
 const mothershipSpeedAnimation = {
   item: null,
   frameRequestId: null,
   currentTime: 0
 };
-const MOTHERSHIP_SPEED_APPEAR_MS = 220;
-const MOTHERSHIP_SPEED_SHAKE_MS = 980;
+const MOTHERSHIP_SPEED_APPEAR_MS = 160;
+const MOTHERSHIP_SPEED_SHAKE_MS = 620;
 const MOTHERSHIP_SPEED_REVEAL_MS = MOTHERSHIP_SPEED_ANIMATION_CONFIG.balls.slideDurationMs;
-const MOTHERSHIP_SPEED_HOLD_MS = 2000;
-const MOTHERSHIP_SPEED_FADE_MS = 360;
+const MOTHERSHIP_SPEED_HOLD_MS = 1200;
+const MOTHERSHIP_SPEED_FADE_MS = 260;
 const MOTHERSHIP_SPEED_MIN_SHAKE_CYCLES = 1;
-const MOTHERSHIP_SPEED_MAX_SHAKE_CYCLES = 3;
+const MOTHERSHIP_SPEED_MAX_SHAKE_CYCLES = 2;
 const MOTHERSHIP_SPEED_GAME_BALL_SCALE = 1.725;
 const mothershipBallVisuals = {
   yellow: { color: "#fde047", light: "#fff176", dark: "#ca8a04" },
@@ -568,6 +570,27 @@ function createControllerLobby(playerCount) {
       connected: false,
       connectionState: "disconnected"
     }))
+  };
+}
+
+function createControllerReconnectLobby(gameState) {
+  const players = gameState?.players ?? [];
+  const playerCount = players.length || gameState?.playerCount || 2;
+  return {
+    playerCount,
+    started: true,
+    slots: Array.from({ length: playerCount }, (_, index) => {
+      const player = players[index] ?? {};
+      return {
+        playerId: player.id ?? `player-${index + 1}`,
+        slotNumber: index + 1,
+        name: player.name ?? "",
+        color: player.color ?? "",
+        ready: true,
+        connected: false,
+        connectionState: "lost"
+      };
+    })
   };
 }
 
@@ -3834,7 +3857,7 @@ function queueDiceRollAnimation(player, dice, onComplete = null) {
 
   const now = getAnimationNow();
   const seed = createDiceRollSeed(player.id, dice, now);
-  const duration = 1000 + seededRandom(seed, 1) * 800;
+  const duration = 760 + seededRandom(seed, 1) * 360;
   diceRollAnimation.currentTime = now;
   diceRollAnimation.item = {
     playerId: player.id,
@@ -3854,7 +3877,7 @@ function queueDiceRollAnimation(player, dice, onComplete = null) {
       x: 0.5 + (seededRandom(seed, 4) - 0.5) * 0.18,
       y: 0.47 + (seededRandom(seed, 5) - 0.5) * 0.16
     },
-    spread: 0.075 + seededRandom(seed, 6) * 0.035,
+    spread: 0.16 + seededRandom(seed, 6) * 0.055,
     direction: (seededRandom(seed, 7) - 0.5) * Math.PI * 0.55,
     fallHeight: 42 + seededRandom(seed, 12) * 34,
     spin: [
@@ -4252,23 +4275,45 @@ function updateDice3dOverlayDom() {
 
   const scene = overlay.querySelector(".dice3d-scene");
   if (!scene) return;
-  scene.replaceChildren(
-    renderDice3dDie(item, 0, rollingProgress),
-    renderDice3dDie(item, 1, rollingProgress)
-  );
+  const dice = [...scene.querySelectorAll(".dice3d-die")];
+  if (dice.length !== 2) {
+    scene.replaceChildren(
+      renderDice3dDie(item, 0, rollingProgress),
+      renderDice3dDie(item, 1, rollingProgress)
+    );
+    return;
+  }
+  dice.forEach((die, index) => applyDice3dDiePose(die, item, index, rollingProgress));
 }
 
 function renderDice3dDie(item, index, progress) {
-  const pose = getDice3dPose(item, index, progress);
   const die = document.createElement("div");
   die.className = "dice3d-die";
-  die.style.left = `${pose.x}%`;
-  die.style.top = `${pose.y}%`;
-  die.style.setProperty("--dice-size", `${pose.size}px`);
+  die.dataset.dieIndex = String(index);
   die.style.setProperty("--dice-color", item.color);
   die.style.setProperty("--dice-light", lightenHex(item.color, 0.24));
   die.style.setProperty("--dice-dark", darkenHex(item.color, 0.2));
   die.style.setProperty("--pip-color", getContrastingPipColor(item.color));
+
+  const shadow = document.createElement("div");
+  shadow.className = "dice3d-shadow";
+
+  const cube = document.createElement("div");
+  cube.className = "dice3d-cube";
+  for (const face of getDice3dFaces()) {
+    cube.append(createDice3dFace(face.value, face.className));
+  }
+
+  die.append(shadow, cube);
+  applyDice3dDiePose(die, item, index, progress);
+  return die;
+}
+
+function applyDice3dDiePose(die, item, index, progress) {
+  const pose = getDice3dPose(item, index, progress);
+  die.style.left = `${pose.x}%`;
+  die.style.top = `${pose.y}%`;
+  die.style.setProperty("--dice-size", `${pose.size}px`);
   die.style.setProperty("--shadow-scale", pose.shadowScale.toFixed(3));
   die.style.setProperty("--shadow-alpha", pose.shadowAlpha.toFixed(3));
   die.style.transform = [
@@ -4276,26 +4321,15 @@ function renderDice3dDie(item, index, progress) {
     `translate3d(${pose.wobbleX.toFixed(2)}px, ${pose.bounceY.toFixed(2)}px, ${pose.depth.toFixed(2)}px)`,
     `scale(${pose.scaleX.toFixed(3)}, ${pose.scaleY.toFixed(3)})`
   ].join(" ");
-
-  const shadow = document.createElement("div");
-  shadow.className = "dice3d-shadow";
-
-  const cube = document.createElement("div");
-  cube.className = "dice3d-cube";
-  cube.style.transform = getDice3dCubeTransform(item, index, progress);
-  for (const face of getDice3dFaces()) {
-    cube.append(createDice3dFace(face.value, face.className));
-  }
-
-  die.append(shadow, cube);
-  return die;
+  const cube = die.querySelector(".dice3d-cube");
+  if (cube) cube.style.transform = getDice3dCubeTransform(item, index, progress);
 }
 
 function getDice3dPose(item, index, progress) {
   const progressEased = easeOutCubic(progress);
   const perpendicular = item.direction + Math.PI / 2;
   const side = index === 0 ? -1 : 1;
-  const offset = side * item.spread * 100;
+  const offset = side * Math.max(0.16, item.spread) * 100;
   const startX = item.start.x * 100 + Math.cos(perpendicular) * offset;
   const startY = item.start.y * 100 + Math.sin(perpendicular) * offset;
   const endX = item.end.x * 100 + Math.cos(perpendicular) * offset * 0.72;
@@ -4476,7 +4510,7 @@ function queueShipFlightAnimation(ship, fromPoint, toPoint, onComplete = null) {
   const distance = getDistance(fromPoint, toPoint);
   const startAngle = getShipVisualAngle(ship.id);
   const targetAngle = Math.atan2(toPoint.y - fromPoint.y, toPoint.x - fromPoint.x);
-  const duration = Math.max(1500, Math.min(5800, (460 + distance * 6.4) * 2.65));
+  const duration = Math.max(720, Math.min(2600, 520 + distance * 6.8));
   const noseDistance = Math.max(56, Math.min(170, distance * 0.42));
   const controlDistance = Math.max(48, Math.min(150, distance * 0.34));
   const controlPoint1 = {
@@ -4525,10 +4559,59 @@ function updateShipFlightAnimations(now) {
   shipFlightAnimation.items = activeAnimations;
   shipFlightAnimation.frameRequestId = null;
   for (const callback of completedCallbacks) callback();
-  render();
+  if (completedCallbacks.length > 0) {
+    render();
+  } else {
+    updateShipFlightAnimationDom();
+    drawShipEngineVfxOverlays();
+  }
   if (shipFlightAnimation.items.length > 0) {
     shipFlightAnimation.frameRequestId = requestAnimationFrame(updateShipFlightAnimations);
   }
+}
+
+function updateShipFlightAnimationDom() {
+  const boardSvg = document.querySelector(".board-placeholder .board-svg");
+  if (!boardSvg || !state.gameState) return;
+  const pointsById = new Map((boardLayout.points ?? []).map((point) => [point.id, point]));
+  for (const item of shipFlightAnimation.items) {
+    const ship = state.gameState.board?.ships?.find((candidate) => candidate.id === item.shipId);
+    const fallbackPoint = ship ? pointsById.get(ship.locationId) : null;
+    const group = boardSvg.querySelector(`[data-board-type='ship'][data-board-id='${cssEscape(item.shipId)}']`);
+    if (!ship || !fallbackPoint || !group) continue;
+    const pose = getShipRenderPose(ship, fallbackPoint);
+    updateShipElementPose(group, ship, pose);
+  }
+}
+
+function updateShipElementPose(group, ship, pose) {
+  const visual = playerPieceVisualDefaults.ship;
+  const pop = getPlacementAssetPop("ship", ship.id);
+  const transform = [
+    createPlacementTransform(pose.x, pose.y, 0, pop),
+    `rotate(${(pose.angle * 180) / Math.PI} ${pose.x} ${pose.y})`
+  ].filter(Boolean).join(" ");
+
+  const hitArea = group.querySelector(".ship-hit-area");
+  if (hitArea) {
+    hitArea.setAttribute("cx", String(pose.x));
+    hitArea.setAttribute("cy", String(pose.y));
+  }
+
+  const image = group.querySelector(".ship-image");
+  if (image) {
+    image.setAttribute("x", String(pose.x - visual.width / 2));
+    image.setAttribute("y", String(pose.y - visual.height / 2));
+    image.setAttribute("transform", transform);
+    image.setAttribute("opacity", String(pop.opacity));
+  }
+
+  group.querySelector(".ship-coil-vfx")?.setAttribute("opacity", "0");
+}
+
+function cssEscape(value) {
+  if (window.CSS?.escape) return window.CSS.escape(String(value));
+  return String(value).replace(/["\\]/g, "\\$&");
 }
 
 function queueShipEngineTrail(shipId, pose, inactiveSince) {
@@ -6738,6 +6821,21 @@ function getRemoteEncounterPendingStep(pendingStep) {
       currentTargetPlayerId: pendingStep.currentTargetPlayerId
     };
   }
+  if (pendingStep.type === "shipJumpSelection") {
+    return {
+      type: "shipJumpSelection",
+      shipIds: pendingStep.shipIds ?? [],
+      hint: getLocalizedEncounterText(pendingStep.hint)
+    };
+  }
+  if (pendingStep.type === "boardTargetSelection") {
+    return {
+      type: "boardTargetSelection",
+      shipId: pendingStep.shipId,
+      validNodeIds: pendingStep.validNodeIds ?? [],
+      hint: getLocalizedEncounterText(pendingStep.hint)
+    };
+  }
   return {
     type: pendingStep.type
   };
@@ -7156,6 +7254,12 @@ function executeRemoteAction(actionId, payload = {}) {
       break;
     case "board.select":
       if (isRemoteActionPlayerActive(playerId) && payload.type && payload.id) {
+        if (payload.type === "ship" && confirmEncounterJumpShip(payload.id)) {
+          break;
+        }
+        if (payload.type === "spacePoint" && confirmEncounterTargetAt(payload.id)) {
+          break;
+        }
         if (payload.type === "ship" && state.gameState?.phase === "flight") {
           selectRemoteFlightShip(playerId, payload.id);
         } else {

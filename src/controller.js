@@ -43,6 +43,7 @@ let boardOffset = { x: 0, y: 0 };
 let boardPointers = new Map();
 let boardPanStart = null;
 let boardViewFitted = false;
+let boardGestureMoved = false;
 const tabScrollPositions = new Map();
 const setupNameDrafts = new Map();
 let saveNameDraft = "";
@@ -896,6 +897,7 @@ function renderEncounterPanel() {
 
 function getEncounterStatusLabel() {
   if (gameState?.encounter?.status === "resolved") return "Begegnung abschließen.";
+  if (gameState?.encounter?.pendingStep?.hint) return gameState.encounter.pendingStep.hint;
   if (gameState?.encounter?.pendingType) return "Folge den nächsten Begegnungsschritten.";
   return "Wähle eine Antwort.";
 }
@@ -1611,8 +1613,9 @@ function prepareControllerBoardSvg(content) {
   svg.setAttribute("width", String(dimensions.width));
   svg.setAttribute("height", String(dimensions.height));
   applyStructuredFlightBoardState(content);
+  applyStructuredEncounterBoardState(content);
 
-  if (isPlacementBoardMode() || isFlightMovementBoardMode()) {
+  if (isPlacementBoardMode() || isFlightMovementBoardMode() || isEncounterBoardSelectionMode()) {
     svg.classList.add("controller-board-svg--placement");
     content.querySelectorAll(".planet.is-selected, .planet-system.is-selected, .start-system.is-selected").forEach((element) => {
       element.classList.remove("is-selected");
@@ -1625,7 +1628,31 @@ function prepareControllerBoardSvg(content) {
   }
 }
 
+function applyStructuredEncounterBoardState(content) {
+  const pendingStep = gameState?.encounter?.pendingStep;
+  if (!gameState?.encounter?.active || !pendingStep) return;
+
+  if (pendingStep.type === "shipJumpSelection") {
+    for (const shipId of pendingStep.shipIds ?? []) {
+      const ship = content.querySelector(`[data-board-type='ship'][data-board-id='${cssEscape(shipId)}']`);
+      ship?.classList.add("is-encounter-jump-target");
+    }
+  }
+
+  if (pendingStep.type === "boardTargetSelection") {
+    if (pendingStep.shipId) {
+      const ship = content.querySelector(`[data-board-type='ship'][data-board-id='${cssEscape(pendingStep.shipId)}']`);
+      ship?.classList.add("is-selected");
+    }
+    for (const nodeId of pendingStep.validNodeIds ?? []) {
+      const target = content.querySelector(`[data-board-type='spacePoint'][data-board-id='${cssEscape(nodeId)}']`);
+      target?.classList.add("is-reachable");
+    }
+  }
+}
+
 function applyStructuredFlightBoardState(content) {
+  if (gameState?.encounter?.active) return;
   const flight = gameState?.flight;
   if (!flight?.hasRolledSpeed) return;
 
@@ -1683,10 +1710,44 @@ function clampBoardScale(scale) {
 
 function attachBoardGestures(viewport, content) {
   viewport.addEventListener("click", (event) => {
-    if (!isPlacementBoardMode() && !isFlightMovementBoardMode()) return;
+    if (!isPlacementBoardMode() && !isFlightMovementBoardMode() && !isEncounterBoardSelectionMode()) return;
     event.preventDefault();
     event.stopImmediatePropagation();
+    if (boardGestureMoved) {
+      boardGestureMoved = false;
+      return;
+    }
     if (!canUseBoardSelection()) {
+      flashBoardFeedback(viewport);
+      return;
+    }
+    if (isEncounterShipJumpBoardMode()) {
+      const directElement = getBoardElementFromEventTarget(event.target);
+      const directShip = getEncounterJumpShipElement(directElement);
+      if (directShip) {
+        sendEncounterJumpShipSelection(directShip.dataset.boardId);
+        return;
+      }
+      const nearestShip = findNearestEncounterJumpShip(content, event.clientX, event.clientY);
+      if (nearestShip) {
+        sendEncounterJumpShipSelection(nearestShip.dataset.boardId);
+        return;
+      }
+      flashBoardFeedback(viewport);
+      return;
+    }
+    if (isEncounterTargetBoardMode()) {
+      const directElement = getBoardElementFromEventTarget(event.target);
+      const directReachableTarget = getReachableTargetElement(directElement);
+      if (directReachableTarget) {
+        sendEncounterTargetSelection(directReachableTarget.dataset.boardId);
+        return;
+      }
+      const reachableTarget = findNearestReachableTarget(content, event.clientX, event.clientY);
+      if (reachableTarget) {
+        sendEncounterTargetSelection(reachableTarget.dataset.boardId);
+        return;
+      }
       flashBoardFeedback(viewport);
       return;
     }
@@ -1740,6 +1801,24 @@ function attachBoardGestures(viewport, content) {
         sendPlacementSelection(placementTarget.dataset.boardId);
         return;
       }
+      if (isEncounterShipJumpBoardMode()) {
+        const jumpShip = getEncounterJumpShipElement(element) ?? findNearestEncounterJumpShip(content, event.clientX, event.clientY);
+        if (jumpShip) {
+          sendEncounterJumpShipSelection(jumpShip.dataset.boardId);
+          return;
+        }
+        flashBoardFeedback(viewport);
+        return;
+      }
+      if (isEncounterTargetBoardMode()) {
+        const reachableTarget = getReachableTargetElement(element) ?? findNearestReachableTarget(content, event.clientX, event.clientY);
+        if (reachableTarget) {
+          sendEncounterTargetSelection(reachableTarget.dataset.boardId);
+          return;
+        }
+        flashBoardFeedback(viewport);
+        return;
+      }
       if (isFlightMovementBoardMode()) {
         if (element.dataset.boardType === "ship") {
           sendFlightShipSelection(element.dataset.boardId);
@@ -1762,23 +1841,32 @@ function attachBoardGestures(viewport, content) {
 
   viewport.addEventListener("pointerdown", (event) => {
     viewport.setPointerCapture(event.pointerId);
+    if (boardPointers.size === 0) boardGestureMoved = false;
     boardPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const midpoint = getPointerMidpoint();
     boardPanStart = {
       x: boardOffset.x,
       y: boardOffset.y,
-      pointerX: event.clientX,
-      pointerY: event.clientY,
+      pointerX: midpoint?.x ?? event.clientX,
+      pointerY: midpoint?.y ?? event.clientY,
       distance: getPointerDistance()
     };
   });
   viewport.addEventListener("pointermove", (event) => {
     if (!boardPointers.has(event.pointerId)) return;
+    const previousPoint = boardPointers.get(event.pointerId);
     boardPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (previousPoint && Math.hypot(event.clientX - previousPoint.x, event.clientY - previousPoint.y) > 3) {
+      boardGestureMoved = true;
+    }
     if (boardPointers.size >= 2) {
       const nextDistance = getPointerDistance();
-      if (boardPanStart?.distance) {
-        boardScale = clampBoardScale(boardScale * (nextDistance / boardPanStart.distance));
+      const midpoint = getPointerMidpoint();
+      if (boardPanStart?.distance && nextDistance > 0 && midpoint) {
+        zoomBoardAtClientPoint(viewport, midpoint.x, midpoint.y, boardScale * (nextDistance / boardPanStart.distance));
         boardPanStart.distance = nextDistance;
+        boardPanStart.pointerX = midpoint.x;
+        boardPanStart.pointerY = midpoint.y;
       }
     } else if (boardPanStart) {
       boardOffset = {
@@ -1790,19 +1878,17 @@ function attachBoardGestures(viewport, content) {
   });
   viewport.addEventListener("wheel", (event) => {
     event.preventDefault();
-    const rect = viewport.getBoundingClientRect();
-    const previousScale = boardScale;
-    boardScale = clampBoardScale(boardScale * (event.deltaY < 0 ? 1.12 : 0.89));
-    const cursorX = event.clientX - rect.left;
-    const cursorY = event.clientY - rect.top;
-    boardOffset = {
-      x: cursorX - ((cursorX - boardOffset.x) / previousScale) * boardScale,
-      y: cursorY - ((cursorY - boardOffset.y) / previousScale) * boardScale
-    };
+    zoomBoardAtClientPoint(viewport, event.clientX, event.clientY, boardScale * (event.deltaY < 0 ? 1.12 : 0.89));
     applyBoardTransform(content);
   }, { passive: false });
-  viewport.addEventListener("pointerup", (event) => boardPointers.delete(event.pointerId));
-  viewport.addEventListener("pointercancel", (event) => boardPointers.delete(event.pointerId));
+  viewport.addEventListener("pointerup", (event) => {
+    boardPointers.delete(event.pointerId);
+    resetBoardPanStartAfterPointerEnd();
+  });
+  viewport.addEventListener("pointercancel", (event) => {
+    boardPointers.delete(event.pointerId);
+    resetBoardPanStartAfterPointerEnd();
+  });
 }
 
 function getControllerBoardModeLabel() {
@@ -1836,6 +1922,21 @@ function isFlightMovementBoardMode() {
   );
 }
 
+function isEncounterBoardSelectionMode() {
+  return Boolean(
+    gameState?.encounter?.active &&
+    ["shipJumpSelection", "boardTargetSelection"].includes(gameState.encounter.pendingType)
+  );
+}
+
+function isEncounterShipJumpBoardMode() {
+  return Boolean(gameState?.encounter?.pendingType === "shipJumpSelection");
+}
+
+function isEncounterTargetBoardMode() {
+  return Boolean(gameState?.encounter?.pendingType === "boardTargetSelection");
+}
+
 function getPlacementTargetElement(element) {
   const candidate = element?.closest?.("[data-board-type='spacePoint'][data-board-id]");
   if (!candidate?.classList?.contains("is-placement-target")) return null;
@@ -1849,6 +1950,12 @@ function getBoardElementFromEventTarget(target) {
 function getMovableShipElement(element) {
   const candidate = element?.closest?.("[data-board-type='ship'][data-board-id]");
   if (!candidate || !isMovableShipId(candidate.dataset.boardId)) return null;
+  return candidate;
+}
+
+function getEncounterJumpShipElement(element) {
+  const candidate = element?.closest?.("[data-board-type='ship'][data-board-id]");
+  if (!candidate || !isEncounterJumpShipId(candidate.dataset.boardId)) return null;
   return candidate;
 }
 
@@ -1924,13 +2031,38 @@ function findNearestMovableShip(content, clientX, clientY) {
   return nearest;
 }
 
+function findNearestEncounterJumpShip(content, clientX, clientY) {
+  let nearest = null;
+  let nearestDistance = Infinity;
+  content.querySelectorAll("[data-board-type='ship'][data-board-id]").forEach((element) => {
+    if (!isEncounterJumpShipId(element.dataset.boardId)) return;
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const distance = Math.hypot(clientX - centerX, clientY - centerY);
+    const threshold = Math.max(28, Math.max(rect.width, rect.height) * 0.85);
+    if (distance <= threshold && distance < nearestDistance) {
+      nearest = element;
+      nearestDistance = distance;
+    }
+  });
+  return nearest;
+}
+
 function isMovableShipId(shipId) {
   if (!shipId) return false;
   return Boolean(gameState?.flight?.movableShipIds?.includes(shipId));
 }
 
+function isEncounterJumpShipId(shipId) {
+  if (!shipId) return false;
+  return Boolean(gameState?.encounter?.pendingStep?.shipIds?.includes(shipId));
+}
+
 function isReachableTargetId(nodeId) {
   if (!nodeId) return false;
+  if (gameState?.encounter?.pendingStep?.validNodeIds?.includes(nodeId)) return true;
   if (gameState?.flight?.reachableNodeIds?.includes(nodeId)) return true;
   return Boolean(document.querySelector(`[data-board-type='spacePoint'][data-board-id='${cssEscape(nodeId)}'].is-reachable`));
 }
@@ -1946,6 +2078,22 @@ function sendFlightShipSelection(shipId) {
 function sendFlightMoveSelection(nodeId) {
   if (!nodeId) return;
   sendNamedAction("board.moveShip", { targetNodeId: nodeId });
+}
+
+function sendEncounterJumpShipSelection(shipId) {
+  if (!shipId) return;
+  sendNamedAction("board.select", {
+    type: "ship",
+    id: shipId
+  });
+}
+
+function sendEncounterTargetSelection(nodeId) {
+  if (!nodeId) return;
+  sendNamedAction("board.select", {
+    type: "spacePoint",
+    id: nodeId
+  });
 }
 
 function sendPlacementSelection(nodeId) {
@@ -2016,6 +2164,45 @@ function getPointerDistance() {
   const points = [...boardPointers.values()];
   if (points.length < 2) return 0;
   return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+}
+
+function getPointerMidpoint() {
+  const points = [...boardPointers.values()];
+  if (points.length === 0) return null;
+  if (points.length === 1) return { ...points[0] };
+  return {
+    x: (points[0].x + points[1].x) / 2,
+    y: (points[0].y + points[1].y) / 2
+  };
+}
+
+function zoomBoardAtClientPoint(viewport, clientX, clientY, nextScale) {
+  const rect = viewport.getBoundingClientRect();
+  const anchorX = clientX - rect.left;
+  const anchorY = clientY - rect.top;
+  const previousScale = boardScale;
+  const boardX = (anchorX - boardOffset.x) / previousScale;
+  const boardY = (anchorY - boardOffset.y) / previousScale;
+  boardScale = clampBoardScale(nextScale);
+  boardOffset = {
+    x: anchorX - boardX * boardScale,
+    y: anchorY - boardY * boardScale
+  };
+}
+
+function resetBoardPanStartAfterPointerEnd() {
+  const midpoint = getPointerMidpoint();
+  if (!midpoint) {
+    boardPanStart = null;
+    return;
+  }
+  boardPanStart = {
+    x: boardOffset.x,
+    y: boardOffset.y,
+    pointerX: midpoint.x,
+    pointerY: midpoint.y,
+    distance: getPointerDistance()
+  };
 }
 
 function createMetaItem(label, value) {
