@@ -5476,6 +5476,9 @@ function renderBoardSvg() {
   const svg = createSvgElement("svg", {
     class: "board-svg",
     viewBox: `0 0 ${boardLayout.width} ${boardLayout.height}`,
+    width: boardLayout.width,
+    height: boardLayout.height,
+    preserveAspectRatio: "xMidYMid meet",
     role: "img",
     "aria-label": t("boardAreaLabel")
   });

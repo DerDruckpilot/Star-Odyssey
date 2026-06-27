@@ -1013,6 +1013,35 @@ h1 {
   display: block;
   position: relative;
   z-index: 2;
+  shape-rendering: geometricPrecision;
+  text-rendering: geometricPrecision;
+}
+
+@media (min-width: 2600px), (min-height: 1500px) {
+  .board-placeholder {
+    width: min(calc(100vw - 2rem), 3200px);
+    max-height: min(calc(var(--app-viewport-height) - 2rem), 2000px);
+  }
+}
+
+.board-screen .board-link,
+.board-screen .space-point {
+  vector-effect: non-scaling-stroke;
+}
+
+.board-screen .planet-system .planet,
+.board-screen .start-system .planet,
+.board-screen .outpost-image,
+.board-screen .trade-station-image,
+.board-screen .colony-image,
+.board-screen .spaceport-image,
+.board-screen .ship-image {
+  filter: none;
+}
+
+.board-screen .number-marker {
+  filter: none;
+  paint-order: stroke fill;
 }
 
 .ship-engine-vfx-overlay {
