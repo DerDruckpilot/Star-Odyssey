@@ -283,7 +283,7 @@ body {
   background:
     radial-gradient(circle at 20% 20%, rgba(14, 165, 233, 0.12), transparent 20rem),
     linear-gradient(rgba(2, 6, 23, 0.18), rgba(2, 6, 23, 0.18)),
-    url("../assets/backgrounds/space-background-4k.jpg") center / cover no-repeat,
+    url("../assets/backgrounds/space-background-4k.png") center / cover no-repeat,
     rgba(2, 6, 23, 0.96);
 }
 
@@ -326,7 +326,7 @@ body {
   background:
     radial-gradient(circle at 20% 20%, rgba(14, 165, 233, 0.18), transparent 18rem),
     linear-gradient(rgba(2, 6, 23, 0.22), rgba(2, 6, 23, 0.22)),
-    url("../assets/backgrounds/space-background-4k.jpg") center / cover no-repeat,
+    url("../assets/backgrounds/space-background-4k.png") center / cover no-repeat,
     rgba(2, 6, 23, 0.72);
   touch-action: none;
 }
