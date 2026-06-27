@@ -874,15 +874,27 @@ function renderEncounterPanel() {
   } else if (isOwner && gameState.encounter.pendingStep?.type === "globalUpgradeLossSelection") {
     panel.append(renderControllerEncounterGlobalUpgradeSelection(gameState.encounter.pendingStep));
   } else if (isOwner && ["shipJumpSelection", "boardTargetSelection"].includes(gameState.encounter.pendingType)) {
-    panel.append(createButton(
-      gameState.encounter.pendingType === "shipJumpSelection" ? "Schiff wählen" : "Ziel wählen",
-      () => {
-        sendNamedAction("encounter.startBoardSelection");
-        boardFullscreen = true;
-        render();
-      },
-      "controller-button"
-    ));
+    const pendingStep = gameState.encounter.pendingStep ?? {};
+    const hasTargets = gameState.encounter.pendingType === "shipJumpSelection"
+      ? (pendingStep.shipIds ?? []).length > 0
+      : (pendingStep.validNodeIds ?? []).length > 0;
+    if (hasTargets) {
+      panel.append(createButton(
+        gameState.encounter.pendingType === "shipJumpSelection" ? "Schiff wählen" : "Ziel wählen",
+        () => {
+          sendNamedAction("encounter.startBoardSelection");
+          boardFullscreen = true;
+          render();
+        },
+        "controller-button"
+      ));
+    } else {
+      const empty = document.createElement("p");
+      empty.textContent = "Keine gültigen Ziele verfügbar.";
+      panel.append(empty);
+      const finishAction = findAction("finishEncounter");
+      if (finishAction) panel.append(renderActionGrid([finishAction]));
+    }
   } else if (isOwner && (gameState.encounter.choices ?? []).length > 0) {
     panel.append(renderActionGrid((gameState.encounter.choices ?? []).map((choice) => ({
       id: "encounter.choose",

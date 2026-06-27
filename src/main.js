@@ -6992,6 +6992,13 @@ function getRemoteControllerActions() {
         requiresActivePlayer: true
       }));
     }
+    const pendingEncounterStep = state.gameState.activeEncounter.pendingStep;
+    const hasNoEncounterTargets =
+      (pendingEncounterStep?.type === "shipJumpSelection" && (pendingEncounterStep.shipIds ?? []).length === 0) ||
+      (pendingEncounterStep?.type === "boardTargetSelection" && (pendingEncounterStep.validNodeIds ?? []).length === 0);
+    if (hasNoEncounterTargets) {
+      actions.push(createRemoteAction("finishEncounter", t("finishEncounter"), {}, { requiresActivePlayer: true }));
+    }
     if (state.gameState.activeEncounter.status === "resolved") {
       actions.push(createRemoteAction("finishEncounter", t("finishEncounter"), {}, { requiresActivePlayer: true }));
     }
