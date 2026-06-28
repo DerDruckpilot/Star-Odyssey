@@ -93,6 +93,39 @@ select {
   text-align: center;
 }
 
+.loading-screen {
+  gap: 1.2rem;
+}
+
+.loading-panel {
+  width: min(100%, 28rem);
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.loading-progress-text {
+  margin: 0;
+  color: #dbeafe;
+  font-weight: 800;
+}
+
+.loading-progress-track {
+  height: 0.7rem;
+  overflow: hidden;
+  border: 1px solid rgba(125, 211, 252, 0.38);
+  background: rgba(2, 6, 23, 0.78);
+}
+
+.loading-progress-fill {
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #a78bfa, #facc15);
+  transition: width 160ms ease;
+}
+
 .language-toggle {
   justify-self: end;
   display: inline-grid;
@@ -583,6 +616,11 @@ h1 {
   font-weight: 900;
 }
 
+.player-hud-resources dd.is-resource-gain-flash,
+.resource-summary dd.is-resource-gain-flash {
+  animation: resource-gain-flash 980ms ease-out;
+}
+
 .player-hud-content {
   display: grid;
   gap: 0.55rem;
@@ -1064,6 +1102,67 @@ h1 {
   z-index: 5;
 }
 
+.production-vfx-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 4;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.production-vfx-planet-pulse,
+.production-vfx-chip-pulse,
+.production-vfx-target-pulse {
+  fill: var(--production-color);
+  stroke: var(--production-color);
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.production-vfx-planet-pulse {
+  filter: blur(0.5px);
+  animation: production-planet-pulse 760ms ease-out both;
+}
+
+.production-vfx-chip-pulse {
+  fill: transparent;
+  stroke-width: 5;
+  animation: production-chip-pulse 620ms ease-out both;
+}
+
+.production-vfx-target-pulse {
+  fill: transparent;
+  stroke-width: 6;
+  animation: production-target-pulse 520ms ease-out both;
+}
+
+.production-vfx-trail {
+  fill: none;
+  stroke: var(--production-color);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 0.16 0.84;
+  stroke-dashoffset: 1;
+  opacity: 0;
+  filter: drop-shadow(0 0 8px var(--production-color));
+  animation: production-trail-flow 720ms ease-in-out both;
+}
+
+.production-vfx-label {
+  fill: #f8fafc;
+  stroke: rgba(2, 6, 23, 0.86);
+  stroke-width: 4;
+  paint-order: stroke fill;
+  font-size: 30px;
+  font-weight: 900;
+  opacity: 0;
+  filter: drop-shadow(0 0 8px var(--production-color));
+  animation: production-label-pop 620ms ease-out both;
+}
+
 .viewport-debug-panel {
   position: fixed;
   left: max(0.4rem, var(--app-safe-left));
@@ -1528,6 +1627,110 @@ h1 {
 
   50% {
     transform: scale(1.18);
+  }
+}
+
+@keyframes production-planet-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+
+  28% {
+    opacity: 0.44;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.28);
+  }
+}
+
+@keyframes production-chip-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.76);
+  }
+
+  34% {
+    opacity: 0.95;
+    transform: scale(1.04);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+@keyframes production-trail-flow {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 1;
+  }
+
+  16% {
+    opacity: 0.95;
+  }
+
+  76% {
+    opacity: 0.95;
+    stroke-dashoffset: 0.1;
+  }
+
+  100% {
+    opacity: 0;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes production-target-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+
+  35% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.48);
+  }
+}
+
+@keyframes production-label-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.82);
+  }
+
+  28% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-22px) scale(1.04);
+  }
+}
+
+@keyframes resource-gain-flash {
+  0%,
+  100% {
+    color: #fef9c3;
+    text-shadow: none;
+    transform: none;
+  }
+
+  35% {
+    color: #ffffff;
+    text-shadow: 0 0 12px #facc15;
+    transform: scale(1.16);
   }
 }
 

@@ -112,7 +112,11 @@ const planetAssetPaths = {
   food: "./assets/generated/planets/planet-food.png",
   goods: "./assets/generated/planets/planet-trade.png"
 };
+const boardBackgroundAssetPath = "./assets/backgrounds/space-background-4k.png";
 const preloadedAssetUrls = new Set();
+const assetPreloadPromises = new Map();
+const optionalAssetFailures = new Set();
+let gameAssetsReady = false;
 
 const initialLanguage = loadLanguage();
 const startupAutosaveReset = consumeAutosaveResetUrlParam();
@@ -140,7 +144,8 @@ const state = {
   controllerMode: initialGame.controllerMode,
   controllerLobby: initialGame.fromAutosave && initialGame.controllerMode && initialGame.gameState
     ? createControllerReconnectLobby(initialGame.gameState)
-    : null
+    : null,
+  loadingProgress: 0
 };
 
 const remoteHost = {
@@ -167,6 +172,26 @@ const placementVfx = {
   currentTime: 0,
   nextId: 1
 };
+const productionVfxDuration = 1320;
+const productionVfxStaggerMs = 95;
+const productionVfx = {
+  items: [],
+  resourceFlashes: [],
+  timeoutId: null,
+  nextId: 1
+};
+const productionResourceColors = {
+  ore: "#ef4444",
+  fuel: "#facc15",
+  carbon: "#38bdf8",
+  food: "#22c55e",
+  goods: "#c084fc"
+};
+const planetRenderFallbackOffsets = [
+  { x: -42, y: 34 },
+  { x: 0, y: -38 },
+  { x: 45, y: 35 }
+];
 const shipFlightAnimation = {
   items: [],
   frameRequestId: null,
@@ -399,8 +424,9 @@ function getQrCodeUrl(text) {
   return url.toString();
 }
 
-function preloadGameAssets() {
-  const urls = collectAssetUrls([
+function getGameAssetUrls() {
+  return [...new Set(collectAssetUrls([
+    boardBackgroundAssetPath,
     planetAssetPaths,
     outpostAssetPaths,
     tradeStationAssetPaths,
@@ -409,15 +435,59 @@ function preloadGameAssets() {
     playerColonyAssetPaths,
     playerSpaceportAssetPaths,
     upgradeMenuAssetPaths
-  ]);
+  ]).filter(Boolean))];
+}
 
-  for (const url of urls) {
-    if (!url || preloadedAssetUrls.has(url)) continue;
-    preloadedAssetUrls.add(url);
+async function preloadGameAssets({ onProgress = null } = {}) {
+  const urls = getGameAssetUrls();
+  if (urls.length === 0) {
+    gameAssetsReady = true;
+    onProgress?.(1);
+    return;
+  }
+
+  let completed = 0;
+  const updateProgress = () => {
+    completed += 1;
+    onProgress?.(completed / urls.length);
+  };
+
+  await Promise.all(urls.map((url) => preloadImageAsset(url).then(updateProgress)));
+  gameAssetsReady = true;
+}
+
+function preloadImageAsset(url) {
+  if (preloadedAssetUrls.has(url)) return Promise.resolve(true);
+  if (assetPreloadPromises.has(url)) return assetPreloadPromises.get(url);
+
+  const promise = new Promise((resolve) => {
     const image = new Image();
     image.decoding = "async";
+    image.onload = () => {
+      preloadedAssetUrls.add(url);
+      resolve(true);
+    };
+    image.onerror = () => {
+      if (!optionalAssetFailures.has(url)) {
+        optionalAssetFailures.add(url);
+        console.warn(`Optional asset could not be preloaded: ${url}`);
+      }
+      resolve(false);
+    };
     image.src = url;
-  }
+    if (image.decode) {
+      image.decode()
+        .then(() => {
+          preloadedAssetUrls.add(url);
+          resolve(true);
+        })
+        .catch(() => {
+          // The onerror/onload handlers above cover browsers that reject decode early.
+        });
+    }
+  });
+  assetPreloadPromises.set(url, promise);
+  return promise;
 }
 
 function collectAssetUrls(values) {
@@ -539,14 +609,26 @@ function resetTradeOfferDraft() {
   state.tradeRequestedResources = createEmptyResourceSelection();
 }
 
-function startNewGameSetup() {
+async function runWithAssetLoading(afterLoad) {
+  state.loadingProgress = gameAssetsReady ? 1 : 0;
+  setView("loading");
+  await preloadGameAssets({
+    onProgress: (progress) => {
+      state.loadingProgress = progress;
+      render();
+    }
+  });
+  afterLoad();
+}
+
+async function startNewGameSetup() {
   clearAutosave();
   state.gameState = null;
   state.controllerMode = false;
   state.controllerLobby = null;
   state.selectedPlayers = null;
   state.playerSetup = [];
-  setView("players");
+  await runWithAssetLoading(() => setView("players"));
 }
 
 function enterControllerLobby() {
@@ -661,11 +743,18 @@ function maybeStartControllerGame() {
   startGameNow({ fromControllerLobby: true });
 }
 
-function startGameNow(options = {}) {
+async function startGameNow(options = {}) {
   const validation = validatePlayerSetup();
   if (!validation.valid) {
     state.notice = t(validation.messageKey);
     render();
+    return;
+  }
+
+  if (!options.skipAssetPreload && !gameAssetsReady) {
+    await runWithAssetLoading(() => {
+      startGameNow({ ...options, skipAssetPreload: true });
+    });
     return;
   }
 
@@ -968,6 +1057,102 @@ function moveSelectedShipTo(targetNodeId) {
   return true;
 }
 
+function commitProductionRollResult(nextGameState, { renderNow = false } = {}) {
+  const productionData = nextGameState?.productionVfx ?? null;
+  state.gameState = stripTransientProductionVfx(nextGameState);
+  saveCurrentGameState();
+  startProductionVfx(productionData);
+  if (renderNow) render();
+}
+
+function stripTransientProductionVfx(gameState) {
+  if (!gameState?.productionVfx) return gameState;
+  return {
+    ...gameState,
+    productionVfx: null
+  };
+}
+
+function startProductionVfx(productionData) {
+  if (productionVfx.timeoutId) {
+    clearTimeout(productionVfx.timeoutId);
+    productionVfx.timeoutId = null;
+  }
+
+  const events = buildProductionVfxItems(productionData);
+  const flashes = (productionData?.resourceFlashes ?? []).map((flash) => ({
+    ...flash,
+    id: `production-resource-${productionVfx.nextId++}`
+  }));
+
+  if (events.length === 0 && flashes.length === 0) {
+    productionVfx.items = [];
+    productionVfx.resourceFlashes = [];
+    return;
+  }
+
+  productionVfx.items = events;
+  productionVfx.resourceFlashes = flashes;
+  productionVfx.timeoutId = setTimeout(() => {
+    productionVfx.items = [];
+    productionVfx.resourceFlashes = [];
+    productionVfx.timeoutId = null;
+    render();
+  }, productionVfxDuration + productionVfxStaggerMs * Math.max(events.length - 1, 0) + 220);
+}
+
+function buildProductionVfxItems(productionData) {
+  return (productionData?.events ?? [])
+    .map((event, index) => {
+      const planetPosition = getProductionPlanetRenderPoint(event.planetId);
+      if (!planetPosition) return null;
+
+      const color = productionResourceColors[event.resource] ?? "#f8fafc";
+      const recipients = (event.recipients ?? [])
+        .map((recipient) => {
+          const structure = getStructureById(recipient.structureId);
+          const structurePosition = structure ? getStructureRenderPoint(structure) : null;
+          if (!structurePosition) return null;
+          const player = state.gameState?.players?.find((candidate) => candidate.id === recipient.playerId);
+          return {
+            ...recipient,
+            x: structurePosition.x,
+            y: structurePosition.y,
+            playerColor: playerDiceColors[player?.color] ?? "#f8fafc"
+          };
+        })
+        .filter(Boolean);
+
+      return {
+        ...event,
+        id: `production-vfx-${productionVfx.nextId++}`,
+        x: planetPosition.x,
+        y: planetPosition.y,
+        delay: index * productionVfxStaggerMs,
+        color,
+        recipients
+      };
+    })
+    .filter(Boolean);
+}
+
+function getProductionPlanetRenderPoint(planetId) {
+  for (const system of [...(boardLayout.startSystems ?? []), ...getVisiblePlanetSystems()]) {
+    const planets = system.planets ?? system.resources?.map((resource, index) => ({
+      id: `${system.id}-planet-${index + 1}`,
+      resource
+    })) ?? [];
+    const index = planets.findIndex((planet) => planet.id === planetId);
+    if (index < 0) continue;
+    return getPlanetRenderPosition(system, planets[index], planetRenderFallbackOffsets[index] ?? { x: 0, y: 0 });
+  }
+  return null;
+}
+
+function isResourceGainFlashing(playerId, resource) {
+  return productionVfx.resourceFlashes.some((flash) => flash.playerId === playerId && flash.resource === resource);
+}
+
 function rollProductionForActivePlayer() {
   if (!state.gameState || state.gameState.phase !== "production") return;
   if (state.gameState.sevenResolution?.active) return;
@@ -976,12 +1161,11 @@ function rollProductionForActivePlayer() {
   const rollingPlayer = getActivePlayer();
   const nextGameState = rollProduction(state.gameState, boardLayout);
   const queued = queueDiceRollAnimation(rollingPlayer, nextGameState.lastRoll?.dice, () => {
-    state.gameState = nextGameState;
-    saveCurrentGameState();
+    commitProductionRollResult(nextGameState);
   });
   if (!queued) {
-    state.gameState = nextGameState;
-    saveCurrentGameState();
+    commitProductionRollResult(nextGameState, { renderNow: true });
+    return;
   }
   render();
 }
@@ -1349,6 +1533,43 @@ function renderMenu() {
   return screen;
 }
 
+function renderLoadingScreen() {
+  const screen = document.createElement("section");
+  screen.className = "menu-screen loading-screen";
+  screen.setAttribute("aria-labelledby", "screen-title");
+
+  const title = document.createElement("h1");
+  title.id = "screen-title";
+  title.className = "setup-title";
+  title.textContent = t("loadingAssets");
+
+  const progress = Math.max(0, Math.min(1, state.loadingProgress ?? 0));
+  const percent = Math.round(progress * 100);
+
+  const progressText = document.createElement("p");
+  progressText.className = "loading-progress-text";
+  progressText.textContent = t("loadingAssetsProgress").replace("{percent}", percent);
+
+  const progressTrack = document.createElement("div");
+  progressTrack.className = "loading-progress-track";
+  progressTrack.setAttribute("role", "progressbar");
+  progressTrack.setAttribute("aria-valuemin", "0");
+  progressTrack.setAttribute("aria-valuemax", "100");
+  progressTrack.setAttribute("aria-valuenow", String(percent));
+
+  const progressFill = document.createElement("div");
+  progressFill.className = "loading-progress-fill";
+  progressFill.style.width = `${percent}%`;
+  progressTrack.append(progressFill);
+
+  const panel = document.createElement("div");
+  panel.className = "loading-panel";
+  panel.append(progressText, progressTrack);
+
+  screen.append(title, panel);
+  return screen;
+}
+
 function renderPlayerSelect() {
   const screen = document.createElement("section");
   screen.className = "menu-screen";
@@ -1574,6 +1795,63 @@ function getControllerSlotStatusLabel(slot) {
   return t("controllerSlotDisconnected");
 }
 
+function renderProductionVfxOverlay() {
+  if (productionVfx.items.length === 0) return null;
+
+  const overlay = createSvgElement("svg", {
+    class: "production-vfx-overlay",
+    viewBox: `0 0 ${boardLayout.width} ${boardLayout.height}`,
+    preserveAspectRatio: "xMidYMid meet",
+    "aria-hidden": "true"
+  });
+
+  for (const event of productionVfx.items) {
+    const delay = event.delay ?? 0;
+    overlay.append(createSvgElement("circle", {
+      class: "production-vfx-planet-pulse",
+      cx: event.x,
+      cy: event.y,
+      r: 48,
+      style: `--production-color: ${event.color}; animation-delay: ${delay}ms;`
+    }));
+    overlay.append(createSvgElement("circle", {
+      class: "production-vfx-chip-pulse",
+      cx: event.x,
+      cy: event.y,
+      r: 19,
+      style: `--production-color: ${event.color}; animation-delay: ${delay + 60}ms;`
+    }));
+
+    for (const recipient of event.recipients ?? []) {
+      const trailDelay = delay + 150;
+      overlay.append(createSvgElement("path", {
+        class: "production-vfx-trail",
+        d: `M ${event.x} ${event.y} L ${recipient.x} ${recipient.y}`,
+        pathLength: "1",
+        style: `--production-color: ${event.color}; animation-delay: ${trailDelay}ms;`
+      }));
+      overlay.append(createSvgElement("circle", {
+        class: "production-vfx-target-pulse",
+        cx: recipient.x,
+        cy: recipient.y,
+        r: 26,
+        style: `--production-color: ${recipient.playerColor}; animation-delay: ${trailDelay + 360}ms;`
+      }));
+      const label = createSvgElement("text", {
+        class: "production-vfx-label",
+        x: recipient.x,
+        y: recipient.y - 32,
+        "text-anchor": "middle",
+        style: `--production-color: ${event.color}; animation-delay: ${trailDelay + 430}ms;`
+      });
+      label.textContent = "+1";
+      overlay.append(label);
+    }
+  }
+
+  return overlay;
+}
+
 function renderBoardShell() {
   const screen = document.createElement("section");
   screen.className = "board-screen";
@@ -1597,6 +1875,7 @@ function renderBoardShell() {
     renderShipEngineVfxCanvas("behind"),
     renderBoardSvg(),
     renderShipEngineVfxCanvas("inline"),
+    renderProductionVfxOverlay(),
     renderShipEngineVfxCanvas("front"),
     renderDice3dOverlay(),
     renderMothershipSpeedOverlay()
@@ -1849,6 +2128,7 @@ function renderHudResourceStrip(player) {
     const label = document.createElement("dt");
     label.textContent = getResourceLabel(resource);
     const value = document.createElement("dd");
+    value.className = isResourceGainFlashing(player?.id, resource) ? "is-resource-gain-flash" : "";
     value.textContent = String(player?.resources?.[resource] ?? 0);
     list.append(label, value);
   }
@@ -1895,6 +2175,7 @@ function renderResourceSummary(player = getActivePlayer()) {
     const label = document.createElement("dt");
     label.textContent = getResourceLabel(resource);
     const value = document.createElement("dd");
+    value.className = isResourceGainFlashing(player?.id, resource) ? "is-resource-gain-flash" : "";
     value.textContent = String(player?.resources?.[resource] ?? 0);
     list.append(label, value);
   }
@@ -5748,11 +6029,6 @@ function renderPlanetSystem(system, className, explored) {
   const selectedClass = isSelectedElement("planetSystem", system.id) ? " is-selected" : "";
   const group = createSvgElement("g", { class: `${className}${selectedClass}` });
   enableBoardElementSelection(group, "planetSystem", system.id);
-  const offsets = [
-    { x: -42, y: 34 },
-    { x: 0, y: -38 },
-    { x: 45, y: 35 }
-  ];
 
   const planets = system.planets ?? system.resources.map((resource, index) => ({
     id: `${system.id}-planet-${index + 1}`,
@@ -5760,7 +6036,7 @@ function renderPlanetSystem(system, className, explored) {
   }));
 
   planets.forEach((planet, index) => {
-    const fallbackOffset = offsets[index] ?? { x: 0, y: 0 };
+    const fallbackOffset = planetRenderFallbackOffsets[index] ?? { x: 0, y: 0 };
     const position = getPlanetRenderPosition(system, planet, fallbackOffset);
     const selectedClass = isSelectedElement("planet", planet.id) ? " is-selected" : "";
     const imageSize = className === "start-system" ? 82 : 72;
@@ -7380,6 +7656,7 @@ function render() {
   const views = {
     board: renderBoardShell,
     controllers: renderControllerConnect,
+    loading: renderLoadingScreen,
     menu: renderMenu,
     playerSetup: renderPlayerSetup,
     players: renderPlayerSelect
@@ -7395,7 +7672,9 @@ function render() {
   publishRemoteHostState();
 }
 
-preloadGameAssets();
+if (state.gameState) {
+  void preloadGameAssets();
+}
 connectRemoteHost();
 render();
 

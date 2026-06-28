@@ -294,6 +294,7 @@ export function rollProduction(gameState, boardLayout, forcedRoll = null) {
     },
     sevenResolution: productionResult.sevenResolution,
     pendingFriendshipAction,
+    productionVfx: productionResult.productionVfx ?? null,
     logEntries: [
       {
         type: "turn",
@@ -5499,8 +5500,18 @@ function distributeProduction(gameState, boardLayout, rollTotal) {
   const playersById = new Map(players.map((player) => [player.id, player]));
   const gains = [];
   const producedResourcesByPlayerId = new Map(players.map((player) => [player.id, createEmptyResources()]));
+  const productionEvents = [];
+  const resourceFlashes = [];
 
   for (const planet of producingPlanets) {
+    const productionEvent = {
+      planetId: planet.id,
+      systemId: planet.systemId,
+      resource: planet.resource,
+      rollTotal,
+      recipients: []
+    };
+
     for (const structure of structures) {
       if (!structure.adjacentPlanetIds?.includes(planet.id)) continue;
       const player = playersById.get(structure.ownerPlayerId);
@@ -5508,12 +5519,25 @@ function distributeProduction(gameState, boardLayout, rollTotal) {
 
       player.resources[planet.resource] = (player.resources[planet.resource] ?? 0) + 1;
       producedResourcesByPlayerId.get(player.id)[planet.resource] += 1;
+      productionEvent.recipients.push({
+        playerId: player.id,
+        structureId: structure.id,
+        resource: planet.resource,
+        amount: 1
+      });
+      resourceFlashes.push({
+        playerId: player.id,
+        resource: planet.resource,
+        amount: 1
+      });
       gains.push({
         player: player.name,
         resource: planet.resource,
         amount: 1
       });
     }
+
+    productionEvents.push(productionEvent);
   }
 
   for (const player of players) {
@@ -5525,6 +5549,11 @@ function distributeProduction(gameState, boardLayout, rollTotal) {
       if (!resource || (producedResources?.[resource] ?? 0) <= 0) continue;
 
       player.resources[resource] = (player.resources[resource] ?? 0) + amount;
+      resourceFlashes.push({
+        playerId: player.id,
+        resource,
+        amount
+      });
       gains.push({
         player: player.name,
         resource,
@@ -5535,6 +5564,11 @@ function distributeProduction(gameState, boardLayout, rollTotal) {
 
   return {
     players,
+    productionVfx: {
+      rollTotal,
+      events: productionEvents,
+      resourceFlashes
+    },
     gainedByPlayerId: Object.fromEntries(
       [...producedResourcesByPlayerId.entries()]
         .map(([playerId, resources]) => [playerId, countResources(resources)])
