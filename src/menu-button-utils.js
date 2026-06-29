@@ -34,22 +34,22 @@ export const menuButtonDefinitions = [
 
 export const defaultButtonLayout = {
   basis: { width: 1920, height: 1080 },
-  component: { x: 480, y: 180, width: 760, height: 118, scale: 1 },
+  component: { x: 452, y: 180, width: 760, height: 118, scale: 1 },
   plate: { x: 380, y: 59, width: 760, height: 118, opacity: 1 },
   hoverPlate: { x: 380, y: 59, width: 760, height: 118, opacity: 0 },
-  iconRing: { x: 112, y: 59, width: 86, height: 86, scale: 1, opacity: 0.92 },
-  icon: { x: 112, y: 59, width: 44, height: 44, scale: 1, opacity: 0.95 },
+  iconRing: { x: 63, y: 66, width: 86, height: 86, scale: 1.48, opacity: 0.92 },
+  icon: { x: 63, y: 66, width: 44, height: 44, scale: 1.77, opacity: 0.95 },
   text: {
-    x: 410,
-    y: 59,
-    fontSize: 38,
-    fontWeight: 800,
+    x: 379,
+    y: 69,
+    fontSize: 32,
+    fontWeight: 600,
     color: "#fff7ed",
     glow: 0.7,
   },
-  sideGemLeft: { x: 36, y: 59, width: 50, height: 66, scale: 0.72, opacity: 0.88 },
-  sideGemRight: { x: 724, y: 59, width: 50, height: 66, scale: 0.72, opacity: 0.88 },
-  separatorGlow: { x: 382, y: 2, width: 540, height: 16, scaleX: 1, scaleY: 1, opacity: 0.62 },
+  sideGemLeft: { x: -15, y: 66, width: 50, height: 66, scale: 2, opacity: 0.88 },
+  sideGemRight: { x: 693, y: 65, width: 50, height: 66, scale: 1.49, opacity: 0.88 },
+  separatorGlow: { x: 380, y: -6, width: 540, height: 16, scaleX: 1.14, scaleY: 1.56, opacity: 0.84 },
 };
 
 export function mergeDeep(base, incoming) {

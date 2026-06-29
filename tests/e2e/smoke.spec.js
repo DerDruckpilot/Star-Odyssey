@@ -129,11 +129,23 @@ test("menu preview loads processed assets and live layout controls", async ({ pa
   await expect(page.locator('a[href="./debug-encounter-cards.html"]')).toBeVisible();
   await expect(page.locator('a[href="./menu-button-preview.html"]')).toBeVisible();
   await expect(page.locator("#layout-json")).toHaveValue(/"buttons_group"/);
+  await expect(page.locator("#apply-layout")).toBeVisible();
+  await expect(page.locator("#download-layout")).toBeVisible();
 
   await page.locator('input[data-group="logo"][data-field="scale"][type="number"]').fill("1.1");
   await expect(page.locator("#layout-json")).toHaveValue(/"scale": 1.1/);
   await page.locator('input[data-group="frame_corner_top_right"][data-field="mirrorX"]').uncheck();
   await expect(page.locator("#layout-json")).toHaveValue(/"mirrorX": false/);
+  await page.locator("#layout-json").fill('{ "logo": { "x": 71 } }');
+  await page.locator("#apply-layout").click();
+  await expect(page.locator("#layout-json")).toHaveValue(/"x": 71/);
+  const menuDownloadPromise = page.waitForEvent("download");
+  await page.locator("#download-layout").click();
+  const menuDownload = await menuDownloadPromise;
+  expect(menuDownload.suggestedFilename()).toBe("star-odyssey-menu-preview-layout.json");
+  await page.locator("#layout-json").fill("{bad");
+  await page.locator("#apply-layout").click();
+  await expect(page.locator("#menu-preview-log")).toContainText("JSON konnte nicht angewendet werden");
 
   const manifestResponse = await page.request.get("/public/assets/ui/menu/processed/menu-assets.manifest.json");
   expect(manifestResponse.ok()).toBe(true);
@@ -149,8 +161,20 @@ test("menu preview loads processed assets and live layout controls", async ({ pa
   await expect(page.locator("#button-lab-primary .menu-composite-button")).toBeVisible();
   await expect(page.locator("#button-lab-variants .menu-composite-button")).toHaveCount(4);
   await expect(page.locator("#button-layout-json")).toHaveValue(/"iconRing"/);
+  await expect(page.locator("#apply-button-layout")).toBeVisible();
+  await expect(page.locator("#download-button-layout")).toBeVisible();
   await page.locator('input[data-group="text"][data-field="fontSize"][type="number"]').fill("44");
   await expect(page.locator("#button-layout-json")).toHaveValue(/"fontSize": 44/);
+  await page.locator("#button-layout-json").fill('{ "text": { "fontSize": 36 } }');
+  await page.locator("#apply-button-layout").click();
+  await expect(page.locator("#button-layout-json")).toHaveValue(/"fontSize": 36/);
+  const buttonDownloadPromise = page.waitForEvent("download");
+  await page.locator("#download-button-layout").click();
+  const buttonDownload = await buttonDownloadPromise;
+  expect(buttonDownload.suggestedFilename()).toBe("star-odyssey-menu-button-layout.json");
+  await page.locator("#button-layout-json").fill("{bad");
+  await page.locator("#apply-button-layout").click();
+  await expect(page.locator("#button-preview-log")).toContainText("JSON konnte nicht angewendet werden");
   const buttonLayoutResponse = await page.request.get("/public/assets/ui/menu/processed/menu-button-layout.json");
   expect(buttonLayoutResponse.ok()).toBe(true);
 });

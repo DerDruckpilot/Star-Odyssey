@@ -7,6 +7,7 @@ import {
 } from "./menu-button-utils.js";
 
 const buttonLayoutUrl = "./public/assets/ui/menu/processed/menu-button-layout.json";
+const buttonLayoutDownloadName = "star-odyssey-menu-button-layout.json";
 
 const controlGroups = [
   {
@@ -18,6 +19,28 @@ const controlGroups = [
       ["scale", 0.2, 2.4, 0.01],
       ["width", 300, 1200, 1],
       ["height", 50, 220, 1],
+    ],
+  },
+  {
+    key: "plate",
+    label: "Button-Rahmen",
+    fields: [
+      ["x", 0, 760, 1],
+      ["y", -30, 160, 1],
+      ["width", 200, 1000, 1],
+      ["height", 40, 220, 1],
+      ["opacity", 0, 1, 0.01],
+    ],
+  },
+  {
+    key: "hoverPlate",
+    label: "Hover-Rahmen",
+    fields: [
+      ["x", 0, 760, 1],
+      ["y", -30, 160, 1],
+      ["width", 200, 1000, 1],
+      ["height", 40, 220, 1],
+      ["opacity", 0, 1, 0.01],
     ],
   },
   {
@@ -222,9 +245,27 @@ function bindActions() {
     }
   });
 
+  document.querySelector("#apply-button-layout").addEventListener("click", () => {
+    try {
+      layout = mergeDeep(defaultButtonLayout, JSON.parse(output.value));
+      renderControls();
+      renderButtons();
+      applyLayout();
+      log.textContent = "Button-Layout JSON wurde angewendet.";
+    } catch (error) {
+      log.textContent = `JSON konnte nicht angewendet werden: ${error.message}`;
+    }
+  });
+
+  document.querySelector("#download-button-layout").addEventListener("click", () => {
+    downloadJson(buttonLayoutDownloadName, layout);
+    log.textContent = `${buttonLayoutDownloadName} wurde vorbereitet.`;
+  });
+
   document.querySelector("#reset-button-layout").addEventListener("click", () => {
     layout = structuredClone(defaultButtonLayout);
     renderControls();
+    renderButtons();
     applyLayout();
     log.textContent = "Button-Layout wurde zurückgesetzt.";
   });
@@ -268,4 +309,16 @@ function setFocused(index) {
   renderButtons();
   applyLayout();
   log.textContent = `Aktiver Beispielbutton: ${menuButtonDefinitions[index].label}`;
+}
+
+function downloadJson(filename, value) {
+  const blob = new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }

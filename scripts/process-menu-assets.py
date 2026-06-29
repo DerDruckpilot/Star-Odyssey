@@ -175,23 +175,23 @@ def write_default_layout() -> None:
         return values
 
     layout = {
-        "background": layer(50, 50, 100, 100),
+        "background": layer(52.2, 47.1, 99.9, 100, scale=1.06, rotation=1),
         "stars_overlay": layer(50, 50, 100, 100, opacity=0.72),
-        "planet": layer(10, 78, 34, 46, opacity=0.82),
+        "planet": layer(9, 88.5, 34, 46, opacity=0.82),
         "galaxy": layer(82, 76, 22, 22, opacity=0.92),
-        "frame_corner_top_left": layer(3.1, 4, 14, 20),
-        "frame_corner_top_right": layer(96.9, 4, 14, 20, mirrorX=True),
-        "frame_corner_bottom_left": layer(3.1, 96, 14, 20, mirrorY=True),
-        "frame_corner_bottom_right": layer(96.9, 96, 14, 20, mirrorX=True, mirrorY=True),
-        "frame_top_edge": layer(50, 2.4, 64, 5.2),
-        "frame_bottom_edge": layer(50, 97.6, 64, 5.2, mirrorY=True),
-        "frame_left_edge": layer(1.6, 50, 4.6, 60),
-        "frame_right_edge": layer(98.4, 50, 4.6, 60, mirrorX=True),
-        "frame_top_deco": layer(26, 3.2, 20, 7.5, opacity=0.85),
-        "frame_bottom_deco": layer(74, 96.8, 20, 7.5, mirrorY=True, opacity=0.85),
-        "logo": layer(50, 22, 42, 16),
-        "title_compass_emblem": layer(50, 16, 18, 27, opacity=0.5),
-        "title_ring_overlay": layer(50, 16, 21, 30, opacity=0.35),
+        "frame_corner_top_left": layer(7.9, 11.2, 14, 20, scale=1.31),
+        "frame_corner_top_right": layer(92.3, 11.2, 14, 20, scale=1.31, mirrorX=True),
+        "frame_corner_bottom_left": layer(7.9, 88.8, 14, 20, scale=1.31, mirrorY=True),
+        "frame_corner_bottom_right": layer(92.3, 88.8, 14, 20, scale=1.31, mirrorX=True, mirrorY=True),
+        "frame_top_edge": layer(50, 3.2, 29, 10),
+        "frame_bottom_edge": layer(50, 95.9, 51.5, 13.5, mirrorY=True),
+        "frame_left_edge": layer(1.6, 50, 4.6, 60, scale=0.85),
+        "frame_right_edge": layer(98.4, 50, 4.6, 60, scale=0.85, mirrorX=True),
+        "frame_top_deco": layer(26, 3.2, 20, 7.5, opacity=0.85, visible=False),
+        "frame_bottom_deco": layer(74, 96.8, 20, 7.5, mirrorY=True, opacity=0.85, visible=False),
+        "logo": layer(73, 26.3, 42, 16, scale=3.36),
+        "title_compass_emblem": layer(24.6, 24.6, 18, 27),
+        "title_ring_overlay": layer(50, 16, 21, 30, opacity=0.35, visible=False),
         "buttons_group": layer(50, 61, 42, 42, scale=0.92, spacing=20),
     }
     (PROCESSED_DIR / "menu-preview-layout.json").write_text(json.dumps(layout, indent=2) + "\n", encoding="utf-8")
@@ -200,15 +200,15 @@ def write_default_layout() -> None:
 def write_default_button_layout() -> None:
     layout = {
         "basis": {"width": 1920, "height": 1080},
-        "component": {"x": 480, "y": 180, "width": 760, "height": 118, "scale": 1},
+        "component": {"x": 452, "y": 180, "width": 760, "height": 118, "scale": 1},
         "plate": {"x": 380, "y": 59, "width": 760, "height": 118, "opacity": 1},
         "hoverPlate": {"x": 380, "y": 59, "width": 760, "height": 118, "opacity": 0},
-        "iconRing": {"x": 112, "y": 59, "width": 86, "height": 86, "scale": 1, "opacity": 0.92},
-        "icon": {"x": 112, "y": 59, "width": 44, "height": 44, "scale": 1, "opacity": 0.95},
-        "text": {"x": 410, "y": 59, "fontSize": 38, "fontWeight": 800, "color": "#fff7ed", "glow": 0.7},
-        "sideGemLeft": {"x": 36, "y": 59, "width": 50, "height": 66, "scale": 0.72, "opacity": 0.88},
-        "sideGemRight": {"x": 724, "y": 59, "width": 50, "height": 66, "scale": 0.72, "opacity": 0.88},
-        "separatorGlow": {"x": 382, "y": 2, "width": 540, "height": 16, "scaleX": 1, "scaleY": 1, "opacity": 0.62},
+        "iconRing": {"x": 63, "y": 66, "width": 86, "height": 86, "scale": 1.48, "opacity": 0.92},
+        "icon": {"x": 63, "y": 66, "width": 44, "height": 44, "scale": 1.77, "opacity": 0.95},
+        "text": {"x": 379, "y": 69, "fontSize": 32, "fontWeight": 600, "color": "#fff7ed", "glow": 0.7},
+        "sideGemLeft": {"x": -15, "y": 66, "width": 50, "height": 66, "scale": 2, "opacity": 0.88},
+        "sideGemRight": {"x": 693, "y": 65, "width": 50, "height": 66, "scale": 1.49, "opacity": 0.88},
+        "separatorGlow": {"x": 380, "y": -6, "width": 540, "height": 16, "scaleX": 1.14, "scaleY": 1.56, "opacity": 0.84},
     }
     (PROCESSED_DIR / "menu-button-layout.json").write_text(json.dumps(layout, indent=2) + "\n", encoding="utf-8")
 

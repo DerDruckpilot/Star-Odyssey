@@ -7,6 +7,7 @@ import {
 
 const layoutUrl = "./public/assets/ui/menu/processed/menu-preview-layout.json";
 const buttonLayoutUrl = "./public/assets/ui/menu/processed/menu-button-layout.json";
+const layoutDownloadName = "star-odyssey-menu-preview-layout.json";
 
 const baseLayer = {
   x: 50,
@@ -22,23 +23,23 @@ const baseLayer = {
 };
 
 const fallbackLayout = {
-  background: { ...baseLayer, width: 100, height: 100 },
+  background: { ...baseLayer, x: 52.2, y: 47.1, width: 99.9, height: 100, scale: 1.06, rotation: 1 },
   stars_overlay: { ...baseLayer, width: 100, height: 100, opacity: 0.72 },
-  planet: { ...baseLayer, x: 10, y: 78, width: 34, height: 46, scale: 1, opacity: 0.82 },
+  planet: { ...baseLayer, x: 9, y: 88.5, width: 34, height: 46, scale: 1, opacity: 0.82 },
   galaxy: { ...baseLayer, x: 82, y: 76, width: 22, height: 22, opacity: 0.92 },
-  frame_corner_top_left: { ...baseLayer, x: 3.1, y: 4, width: 14, height: 20 },
-  frame_corner_top_right: { ...baseLayer, x: 96.9, y: 4, width: 14, height: 20, mirrorX: true },
-  frame_corner_bottom_left: { ...baseLayer, x: 3.1, y: 96, width: 14, height: 20, mirrorY: true },
-  frame_corner_bottom_right: { ...baseLayer, x: 96.9, y: 96, width: 14, height: 20, mirrorX: true, mirrorY: true },
-  frame_top_edge: { ...baseLayer, x: 50, y: 2.4, width: 64, height: 5.2 },
-  frame_bottom_edge: { ...baseLayer, x: 50, y: 97.6, width: 64, height: 5.2, mirrorY: true },
-  frame_left_edge: { ...baseLayer, x: 1.6, y: 50, width: 4.6, height: 60 },
-  frame_right_edge: { ...baseLayer, x: 98.4, y: 50, width: 4.6, height: 60, mirrorX: true },
-  frame_top_deco: { ...baseLayer, x: 26, y: 3.2, width: 20, height: 7.5, opacity: 0.85 },
-  frame_bottom_deco: { ...baseLayer, x: 74, y: 96.8, width: 20, height: 7.5, mirrorY: true, opacity: 0.85 },
-  logo: { ...baseLayer, x: 50, y: 22, width: 42, height: 16, opacity: 1 },
-  title_compass_emblem: { ...baseLayer, x: 50, y: 16, width: 18, height: 27, opacity: 0.5 },
-  title_ring_overlay: { ...baseLayer, x: 50, y: 16, width: 21, height: 30, opacity: 0.35 },
+  frame_corner_top_left: { ...baseLayer, x: 7.9, y: 11.2, width: 14, height: 20, scale: 1.31 },
+  frame_corner_top_right: { ...baseLayer, x: 92.3, y: 11.2, width: 14, height: 20, scale: 1.31, mirrorX: true },
+  frame_corner_bottom_left: { ...baseLayer, x: 7.9, y: 88.8, width: 14, height: 20, scale: 1.31, mirrorY: true },
+  frame_corner_bottom_right: { ...baseLayer, x: 92.3, y: 88.8, width: 14, height: 20, scale: 1.31, mirrorX: true, mirrorY: true },
+  frame_top_edge: { ...baseLayer, x: 50, y: 3.2, width: 29, height: 10 },
+  frame_bottom_edge: { ...baseLayer, x: 50, y: 95.9, width: 51.5, height: 13.5, mirrorY: true },
+  frame_left_edge: { ...baseLayer, x: 1.6, y: 50, width: 4.6, height: 60, scale: 0.85 },
+  frame_right_edge: { ...baseLayer, x: 98.4, y: 50, width: 4.6, height: 60, scale: 0.85, mirrorX: true },
+  frame_top_deco: { ...baseLayer, x: 26, y: 3.2, width: 20, height: 7.5, opacity: 0.85, visible: false },
+  frame_bottom_deco: { ...baseLayer, x: 74, y: 96.8, width: 20, height: 7.5, mirrorY: true, opacity: 0.85, visible: false },
+  logo: { ...baseLayer, x: 73, y: 26.3, width: 42, height: 16, scale: 3.36, opacity: 1 },
+  title_compass_emblem: { ...baseLayer, x: 24.6, y: 24.6, width: 18, height: 27, opacity: 1 },
+  title_ring_overlay: { ...baseLayer, x: 50, y: 16, width: 21, height: 30, opacity: 0.35, visible: false },
   buttons_group: { ...baseLayer, x: 50, y: 61, width: 42, height: 42, scale: 0.92, spacing: 20 },
 };
 
@@ -190,6 +191,22 @@ function bindActions() {
     }
   });
 
+  document.querySelector("#apply-layout").addEventListener("click", () => {
+    try {
+      layout = mergeDeep(fallbackLayout, JSON.parse(output.value));
+      renderControls();
+      applyLayout();
+      log.textContent = "Layout JSON wurde angewendet.";
+    } catch (error) {
+      log.textContent = `JSON konnte nicht angewendet werden: ${error.message}`;
+    }
+  });
+
+  document.querySelector("#download-layout").addEventListener("click", () => {
+    downloadJson(layoutDownloadName, layout);
+    log.textContent = `${layoutDownloadName} wurde vorbereitet.`;
+  });
+
   document.querySelector("#reset-layout").addEventListener("click", () => {
     layout = structuredClone(fallbackLayout);
     renderControls();
@@ -255,4 +272,16 @@ function applyLayerStyle(element, layer) {
 function setFocusedButton(nextIndex) {
   focusedButtonIndex = nextIndex;
   buttons.forEach((button, index) => button.classList.toggle("is-focused", index === focusedButtonIndex));
+}
+
+function downloadJson(filename, value) {
+  const blob = new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
