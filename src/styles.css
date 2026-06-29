@@ -336,6 +336,34 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.lobby-preload-status {
+  width: min(100%, 30rem);
+  display: grid;
+  gap: 0.45rem;
+  margin-top: -0.35rem;
+}
+
+.lobby-preload-text {
+  margin: 0;
+  color: #dbeafe;
+  font-size: clamp(0.85rem, 1.5vw, 1rem);
+  font-weight: 800;
+}
+
+.lobby-preload-track {
+  height: 0.45rem;
+  overflow: hidden;
+  border: 1px solid rgba(125, 211, 252, 0.32);
+  background: rgba(2, 6, 23, 0.65);
+}
+
+.lobby-preload-fill {
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #a78bfa, #facc15);
+  transition: width 160ms ease;
+}
+
 .qr-status {
   width: 100%;
   margin: 0;

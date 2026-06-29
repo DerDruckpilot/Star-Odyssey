@@ -117,6 +117,8 @@ const preloadedAssetUrls = new Set();
 const assetPreloadPromises = new Map();
 const optionalAssetFailures = new Set();
 let gameAssetsReady = false;
+let gameAssetsStatus = "idle";
+let gameAssetsPreloadPromise = null;
 
 const initialLanguage = loadLanguage();
 const startupAutosaveReset = consumeAutosaveResetUrlParam();
@@ -439,9 +441,17 @@ function getGameAssetUrls() {
 }
 
 async function preloadGameAssets({ onProgress = null } = {}) {
+  if (gameAssetsReady) {
+    gameAssetsStatus = "ready";
+    onProgress?.(1);
+    return gameAssetsPreloadPromise ?? Promise.resolve();
+  }
+  if (gameAssetsPreloadPromise) return gameAssetsPreloadPromise;
+
   const urls = getGameAssetUrls();
   if (urls.length === 0) {
     gameAssetsReady = true;
+    gameAssetsStatus = "ready";
     onProgress?.(1);
     return;
   }
@@ -452,8 +462,13 @@ async function preloadGameAssets({ onProgress = null } = {}) {
     onProgress?.(completed / urls.length);
   };
 
-  await Promise.all(urls.map((url) => preloadImageAsset(url).then(updateProgress)));
-  gameAssetsReady = true;
+  gameAssetsStatus = "loading";
+  gameAssetsPreloadPromise = Promise.all(urls.map((url) => preloadImageAsset(url).then(updateProgress)))
+    .then(() => {
+      gameAssetsReady = true;
+      gameAssetsStatus = optionalAssetFailures.size > 0 ? "error" : "ready";
+    });
+  await gameAssetsPreloadPromise;
 }
 
 function preloadImageAsset(url) {
@@ -621,14 +636,14 @@ async function runWithAssetLoading(afterLoad) {
   afterLoad();
 }
 
-async function startNewGameSetup() {
+function startNewGameSetup() {
   clearAutosave();
   state.gameState = null;
   state.controllerMode = false;
   state.controllerLobby = null;
   state.selectedPlayers = null;
   state.playerSetup = [];
-  await runWithAssetLoading(() => setView("players"));
+  setView("players");
 }
 
 function enterControllerLobby() {
@@ -637,6 +652,7 @@ function enterControllerLobby() {
   state.controllerLobby = createControllerLobby(state.selectedPlayers);
   state.playerSetup = [];
   setView("controllers");
+  startControllerLobbyAssetPreload();
 }
 
 function createControllerLobby(playerCount) {
@@ -722,14 +738,38 @@ function updateControllerLobbySlot(playerId, changes) {
   return true;
 }
 
-function maybeStartControllerGame() {
-  if (!state.controllerLobby || state.controllerLobby.started) return;
-  const slots = state.controllerLobby.slots ?? [];
-  const allReady = slots.length === state.controllerLobby.playerCount
+function areControllerLobbySlotsReady(slots = state.controllerLobby?.slots ?? []) {
+  return slots.length === state.controllerLobby?.playerCount
     && slots.every((slot) => slot.connected && slot.ready && slot.name.trim() && slot.color)
     && new Set(slots.map((slot) => slot.name.trim().toLocaleLowerCase(state.language))).size === slots.length
     && new Set(slots.map((slot) => slot.color)).size === slots.length;
+}
+
+function startControllerLobbyAssetPreload() {
+  if (gameAssetsReady || gameAssetsStatus === "loading") return;
+  state.loadingProgress = 0;
+  void preloadGameAssets({
+    onProgress: (progress) => {
+      state.loadingProgress = progress;
+      if (state.view === "controllers" || state.modal === "controllers") render();
+    }
+  }).then(() => {
+    state.loadingProgress = 1;
+    if (state.view === "controllers" || state.modal === "controllers") render();
+    maybeStartControllerGame();
+  });
+}
+
+function maybeStartControllerGame() {
+  if (!state.controllerLobby || state.controllerLobby.started) return;
+  const slots = state.controllerLobby.slots ?? [];
+  const allReady = areControllerLobbySlotsReady(slots);
   if (!allReady) return;
+  if (!gameAssetsReady) {
+    startControllerLobbyAssetPreload();
+    render();
+    return;
+  }
 
   state.controllerLobby = {
     ...state.controllerLobby,
@@ -740,7 +780,7 @@ function maybeStartControllerGame() {
     color: slot.color
   }));
   state.selectedPlayers = state.controllerLobby.playerCount;
-  startGameNow({ fromControllerLobby: true });
+  startGameNow({ fromControllerLobby: true, skipAssetPreload: true });
 }
 
 async function startGameNow(options = {}) {
@@ -1634,6 +1674,8 @@ function renderControllerConnect() {
   hint.className = "subtitle small-subtitle";
   hint.textContent = t("qrPlaceholderHint");
 
+  const preloadStatus = renderControllerLobbyPreloadStatus();
+
   const actions = document.createElement("div");
   actions.className = "setup-actions";
   actions.append(
@@ -1644,8 +1686,42 @@ function renderControllerConnect() {
     }, "secondary-button")
   );
 
-  screen.append(renderLanguageToggle(), title, qrGrid, hint, actions);
+  screen.append(renderLanguageToggle(), title, qrGrid, hint, preloadStatus, actions);
   return screen;
+}
+
+function renderControllerLobbyPreloadStatus() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "lobby-preload-status";
+
+  const progress = Math.max(0, Math.min(1, gameAssetsReady ? 1 : (state.loadingProgress ?? 0)));
+  const percent = Math.round(progress * 100);
+  const allReady = areControllerLobbySlotsReady();
+
+  const text = document.createElement("p");
+  text.className = "lobby-preload-text";
+  if (gameAssetsReady) {
+    text.textContent = gameAssetsStatus === "error" ? t("assetPreloadReadyWithFallback") : t("assetPreloadReady");
+  } else if (allReady) {
+    text.textContent = t("assetPreloadAllPlayersReady").replace("{percent}", percent);
+  } else {
+    text.textContent = t("assetPreloadProgress").replace("{percent}", percent);
+  }
+
+  const track = document.createElement("div");
+  track.className = "lobby-preload-track";
+  track.setAttribute("role", "progressbar");
+  track.setAttribute("aria-valuemin", "0");
+  track.setAttribute("aria-valuemax", "100");
+  track.setAttribute("aria-valuenow", String(percent));
+
+  const fill = document.createElement("div");
+  fill.className = "lobby-preload-fill";
+  fill.style.width = `${percent}%`;
+  track.append(fill);
+
+  wrapper.append(text, track);
+  return wrapper;
 }
 
 function renderPlayerSetup() {
@@ -1775,7 +1851,9 @@ function renderQrPlaceholder(playerNumber) {
 }
 
 function openControllerWindow(controllerUrl) {
-  const opened = window.open(controllerUrl, "_blank", "noopener,noreferrer,width=430,height=900");
+  const testUrl = new URL(controllerUrl);
+  testUrl.searchParams.set("testWindow", "iphone16promax-landscape");
+  const opened = window.open(testUrl.toString(), "_blank", "noopener,noreferrer,width=1000,height=460");
   if (!opened) console.warn("Controller-Fenster wurde vom Browser blockiert.", controllerUrl);
 }
 

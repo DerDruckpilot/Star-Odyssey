@@ -26,7 +26,12 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await page.locator(".qr-card").first().click();
   const popup = await popupPromise;
   await popup.waitForLoadState("domcontentloaded");
-  expect(popup.url()).toBe(controllerUrls[0]);
+  const popupUrl = new URL(popup.url());
+  const qrUrl = new URL(controllerUrls[0]);
+  expect(`${popupUrl.origin}${popupUrl.pathname}`).toBe(`${qrUrl.origin}${qrUrl.pathname}`);
+  expect(popupUrl.searchParams.get("session")).toBe(qrUrl.searchParams.get("session"));
+  expect(popupUrl.searchParams.get("player")).toBe("1");
+  expect(popupUrl.searchParams.get("testWindow")).toBe("iphone16promax-landscape");
   await popup.close();
 
   const controllerOne = await page.context().newPage();
