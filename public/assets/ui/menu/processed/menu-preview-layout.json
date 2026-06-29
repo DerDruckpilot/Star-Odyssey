@@ -1,0 +1,38 @@
+{
+  "logo": {
+    "x": 50,
+    "y": 18.0,
+    "scale": 0.62
+  },
+  "buttons": {
+    "x": 50,
+    "y": 57.0,
+    "scale": 0.74,
+    "spacing": 2.1
+  },
+  "frame": {
+    "inset": 1.35,
+    "scale": 1.0
+  },
+  "planet": {
+    "x": 9,
+    "y": 78,
+    "scale": 0.58,
+    "opacity": 0.82
+  },
+  "galaxy": {
+    "x": 84,
+    "y": 73,
+    "scale": 0.34,
+    "opacity": 0.92
+  },
+  "titleOrnament": {
+    "x": 50,
+    "y": 17.5,
+    "scale": 0.68,
+    "opacity": 0.46
+  },
+  "stars": {
+    "opacity": 0.72
+  }
+}

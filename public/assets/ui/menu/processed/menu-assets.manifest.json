@@ -1,0 +1,323 @@
+{
+  "assets": [
+    {
+      "assetKey": "bg_space_base_4k",
+      "finalPath": "public/assets/ui/menu/processed/background/bg_space_base_4k.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-01.jpg",
+      "width": 1280,
+      "height": 720,
+      "hasAlpha": false,
+      "category": "background",
+      "status": "reviewNeeded",
+      "notes": "Uploaded source is 1280x720; replace with true 4K if a matching final background is desired."
+    },
+    {
+      "assetKey": "bg_planet_bottom_left",
+      "finalPath": "public/assets/ui/menu/processed/background/bg_planet_bottom_left.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-02.jpg",
+      "width": 1098,
+      "height": 1109,
+      "hasAlpha": true,
+      "category": "background",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "bg_galaxy_bottom_right",
+      "finalPath": "public/assets/ui/menu/processed/background/bg_galaxy_bottom_right.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-03.jpg",
+      "width": 1174,
+      "height": 959,
+      "hasAlpha": true,
+      "category": "background",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "bg_stars_overlay",
+      "finalPath": "public/assets/ui/menu/processed/background/bg_stars_overlay.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-04.jpg",
+      "width": 1280,
+      "height": 720,
+      "hasAlpha": true,
+      "category": "background",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "logo_space_odyssey",
+      "finalPath": "public/assets/ui/menu/processed/title/logo_space_odyssey.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-05.jpg",
+      "width": 859,
+      "height": 595,
+      "hasAlpha": true,
+      "category": "title",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "title_compass_emblem",
+      "finalPath": "public/assets/ui/menu/processed/title/title_compass_emblem.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-06.jpg",
+      "width": 802,
+      "height": 750,
+      "hasAlpha": true,
+      "category": "title",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "title_ring_overlay",
+      "finalPath": "public/assets/ui/menu/processed/title/title_ring_overlay.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-06.jpg",
+      "width": 802,
+      "height": 750,
+      "hasAlpha": true,
+      "category": "title",
+      "status": "reviewNeeded",
+      "notes": "Derived from the compass emblem because no separate title ring asset was uploaded."
+    },
+    {
+      "assetKey": "frame_corner_master",
+      "finalPath": "public/assets/ui/menu/processed/frame/frame_corner_master.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-07.jpg",
+      "width": 839,
+      "height": 755,
+      "hasAlpha": true,
+      "category": "frame",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "frame_top_edge",
+      "finalPath": "public/assets/ui/menu/processed/frame/frame_top_edge.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-08.jpg",
+      "width": 1280,
+      "height": 235,
+      "hasAlpha": true,
+      "category": "frame",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "frame_bottom_edge",
+      "finalPath": "public/assets/ui/menu/processed/frame/frame_bottom_edge.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-09.jpg",
+      "width": 1272,
+      "height": 190,
+      "hasAlpha": true,
+      "category": "frame",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "frame_left_edge",
+      "finalPath": "public/assets/ui/menu/processed/frame/frame_left_edge.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-10.jpg",
+      "width": 197,
+      "height": 1268,
+      "hasAlpha": true,
+      "category": "frame",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "frame_right_edge",
+      "finalPath": "public/assets/ui/menu/processed/frame/frame_right_edge.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-11.jpg",
+      "width": 140,
+      "height": 1232,
+      "hasAlpha": true,
+      "category": "frame",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "frame_top_deco_left",
+      "finalPath": "public/assets/ui/menu/processed/frame/frame_top_deco_left.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-12.jpg",
+      "width": 1205,
+      "height": 302,
+      "hasAlpha": true,
+      "category": "frame",
+      "status": "reviewNeeded",
+      "notes": "Decorative edge role inferred from visual orientation."
+    },
+    {
+      "assetKey": "frame_top_deco_right",
+      "finalPath": "public/assets/ui/menu/processed/frame/frame_top_deco_right.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-13.jpg",
+      "width": 1223,
+      "height": 382,
+      "hasAlpha": true,
+      "category": "frame",
+      "status": "reviewNeeded",
+      "notes": "Decorative edge role inferred from visual orientation."
+    },
+    {
+      "assetKey": "frame_bottom_deco_left",
+      "finalPath": "public/assets/ui/menu/processed/frame/frame_bottom_deco_left.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-14.jpg",
+      "width": 840,
+      "height": 296,
+      "hasAlpha": true,
+      "category": "frame",
+      "status": "reviewNeeded",
+      "notes": "Decorative edge role inferred from visual orientation."
+    },
+    {
+      "assetKey": "frame_bottom_deco_right",
+      "finalPath": "public/assets/ui/menu/processed/frame/frame_bottom_deco_right.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-15.jpg",
+      "width": 1151,
+      "height": 296,
+      "hasAlpha": true,
+      "category": "frame",
+      "status": "reviewNeeded",
+      "notes": "Decorative edge role inferred from visual orientation."
+    },
+    {
+      "assetKey": "button_main_master",
+      "finalPath": "public/assets/ui/menu/processed/buttons/button_main_master.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-16.jpg",
+      "width": 1251,
+      "height": 358,
+      "hasAlpha": true,
+      "category": "buttons",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "button_main_hover",
+      "finalPath": "public/assets/ui/menu/processed/buttons/button_main_hover.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-17.jpg",
+      "width": 1280,
+      "height": 396,
+      "hasAlpha": true,
+      "category": "buttons",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "button_main_pressed",
+      "finalPath": "public/assets/ui/menu/processed/buttons/button_main_pressed.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-18.jpg",
+      "width": 1270,
+      "height": 378,
+      "hasAlpha": true,
+      "category": "buttons",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "button_main_disabled",
+      "finalPath": "public/assets/ui/menu/processed/buttons/button_main_disabled.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-19.jpg",
+      "width": 1257,
+      "height": 373,
+      "hasAlpha": true,
+      "category": "buttons",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "button_icon_ring",
+      "finalPath": "public/assets/ui/menu/processed/buttons/button_icon_ring.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-20.jpg",
+      "width": 1001,
+      "height": 1008,
+      "hasAlpha": true,
+      "category": "buttons",
+      "status": "reviewNeeded",
+      "notes": "Large ring asset is scaled down in preview; verify final button-icon framing."
+    },
+    {
+      "assetKey": "button_side_gem_left",
+      "finalPath": "public/assets/ui/menu/processed/buttons/button_side_gem_left.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-21.jpg",
+      "width": 1003,
+      "height": 1056,
+      "hasAlpha": true,
+      "category": "buttons",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "button_side_gem_right",
+      "finalPath": "public/assets/ui/menu/processed/buttons/button_side_gem_right.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-22.jpg",
+      "width": 1002,
+      "height": 844,
+      "hasAlpha": true,
+      "category": "buttons",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "button_separator_glow",
+      "finalPath": "public/assets/ui/menu/processed/buttons/button_separator_glow.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-23.jpg",
+      "width": 1270,
+      "height": 65,
+      "hasAlpha": true,
+      "category": "buttons",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "icon_new_game",
+      "finalPath": "public/assets/ui/menu/processed/icons/icon_new_game.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-24.jpg",
+      "width": 1078,
+      "height": 1086,
+      "hasAlpha": true,
+      "category": "icons",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "icon_load_game",
+      "finalPath": "public/assets/ui/menu/processed/icons/icon_load_game.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-25.jpg",
+      "width": 652,
+      "height": 1016,
+      "hasAlpha": true,
+      "category": "icons",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "icon_quit_game",
+      "finalPath": "public/assets/ui/menu/processed/icons/icon_quit_game.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-26.jpg",
+      "width": 841,
+      "height": 952,
+      "hasAlpha": true,
+      "category": "icons",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "icon_settings",
+      "finalPath": "public/assets/ui/menu/processed/icons/icon_settings.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-ref-27.jpg",
+      "width": 941,
+      "height": 940,
+      "hasAlpha": true,
+      "category": "icons",
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "assetKey": "menu_reference_render",
+      "finalPath": "public/assets/ui/menu/processed/reference/menu_reference_render.png",
+      "sourceRawFile": "public/assets/ui/menu/raw/start-menu-target-design-reference.jpg",
+      "width": 1280,
+      "height": 720,
+      "hasAlpha": false,
+      "category": "reference",
+      "status": "ok",
+      "notes": ""
+    }
+  ]
+}

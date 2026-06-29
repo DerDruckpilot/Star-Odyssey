@@ -111,6 +111,32 @@ test("card debug review pages load and filter cards", async ({ page }) => {
   await expect(page.locator(".encounter-sim-history")).toBeVisible();
 });
 
+test("menu preview loads processed assets and live layout controls", async ({ page }) => {
+  await page.goto("/menu-preview.html");
+
+  await expect(page.locator(".menu-preview-scene")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Neues Spiel" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Spiel laden" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Spiel beenden" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Einstellungen" })).toBeVisible();
+  await expect(page.locator(".menu-title-stack__logo")).toBeVisible();
+  await expect(page.locator(".menu-deco--planet")).toBeVisible();
+  await expect(page.locator(".menu-deco--galaxy")).toBeVisible();
+  await expect(page.locator("#layout-json")).toHaveValue(/"buttons"/);
+
+  await page.locator('input[data-group="logo"][data-field="scale"][type="number"]').fill("1.1");
+  await expect(page.locator("#layout-json")).toHaveValue(/"scale": 1.1/);
+
+  const manifestResponse = await page.request.get("/public/assets/ui/menu/processed/menu-assets.manifest.json");
+  expect(manifestResponse.ok()).toBe(true);
+  const manifest = await manifestResponse.json();
+  expect(manifest.assets.length).toBeGreaterThanOrEqual(28);
+  for (const asset of manifest.assets) {
+    const response = await page.request.get(`/${asset.finalPath}`);
+    expect(response.ok(), `${asset.assetKey} exists`).toBe(true);
+  }
+});
+
 test("outpost debug page loads and exports layout", async ({ page }) => {
   await page.goto("/debug-outposts.html");
 
