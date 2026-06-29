@@ -34,6 +34,12 @@ import {
 import { getShipEngineTemplate, getShipVfxAnchors, getTradeShipVfxAnchors } from "./data/shipVfxData.js";
 import { MOTHERSHIP_SPEED_ANIMATION_CONFIG } from "./data/mothershipSpeedAnimationConfig.js";
 import {
+  defaultButtonLayout,
+  menuButtonDefinitions,
+  mergeDeep,
+  renderMenuButtons
+} from "./menu-button-utils.js";
+import {
   applyDebugLayoutTransform,
   getStructureVisualPosition,
   structureVisualReferenceLayouts
@@ -113,12 +119,66 @@ const planetAssetPaths = {
   goods: "./assets/generated/planets/planet-trade.png"
 };
 const boardBackgroundAssetPath = "./assets/backgrounds/space-background-4k.png";
+const mainMenuLayoutUrl = "./public/assets/ui/menu/processed/menu-preview-layout.json";
+const mainMenuButtonLayoutUrl = "./public/assets/ui/menu/processed/menu-button-layout.json";
+const mainMenuAssetPaths = {
+  background: "./public/assets/ui/menu/processed/background/bg_space_base_4k.png",
+  stars_overlay: "./public/assets/ui/menu/processed/background/bg_stars_overlay.png",
+  planet: "./public/assets/ui/menu/processed/background/bg_planet_bottom_left.png",
+  galaxy: "./public/assets/ui/menu/processed/background/bg_galaxy_bottom_right.png",
+  frame_corner_master: "./public/assets/ui/menu/processed/frame/frame_corner_master.png",
+  frame_top_edge: "./public/assets/ui/menu/processed/frame/frame_top_edge.png",
+  frame_bottom_edge: "./public/assets/ui/menu/processed/frame/frame_bottom_edge.png",
+  frame_left_edge: "./public/assets/ui/menu/processed/frame/frame_left_edge.png",
+  frame_right_edge: "./public/assets/ui/menu/processed/frame/frame_right_edge.png",
+  frame_top_deco: "./public/assets/ui/menu/processed/frame/frame_top_deco_left.png",
+  frame_bottom_deco: "./public/assets/ui/menu/processed/frame/frame_bottom_deco_left.png",
+  logo: "./public/assets/ui/menu/processed/title/logo_space_odyssey.png",
+  title_compass_emblem: "./public/assets/ui/menu/processed/title/title_compass_emblem.png",
+  title_ring_overlay: "./public/assets/ui/menu/processed/title/title_ring_overlay.png",
+};
+const mainMenuBaseLayer = {
+  x: 50,
+  y: 50,
+  width: 20,
+  height: 20,
+  scale: 1,
+  opacity: 1,
+  rotation: 0,
+  mirrorX: false,
+  mirrorY: false,
+  visible: true,
+};
+const defaultMainMenuLayout = {
+  background: { ...mainMenuBaseLayer, x: 52.2, y: 47.1, width: 99.9, height: 100, scale: 1.06, rotation: 1 },
+  stars_overlay: { ...mainMenuBaseLayer, width: 100, height: 100, opacity: 0.72 },
+  planet: { ...mainMenuBaseLayer, x: 9, y: 88.5, width: 34, height: 46, opacity: 0.82 },
+  galaxy: { ...mainMenuBaseLayer, x: 82, y: 76, width: 22, height: 22, opacity: 0.92 },
+  frame_corner_top_left: { ...mainMenuBaseLayer, x: 7.9, y: 11.2, width: 14, height: 20, scale: 1.31 },
+  frame_corner_top_right: { ...mainMenuBaseLayer, x: 92.3, y: 11.2, width: 14, height: 20, scale: 1.31, mirrorX: true },
+  frame_corner_bottom_left: { ...mainMenuBaseLayer, x: 7.9, y: 88.8, width: 14, height: 20, scale: 1.31, mirrorY: true },
+  frame_corner_bottom_right: { ...mainMenuBaseLayer, x: 92.3, y: 88.8, width: 14, height: 20, scale: 1.31, mirrorX: true, mirrorY: true },
+  frame_top_edge: { ...mainMenuBaseLayer, x: 50, y: 3.2, width: 29, height: 10 },
+  frame_bottom_edge: { ...mainMenuBaseLayer, x: 50, y: 95.9, width: 51.5, height: 13.5, mirrorY: true },
+  frame_left_edge: { ...mainMenuBaseLayer, x: 1.6, y: 50, width: 4.6, height: 60, scale: 0.85 },
+  frame_right_edge: { ...mainMenuBaseLayer, x: 98.4, y: 50, width: 4.6, height: 60, scale: 0.85, mirrorX: true },
+  frame_top_deco: { ...mainMenuBaseLayer, x: 26, y: 3.2, width: 20, height: 7.5, opacity: 0.85, visible: false },
+  frame_bottom_deco: { ...mainMenuBaseLayer, x: 74, y: 96.8, width: 20, height: 7.5, mirrorY: true, opacity: 0.85, visible: false },
+  logo: { ...mainMenuBaseLayer, x: 73, y: 26.3, width: 42, height: 16, scale: 3.36 },
+  title_compass_emblem: { ...mainMenuBaseLayer, x: 24.6, y: 24.6, width: 18, height: 27 },
+  title_ring_overlay: { ...mainMenuBaseLayer, x: 50, y: 16, width: 21, height: 30, opacity: 0.35, visible: false },
+  buttons_group: { ...mainMenuBaseLayer, x: 50, y: 61, width: 42, height: 42, scale: 0.92, spacing: 20 },
+};
 const preloadedAssetUrls = new Set();
 const assetPreloadPromises = new Map();
 const optionalAssetFailures = new Set();
 let gameAssetsReady = false;
 let gameAssetsStatus = "idle";
 let gameAssetsPreloadPromise = null;
+let mainMenuLayout = structuredClone(defaultMainMenuLayout);
+let mainMenuButtonLayout = structuredClone(defaultButtonLayout);
+let mainMenuLayoutPromise = null;
+let focusedMainMenuButtonIndex = 0;
 
 const initialLanguage = loadLanguage();
 const startupAutosaveReset = consumeAutosaveResetUrlParam();
@@ -446,6 +506,7 @@ function getQrCodeUrl(text) {
 function getGameAssetUrls() {
   return [...new Set(collectAssetUrls([
     boardBackgroundAssetPath,
+    mainMenuAssetPaths,
     planetAssetPaths,
     outpostAssetPaths,
     tradeStationAssetPaths,
@@ -455,6 +516,29 @@ function getGameAssetUrls() {
     playerSpaceportAssetPaths,
     upgradeMenuAssetPaths
   ]).filter(Boolean))];
+}
+
+async function loadMainMenuLayouts() {
+  if (mainMenuLayoutPromise) return mainMenuLayoutPromise;
+  mainMenuLayoutPromise = Promise.all([
+    loadJsonWithFallback(mainMenuLayoutUrl, defaultMainMenuLayout),
+    loadJsonWithFallback(mainMenuButtonLayoutUrl, defaultButtonLayout)
+  ]).then(([layout, buttonLayout]) => {
+    mainMenuLayout = layout;
+    mainMenuButtonLayout = buttonLayout;
+    if (state.view === "menu") render();
+  });
+  return mainMenuLayoutPromise;
+}
+
+async function loadJsonWithFallback(url, fallback) {
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) return structuredClone(fallback);
+    return mergeDeep(fallback, await response.json());
+  } catch {
+    return structuredClone(fallback);
+  }
 }
 
 async function preloadGameAssets({ onProgress = null } = {}) {
@@ -1561,33 +1645,145 @@ function renderLanguageToggle() {
   return wrapper;
 }
 
+function renderMenuLayer(name, src, classes = []) {
+  const image = document.createElement("img");
+  image.className = ["main-menu-layer", ...classes].join(" ");
+  image.dataset.menuLayer = name;
+  image.src = src;
+  image.alt = "";
+  image.decoding = "async";
+  image.draggable = false;
+  return image;
+}
+
+function applyMainMenuLayout(scene) {
+  for (const [key, layer] of Object.entries(mainMenuLayout)) {
+    const element = scene.querySelector(`[data-menu-layer="${key}"]`);
+    if (!element) continue;
+    applyMainMenuLayerStyle(element, layer);
+    if (key === "buttons_group") {
+      element.style.gap = `${layer.spacing ?? 20}px`;
+    }
+  }
+}
+
+function applyMainMenuLayerStyle(element, layer) {
+  element.style.display = layer.visible === false ? "none" : "";
+  element.style.left = `${layer.x}%`;
+  element.style.top = `${layer.y}%`;
+  element.style.width = `${layer.width}%`;
+  element.style.height = `${layer.height}%`;
+  element.style.opacity = String(layer.opacity ?? 1);
+  const scaleX = (layer.mirrorX ? -1 : 1) * (layer.scale ?? 1);
+  const scaleY = (layer.mirrorY ? -1 : 1) * (layer.scale ?? 1);
+  element.style.transform = `translate(-50%, -50%) rotate(${layer.rotation ?? 0}deg) scale(${scaleX}, ${scaleY})`;
+}
+
+function getMainMenuDefinitions() {
+  const labels = {
+    newGame: t("newGame"),
+    loadGame: t("loadGame"),
+    quitGame: t("exitGame"),
+    settings: state.language === "en" ? "Settings" : "Einstellungen"
+  };
+  return menuButtonDefinitions.map((definition) => ({
+    ...definition,
+    label: labels[definition.id] ?? definition.label
+  }));
+}
+
+function runMainMenuAction(actionId) {
+  const actions = {
+    newGame: startNewGameSetup,
+    loadGame: () => openModal("load"),
+    quitGame: requestAppExit,
+    settings: () => openModal("settings")
+  };
+  actions[actionId]?.();
+}
+
+function updateMainMenuFocus(buttons, nextIndex, shouldFocus = false) {
+  if (buttons.length === 0) return;
+  focusedMainMenuButtonIndex = (nextIndex + buttons.length) % buttons.length;
+  buttons.forEach((button, index) => {
+    const isFocused = index === focusedMainMenuButtonIndex;
+    button.classList.toggle("is-focused", isFocused);
+    button.tabIndex = isFocused ? 0 : -1;
+  });
+  if (shouldFocus) buttons[focusedMainMenuButtonIndex]?.focus();
+}
+
 function renderMenu() {
   const screen = document.createElement("section");
-  screen.className = "menu-screen";
+  screen.className = "menu-screen main-menu-screen";
   screen.setAttribute("aria-labelledby", "screen-title");
+  screen.tabIndex = -1;
 
-  const titleGroup = document.createElement("div");
-  titleGroup.className = "title-group";
+  const scene = document.createElement("div");
+  scene.className = "main-menu-scene";
 
   const title = document.createElement("h1");
   title.id = "screen-title";
-  title.textContent = "Star Odyssey";
+  title.className = "visually-hidden";
+  title.textContent = "Space Odyssey";
 
-  const subtitle = document.createElement("p");
-  subtitle.className = "subtitle";
-  subtitle.textContent = t("subtitle");
+  const buttonList = document.createElement("nav");
+  buttonList.className = "main-menu-button-list";
+  buttonList.dataset.menuLayer = "buttons_group";
+  buttonList.setAttribute("aria-label", "Hauptmenü");
 
-  titleGroup.append(title, subtitle);
-
-  const actions = document.createElement("div");
-  actions.className = "menu-actions";
-  actions.append(
-    createButton(t("newGame"), startNewGameSetup),
-    createButton(t("loadGame"), () => openModal("load")),
-    createButton(t("exitGame"), requestAppExit, "secondary-button")
+  scene.append(
+    renderMenuLayer("background", mainMenuAssetPaths.background, ["main-menu-layer--fill"]),
+    renderMenuLayer("stars_overlay", mainMenuAssetPaths.stars_overlay, ["main-menu-layer--fill", "main-menu-layer--screen"]),
+    renderMenuLayer("planet", mainMenuAssetPaths.planet),
+    renderMenuLayer("galaxy", mainMenuAssetPaths.galaxy, ["main-menu-layer--screen"]),
+    renderMenuLayer("frame_corner_top_left", mainMenuAssetPaths.frame_corner_master),
+    renderMenuLayer("frame_corner_top_right", mainMenuAssetPaths.frame_corner_master),
+    renderMenuLayer("frame_corner_bottom_left", mainMenuAssetPaths.frame_corner_master),
+    renderMenuLayer("frame_corner_bottom_right", mainMenuAssetPaths.frame_corner_master),
+    renderMenuLayer("frame_top_edge", mainMenuAssetPaths.frame_top_edge, ["main-menu-layer--stretch"]),
+    renderMenuLayer("frame_bottom_edge", mainMenuAssetPaths.frame_bottom_edge, ["main-menu-layer--stretch"]),
+    renderMenuLayer("frame_left_edge", mainMenuAssetPaths.frame_left_edge, ["main-menu-layer--stretch"]),
+    renderMenuLayer("frame_right_edge", mainMenuAssetPaths.frame_right_edge, ["main-menu-layer--stretch"]),
+    renderMenuLayer("frame_top_deco", mainMenuAssetPaths.frame_top_deco),
+    renderMenuLayer("frame_bottom_deco", mainMenuAssetPaths.frame_bottom_deco),
+    renderMenuLayer("title_ring_overlay", mainMenuAssetPaths.title_ring_overlay, ["main-menu-layer--screen"]),
+    renderMenuLayer("title_compass_emblem", mainMenuAssetPaths.title_compass_emblem),
+    renderMenuLayer("logo", mainMenuAssetPaths.logo),
+    title,
+    buttonList,
+    renderNotice()
   );
 
-  screen.append(renderLanguageToggle(), titleGroup, actions, renderNotice());
+  const buttons = renderMenuButtons(buttonList, mainMenuButtonLayout, {
+    definitions: getMainMenuDefinitions(),
+    focusedIndex: focusedMainMenuButtonIndex,
+    responsive: true,
+  });
+  updateMainMenuFocus(buttons, focusedMainMenuButtonIndex);
+  applyMainMenuLayout(scene);
+
+  buttonList.addEventListener("click", (event) => {
+    const button = event.target.closest(".menu-composite-button");
+    if (!(button instanceof HTMLButtonElement)) return;
+    updateMainMenuFocus(buttons, buttons.indexOf(button));
+    runMainMenuAction(button.dataset.action);
+  });
+
+  buttonList.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      updateMainMenuFocus(buttons, focusedMainMenuButtonIndex + 1, true);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      updateMainMenuFocus(buttons, focusedMainMenuButtonIndex - 1, true);
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      runMainMenuAction(buttons[focusedMainMenuButtonIndex]?.dataset.action);
+    }
+  });
+
+  screen.append(scene);
   return screen;
 }
 
@@ -7748,6 +7944,7 @@ function render() {
   capturePlayerHudScrollPosition();
   document.documentElement.lang = state.language;
   app.classList.toggle("app-shell--board", state.view === "board");
+  app.classList.toggle("app-shell--main-menu", state.view === "menu");
 
   const views = {
     board: renderBoardShell,
@@ -7772,6 +7969,7 @@ if (state.gameState) {
   void preloadGameAssets();
 }
 connectRemoteHost();
+void loadMainMenuLayouts();
 render();
 
 document.addEventListener("visibilitychange", () => {

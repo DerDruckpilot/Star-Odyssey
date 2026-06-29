@@ -84,12 +84,99 @@ select {
   min-height: var(--app-viewport-height);
 }
 
+.app-shell--main-menu {
+  width: 100vw;
+  height: var(--app-viewport-height);
+  min-height: var(--app-viewport-height);
+}
+
 .menu-screen {
   width: 100%;
   display: grid;
   justify-items: center;
   gap: 2rem;
   padding: clamp(2rem, 5vw, 4rem);
+  text-align: center;
+}
+
+.main-menu-screen {
+  width: 100vw;
+  height: var(--app-viewport-height);
+  min-height: var(--app-viewport-height);
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  background: #020617;
+}
+
+.main-menu-scene {
+  position: relative;
+  width: min(100vw, calc(var(--app-viewport-height) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  isolation: isolate;
+  background: #020617;
+}
+
+.main-menu-layer,
+.main-menu-button-list {
+  position: absolute;
+  z-index: 2;
+  transform-origin: center;
+}
+
+.main-menu-layer {
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+
+.main-menu-layer--fill,
+.main-menu-layer--stretch {
+  object-fit: fill;
+}
+
+.main-menu-layer--screen {
+  mix-blend-mode: screen;
+}
+
+.main-menu-scene [data-menu-layer^="frame_"] {
+  z-index: 8;
+}
+
+.main-menu-scene [data-menu-layer="title_ring_overlay"],
+.main-menu-scene [data-menu-layer="title_compass_emblem"],
+.main-menu-scene [data-menu-layer="logo"] {
+  z-index: 12;
+  filter: drop-shadow(0 0.22rem 0.2rem rgba(0, 0, 0, 0.78));
+}
+
+.main-menu-scene [data-menu-layer="logo"] {
+  z-index: 14;
+}
+
+.main-menu-button-list {
+  z-index: 16;
+  display: grid;
+  justify-items: stretch;
+  align-items: start;
+}
+
+.main-menu-button-list .menu-composite-button {
+  width: 100%;
+}
+
+.main-menu-screen .notice {
+  position: absolute;
+  left: 50%;
+  bottom: 5%;
+  z-index: 30;
+  width: min(70%, 42rem);
+  transform: translateX(-50%);
+  padding: 0.45rem 0.8rem;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  background: rgba(2, 6, 23, 0.58);
+  color: #bae6fd;
   text-align: center;
 }
 

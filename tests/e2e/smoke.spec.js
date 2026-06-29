@@ -3,19 +3,26 @@ import { expect, test } from "@playwright/test";
 test("main menu, QR controller lobby, board, and phone menu work", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Star Odyssey" })).toBeVisible();
-  await expect(page.getByText("Ein digitales Weltraum-Brettspiel")).toBeVisible();
+  await expect(page.locator(".main-menu-scene")).toBeVisible();
+  await expect(page.locator('[data-menu-layer="logo"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: "Neues Spiel" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Spiel laden" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Spiel beenden" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Einstellungen" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "EN", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Ein digitales Weltraum-Brettspiel")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "EN", exact: true }).click();
-  await expect(page.getByText("A digital space board game")).toBeVisible();
+  await page.getByRole("button", { name: "Einstellungen" }).click();
+  await expect(page.getByRole("heading", { name: "Menü" })).toBeVisible();
+  await page.getByRole("button", { name: "Schließen" }).click();
 
-  await page.getByRole("button", { name: "New Game" }).click();
-  await expect(page.getByRole("heading", { name: "Select number of players" })).toBeVisible();
+  await page.getByRole("button", { name: "Neues Spiel" }).click();
+  await expect(page.getByRole("heading", { name: "Spieleranzahl wählen" })).toBeVisible();
 
-  await page.getByRole("button", { name: "2 players" }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "2 Spieler" }).click();
+  await page.getByRole("button", { name: "Weiter" }).click();
 
-  await expect(page.getByRole("heading", { name: "Connect controllers" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
   const controllerUrls = await page.locator(".qr-url").allTextContents();
   expect(controllerUrls).toHaveLength(2);
   expect(controllerUrls[0]).toContain("/controller.html?session=");
@@ -43,12 +50,12 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await expect(controllerTwo.getByText("Verbunden als Spieler 2")).toBeVisible();
 
   await controllerOne.getByLabel("Name").fill("Alice");
-  await controllerOne.getByRole("button", { name: "Red" }).click();
+  await controllerOne.getByRole("button", { name: "Rot" }).click();
   await controllerOne.getByRole("button", { name: "Bereit" }).click();
-  await expect(page.getByText("Alice is ready")).toBeVisible();
+  await expect(page.getByText("Alice ist bereit")).toBeVisible();
 
   await controllerTwo.getByLabel("Name").fill("Bob");
-  await controllerTwo.getByRole("button", { name: "Blue" }).click();
+  await controllerTwo.getByRole("button", { name: "Blau" }).click();
   await controllerTwo.getByRole("button", { name: "Bereit" }).click();
 
   await expect(page.locator(".board-placeholder")).toBeVisible();
