@@ -31,18 +31,11 @@ jobs:
       - name: Prepare static site
         run: |
           mkdir _site
-          cp index.html _site/
-          cp controller.html _site/
-          cp debug-upgrades.html _site/
-          cp debug-friendship-cards.html _site/
-          cp debug-encounter-cards.html _site/
-          cp debug-outposts.html _site/
-          cp debug-colonies.html _site/
-          cp debug-spaceports.html _site/
-          cp debug-ship-vfx.html _site/
-          cp debug-mothership-speed.html _site/
+          cp *.html _site/
           cp -R src _site/
           cp -R assets _site/
+          mkdir -p _site/public/assets/ui/menu
+          cp -R public/assets/ui/menu/processed _site/public/assets/ui/menu/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
