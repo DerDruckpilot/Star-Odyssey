@@ -87,6 +87,7 @@ test("card debug review pages load and filter cards", async ({ page }) => {
   await expect(page.locator("#card-list details").first()).toBeVisible();
   await expect(page.locator("#encounter-simulator")).toBeVisible();
   await expect(page.locator('nav a[href="./menu-preview.html"]')).toBeVisible();
+  await expect(page.locator('nav a[href="./menu-button-preview.html"]')).toBeVisible();
   await expect(page.locator("#card-list details")).toHaveCount(32);
   await page.getByRole("button", { name: "Simulation starten" }).click();
   await page.locator(".encounter-preview-actions button").first().click();
@@ -120,15 +121,19 @@ test("menu preview loads processed assets and live layout controls", async ({ pa
   await expect(page.getByRole("button", { name: "Spiel laden" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Spiel beenden" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Einstellungen" })).toBeVisible();
-  await expect(page.locator(".menu-title-stack__logo")).toBeVisible();
-  await expect(page.locator(".menu-deco--planet")).toBeVisible();
-  await expect(page.locator(".menu-deco--galaxy")).toBeVisible();
+  await expect(page.locator('[data-menu-layer="logo"]')).toBeVisible();
+  await expect(page.locator('[data-menu-layer="planet"]')).toBeVisible();
+  await expect(page.locator('[data-menu-layer="galaxy"]')).toBeVisible();
+  await expect(page.locator('[data-menu-layer="frame_corner_top_right"]')).toBeVisible();
   await expect(page.locator('a[href="./debug-upgrades.html"]')).toBeVisible();
   await expect(page.locator('a[href="./debug-encounter-cards.html"]')).toBeVisible();
-  await expect(page.locator("#layout-json")).toHaveValue(/"buttons"/);
+  await expect(page.locator('a[href="./menu-button-preview.html"]')).toBeVisible();
+  await expect(page.locator("#layout-json")).toHaveValue(/"buttons_group"/);
 
   await page.locator('input[data-group="logo"][data-field="scale"][type="number"]').fill("1.1");
   await expect(page.locator("#layout-json")).toHaveValue(/"scale": 1.1/);
+  await page.locator('input[data-group="frame_corner_top_right"][data-field="mirrorX"]').uncheck();
+  await expect(page.locator("#layout-json")).toHaveValue(/"mirrorX": false/);
 
   const manifestResponse = await page.request.get("/public/assets/ui/menu/processed/menu-assets.manifest.json");
   expect(manifestResponse.ok()).toBe(true);
@@ -138,6 +143,16 @@ test("menu preview loads processed assets and live layout controls", async ({ pa
     const response = await page.request.get(`/${asset.finalPath}`);
     expect(response.ok(), `${asset.assetKey} exists`).toBe(true);
   }
+
+  await page.goto("/menu-button-preview.html");
+  await expect(page.getByRole("heading", { name: "Button Preview" })).toBeVisible();
+  await expect(page.locator("#button-lab-primary .menu-composite-button")).toBeVisible();
+  await expect(page.locator("#button-lab-variants .menu-composite-button")).toHaveCount(4);
+  await expect(page.locator("#button-layout-json")).toHaveValue(/"iconRing"/);
+  await page.locator('input[data-group="text"][data-field="fontSize"][type="number"]').fill("44");
+  await expect(page.locator("#button-layout-json")).toHaveValue(/"fontSize": 44/);
+  const buttonLayoutResponse = await page.request.get("/public/assets/ui/menu/processed/menu-button-layout.json");
+  expect(buttonLayoutResponse.ok()).toBe(true);
 });
 
 test("outpost debug page loads and exports layout", async ({ page }) => {
@@ -153,6 +168,7 @@ test("outpost debug page loads and exports layout", async ({ page }) => {
   await expect(page.locator('nav a[href="./debug-friendship-cards.html"]')).toBeVisible();
   await expect(page.locator('nav a[href="./debug-encounter-cards.html"]')).toBeVisible();
   await expect(page.locator('nav a[href="./menu-preview.html"]')).toBeVisible();
+  await expect(page.locator('nav a[href="./menu-button-preview.html"]')).toBeVisible();
 
   await page.locator("#layout-variant").selectOption("oneTopTwoBottom");
   await expect(page.locator("#layout-variant")).toHaveValue("oneTopTwoBottom");

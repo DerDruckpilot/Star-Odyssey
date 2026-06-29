@@ -158,16 +158,59 @@ def write_manifest(records: list[dict]) -> None:
 
 
 def write_default_layout() -> None:
+    def layer(x: float, y: float, width: float, height: float, **overrides: object) -> dict:
+        values = {
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height,
+            "scale": 1,
+            "opacity": 1,
+            "rotation": 0,
+            "mirrorX": False,
+            "mirrorY": False,
+            "visible": True,
+        }
+        values.update(overrides)
+        return values
+
     layout = {
-        "logo": {"x": 50, "y": 18.0, "scale": 0.62},
-        "buttons": {"x": 50, "y": 57.0, "scale": 0.74, "spacing": 2.1},
-        "frame": {"inset": 1.35, "scale": 1.0},
-        "planet": {"x": 9, "y": 78, "scale": 0.58, "opacity": 0.82},
-        "galaxy": {"x": 84, "y": 73, "scale": 0.34, "opacity": 0.92},
-        "titleOrnament": {"x": 50, "y": 17.5, "scale": 0.68, "opacity": 0.46},
-        "stars": {"opacity": 0.72},
+        "background": layer(50, 50, 100, 100),
+        "stars_overlay": layer(50, 50, 100, 100, opacity=0.72),
+        "planet": layer(10, 78, 34, 46, opacity=0.82),
+        "galaxy": layer(82, 76, 22, 22, opacity=0.92),
+        "frame_corner_top_left": layer(3.1, 4, 14, 20),
+        "frame_corner_top_right": layer(96.9, 4, 14, 20, mirrorX=True),
+        "frame_corner_bottom_left": layer(3.1, 96, 14, 20, mirrorY=True),
+        "frame_corner_bottom_right": layer(96.9, 96, 14, 20, mirrorX=True, mirrorY=True),
+        "frame_top_edge": layer(50, 2.4, 64, 5.2),
+        "frame_bottom_edge": layer(50, 97.6, 64, 5.2, mirrorY=True),
+        "frame_left_edge": layer(1.6, 50, 4.6, 60),
+        "frame_right_edge": layer(98.4, 50, 4.6, 60, mirrorX=True),
+        "frame_top_deco": layer(26, 3.2, 20, 7.5, opacity=0.85),
+        "frame_bottom_deco": layer(74, 96.8, 20, 7.5, mirrorY=True, opacity=0.85),
+        "logo": layer(50, 22, 42, 16),
+        "title_compass_emblem": layer(50, 16, 18, 27, opacity=0.5),
+        "title_ring_overlay": layer(50, 16, 21, 30, opacity=0.35),
+        "buttons_group": layer(50, 61, 42, 42, scale=0.92, spacing=20),
     }
     (PROCESSED_DIR / "menu-preview-layout.json").write_text(json.dumps(layout, indent=2) + "\n", encoding="utf-8")
+
+
+def write_default_button_layout() -> None:
+    layout = {
+        "basis": {"width": 1920, "height": 1080},
+        "component": {"x": 480, "y": 180, "width": 760, "height": 118, "scale": 1},
+        "plate": {"x": 380, "y": 59, "width": 760, "height": 118, "opacity": 1},
+        "hoverPlate": {"x": 380, "y": 59, "width": 760, "height": 118, "opacity": 0},
+        "iconRing": {"x": 112, "y": 59, "width": 86, "height": 86, "scale": 1, "opacity": 0.92},
+        "icon": {"x": 112, "y": 59, "width": 44, "height": 44, "scale": 1, "opacity": 0.95},
+        "text": {"x": 410, "y": 59, "fontSize": 38, "fontWeight": 800, "color": "#fff7ed", "glow": 0.7},
+        "sideGemLeft": {"x": 36, "y": 59, "width": 50, "height": 66, "scale": 0.72, "opacity": 0.88},
+        "sideGemRight": {"x": 724, "y": 59, "width": 50, "height": 66, "scale": 0.72, "opacity": 0.88},
+        "separatorGlow": {"x": 382, "y": 2, "width": 540, "height": 16, "scaleX": 1, "scaleY": 1, "opacity": 0.62},
+    }
+    (PROCESSED_DIR / "menu-button-layout.json").write_text(json.dumps(layout, indent=2) + "\n", encoding="utf-8")
 
 
 def write_contact_sheet(records: list[dict]) -> None:
@@ -218,6 +261,7 @@ def main() -> None:
     records = [process_asset(spec) for spec in ASSETS]
     write_manifest(records)
     write_default_layout()
+    write_default_button_layout()
     write_contact_sheet(records)
     print(f"Processed {len(records)} menu assets")
     print(PROCESSED_DIR / "menu-assets.manifest.json")

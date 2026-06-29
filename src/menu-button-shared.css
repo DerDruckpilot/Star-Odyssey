@@ -1,0 +1,63 @@
+.menu-composite-button {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  color: #fff7ed;
+  background: transparent;
+  cursor: pointer;
+  text-align: center;
+  filter: drop-shadow(0 0.35rem 0.6rem rgba(0, 0, 0, 0.58));
+}
+
+.menu-composite-button:hover,
+.menu-composite-button:focus-visible,
+.menu-composite-button.is-focused {
+  outline: 0;
+}
+
+.menu-composite-button__layer {
+  position: absolute;
+  object-fit: fill;
+  user-select: none;
+  pointer-events: none;
+}
+
+.menu-composite-button__layer--plate {
+  z-index: 1;
+}
+
+.menu-composite-button__layer--hoverPlate {
+  z-index: 2;
+}
+
+.menu-composite-button:hover .menu-composite-button__layer--hoverPlate,
+.menu-composite-button:focus-visible .menu-composite-button__layer--hoverPlate,
+.menu-composite-button.is-focused .menu-composite-button__layer--hoverPlate {
+  opacity: var(--button-focus-hover-opacity, 0.7) !important;
+}
+
+.menu-composite-button__layer--sideGemLeft,
+.menu-composite-button__layer--sideGemRight,
+.menu-composite-button__layer--separatorGlow {
+  z-index: 3;
+}
+
+.menu-composite-button__layer--iconRing {
+  z-index: 4;
+}
+
+.menu-composite-button__layer--icon {
+  z-index: 5;
+  object-fit: contain;
+  filter: drop-shadow(0 0 0.5rem rgba(56, 189, 248, 0.36));
+}
+
+.menu-composite-button__label {
+  position: absolute;
+  z-index: 6;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  pointer-events: none;
+  letter-spacing: 0;
+}

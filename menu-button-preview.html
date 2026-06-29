@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Star Odyssey · Button Preview</title>
+    <link rel="stylesheet" href="./src/menu-button-shared.css">
+    <link rel="stylesheet" href="./src/menu-button-preview.css">
+  </head>
+  <body>
+    <main class="button-lab-shell">
+      <section class="button-lab-stage" aria-label="Button Asset Preview">
+        <header class="button-lab-header">
+          <div>
+            <p>Star Odyssey Debug</p>
+            <h1>Button Preview</h1>
+          </div>
+          <nav class="button-lab-nav" aria-label="Debug Navigation">
+            <a href="./menu-preview.html">Hauptmenü Preview</a>
+            <a href="./debug-upgrades.html">Debug-Seiten</a>
+          </nav>
+        </header>
+        <div class="button-lab-canvas" id="button-lab-canvas">
+          <div id="button-lab-primary" class="button-lab-primary"></div>
+        </div>
+        <section class="button-lab-variants" id="button-lab-variants" aria-label="Button Varianten"></section>
+      </section>
+
+      <aside class="button-lab-controls">
+        <details open>
+          <summary>Buttonwerte feinjustieren</summary>
+          <form id="button-layout-form" class="button-lab-form"></form>
+          <label class="button-lab-output">
+            Button Layout JSON
+            <textarea id="button-layout-json" spellcheck="false"></textarea>
+          </label>
+          <div class="button-lab-actions">
+            <button id="copy-button-layout" type="button">JSON kopieren</button>
+            <button id="reset-button-layout" type="button">Reset</button>
+          </div>
+          <p id="button-preview-log" class="button-lab-log">Button Preview bereit.</p>
+        </details>
+      </aside>
+    </main>
+
+    <script type="module" src="./src/menu-button-preview.js"></script>
+  </body>
+</html>

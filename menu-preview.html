@@ -4,68 +4,34 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Star Odyssey · Menu Preview</title>
+    <link rel="stylesheet" href="./src/menu-button-shared.css">
     <link rel="stylesheet" href="./src/menu-preview.css">
   </head>
   <body>
     <main class="menu-preview-shell">
       <section class="menu-preview-stage" aria-label="Hauptmenü Vorschau">
         <div class="menu-preview-scene" id="menu-preview-scene">
-          <img class="menu-bg menu-bg--base" src="./public/assets/ui/menu/processed/background/bg_space_base_4k.png" alt="">
-          <img class="menu-bg menu-bg--stars" src="./public/assets/ui/menu/processed/background/bg_stars_overlay.png" alt="">
-          <img class="menu-deco menu-deco--planet" src="./public/assets/ui/menu/processed/background/bg_planet_bottom_left.png" alt="">
-          <img class="menu-deco menu-deco--galaxy" src="./public/assets/ui/menu/processed/background/bg_galaxy_bottom_right.png" alt="">
+          <img class="menu-layer menu-layer--fill" data-menu-layer="background" src="./public/assets/ui/menu/processed/background/bg_space_base_4k.png" alt="">
+          <img class="menu-layer menu-layer--fill menu-layer--screen" data-menu-layer="stars_overlay" src="./public/assets/ui/menu/processed/background/bg_stars_overlay.png" alt="">
+          <img class="menu-layer" data-menu-layer="planet" src="./public/assets/ui/menu/processed/background/bg_planet_bottom_left.png" alt="">
+          <img class="menu-layer menu-layer--screen" data-menu-layer="galaxy" src="./public/assets/ui/menu/processed/background/bg_galaxy_bottom_right.png" alt="">
 
-          <div class="menu-frame" aria-hidden="true">
-            <img class="menu-frame__corner menu-frame__corner--tl" src="./public/assets/ui/menu/processed/frame/frame_corner_master.png" alt="">
-            <img class="menu-frame__corner menu-frame__corner--tr" src="./public/assets/ui/menu/processed/frame/frame_corner_master.png" alt="">
-            <img class="menu-frame__corner menu-frame__corner--br" src="./public/assets/ui/menu/processed/frame/frame_corner_master.png" alt="">
-            <img class="menu-frame__corner menu-frame__corner--bl" src="./public/assets/ui/menu/processed/frame/frame_corner_master.png" alt="">
-            <img class="menu-frame__edge menu-frame__edge--top" src="./public/assets/ui/menu/processed/frame/frame_top_edge.png" alt="">
-            <img class="menu-frame__edge menu-frame__edge--bottom" src="./public/assets/ui/menu/processed/frame/frame_bottom_edge.png" alt="">
-            <img class="menu-frame__edge menu-frame__edge--left" src="./public/assets/ui/menu/processed/frame/frame_left_edge.png" alt="">
-            <img class="menu-frame__edge menu-frame__edge--right" src="./public/assets/ui/menu/processed/frame/frame_right_edge.png" alt="">
-          </div>
+          <img class="menu-layer" data-menu-layer="frame_corner_top_left" src="./public/assets/ui/menu/processed/frame/frame_corner_master.png" alt="">
+          <img class="menu-layer" data-menu-layer="frame_corner_top_right" src="./public/assets/ui/menu/processed/frame/frame_corner_master.png" alt="">
+          <img class="menu-layer" data-menu-layer="frame_corner_bottom_left" src="./public/assets/ui/menu/processed/frame/frame_corner_master.png" alt="">
+          <img class="menu-layer" data-menu-layer="frame_corner_bottom_right" src="./public/assets/ui/menu/processed/frame/frame_corner_master.png" alt="">
+          <img class="menu-layer menu-layer--stretch" data-menu-layer="frame_top_edge" src="./public/assets/ui/menu/processed/frame/frame_top_edge.png" alt="">
+          <img class="menu-layer menu-layer--stretch" data-menu-layer="frame_bottom_edge" src="./public/assets/ui/menu/processed/frame/frame_bottom_edge.png" alt="">
+          <img class="menu-layer menu-layer--stretch" data-menu-layer="frame_left_edge" src="./public/assets/ui/menu/processed/frame/frame_left_edge.png" alt="">
+          <img class="menu-layer menu-layer--stretch" data-menu-layer="frame_right_edge" src="./public/assets/ui/menu/processed/frame/frame_right_edge.png" alt="">
+          <img class="menu-layer" data-menu-layer="frame_top_deco" src="./public/assets/ui/menu/processed/frame/frame_top_deco_left.png" alt="">
+          <img class="menu-layer" data-menu-layer="frame_bottom_deco" src="./public/assets/ui/menu/processed/frame/frame_bottom_deco_left.png" alt="">
 
-          <div class="menu-title-stack" aria-label="Space Odyssey">
-            <img class="menu-title-stack__ring" src="./public/assets/ui/menu/processed/title/title_ring_overlay.png" alt="">
-            <img class="menu-title-stack__compass" src="./public/assets/ui/menu/processed/title/title_compass_emblem.png" alt="">
-            <img class="menu-title-stack__logo" src="./public/assets/ui/menu/processed/title/logo_space_odyssey.png" alt="Space Odyssey">
-          </div>
+          <img class="menu-layer menu-layer--screen" data-menu-layer="title_ring_overlay" src="./public/assets/ui/menu/processed/title/title_ring_overlay.png" alt="">
+          <img class="menu-layer" data-menu-layer="title_compass_emblem" src="./public/assets/ui/menu/processed/title/title_compass_emblem.png" alt="">
+          <img class="menu-layer" data-menu-layer="logo" src="./public/assets/ui/menu/processed/title/logo_space_odyssey.png" alt="Space Odyssey">
 
-          <nav class="menu-button-list" aria-label="Hauptmenü">
-            <button class="menu-preview-button is-focused" type="button" data-action="newGame">
-              <img class="menu-preview-button__plate" src="./public/assets/ui/menu/processed/buttons/button_main_master.png" alt="">
-              <span class="menu-preview-button__icon-wrap">
-                <img class="menu-preview-button__icon-ring" src="./public/assets/ui/menu/processed/buttons/button_icon_ring.png" alt="">
-                <img class="menu-preview-button__icon" src="./public/assets/ui/menu/processed/icons/icon_new_game.png" alt="">
-              </span>
-              <span class="menu-preview-button__label">Neues Spiel</span>
-            </button>
-            <button class="menu-preview-button" type="button" data-action="loadGame">
-              <img class="menu-preview-button__plate" src="./public/assets/ui/menu/processed/buttons/button_main_master.png" alt="">
-              <span class="menu-preview-button__icon-wrap">
-                <img class="menu-preview-button__icon-ring" src="./public/assets/ui/menu/processed/buttons/button_icon_ring.png" alt="">
-                <img class="menu-preview-button__icon" src="./public/assets/ui/menu/processed/icons/icon_load_game.png" alt="">
-              </span>
-              <span class="menu-preview-button__label">Spiel laden</span>
-            </button>
-            <button class="menu-preview-button" type="button" data-action="quitGame">
-              <img class="menu-preview-button__plate" src="./public/assets/ui/menu/processed/buttons/button_main_master.png" alt="">
-              <span class="menu-preview-button__icon-wrap">
-                <img class="menu-preview-button__icon-ring" src="./public/assets/ui/menu/processed/buttons/button_icon_ring.png" alt="">
-                <img class="menu-preview-button__icon" src="./public/assets/ui/menu/processed/icons/icon_quit_game.png" alt="">
-              </span>
-              <span class="menu-preview-button__label">Spiel beenden</span>
-            </button>
-            <button class="menu-preview-button" type="button" data-action="settings">
-              <img class="menu-preview-button__plate" src="./public/assets/ui/menu/processed/buttons/button_main_master.png" alt="">
-              <span class="menu-preview-button__icon-wrap">
-                <img class="menu-preview-button__icon-ring" src="./public/assets/ui/menu/processed/buttons/button_icon_ring.png" alt="">
-                <img class="menu-preview-button__icon" src="./public/assets/ui/menu/processed/icons/icon_settings.png" alt="">
-              </span>
-              <span class="menu-preview-button__label">Einstellungen</span>
-            </button>
-          </nav>
+          <nav class="menu-button-list" id="menu-button-list" data-menu-layer="buttons_group" aria-label="Hauptmenü"></nav>
         </div>
       </section>
 
@@ -73,6 +39,7 @@
         <nav class="menu-preview-debug-nav" aria-label="Debug Navigation">
           <a href="./debug-upgrades.html">Debug-Seiten</a>
           <a href="./debug-encounter-cards.html">Begegnungskarten Editor</a>
+          <a href="./menu-button-preview.html">Button Preview</a>
         </nav>
         <details open>
           <summary>Layout feinjustieren</summary>
