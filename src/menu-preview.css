@@ -339,6 +339,29 @@ textarea {
   box-shadow: -1rem 0 2.5rem rgba(0, 0, 0, 0.36);
 }
 
+.menu-preview-debug-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 1rem 1rem 0;
+}
+
+.menu-preview-debug-nav a {
+  padding: 0.45rem 0.65rem;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  color: #bae6fd;
+  background: rgba(15, 23, 42, 0.78);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.menu-preview-debug-nav a:hover,
+.menu-preview-debug-nav a:focus-visible {
+  border-color: rgba(56, 189, 248, 0.8);
+  color: #f8fafc;
+}
+
 .menu-preview-controls details {
   padding: 1rem;
 }

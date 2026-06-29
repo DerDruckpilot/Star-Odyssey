@@ -86,6 +86,7 @@ test("card debug review pages load and filter cards", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Editor" })).toBeVisible();
   await expect(page.locator("#card-list details").first()).toBeVisible();
   await expect(page.locator("#encounter-simulator")).toBeVisible();
+  await expect(page.locator('nav a[href="./menu-preview.html"]')).toBeVisible();
   await expect(page.locator("#card-list details")).toHaveCount(32);
   await page.getByRole("button", { name: "Simulation starten" }).click();
   await page.locator(".encounter-preview-actions button").first().click();
@@ -122,6 +123,8 @@ test("menu preview loads processed assets and live layout controls", async ({ pa
   await expect(page.locator(".menu-title-stack__logo")).toBeVisible();
   await expect(page.locator(".menu-deco--planet")).toBeVisible();
   await expect(page.locator(".menu-deco--galaxy")).toBeVisible();
+  await expect(page.locator('a[href="./debug-upgrades.html"]')).toBeVisible();
+  await expect(page.locator('a[href="./debug-encounter-cards.html"]')).toBeVisible();
   await expect(page.locator("#layout-json")).toHaveValue(/"buttons"/);
 
   await page.locator('input[data-group="logo"][data-field="scale"][type="number"]').fill("1.1");
@@ -149,6 +152,7 @@ test("outpost debug page loads and exports layout", async ({ page }) => {
   await expect(page.locator('nav a[href="./debug-spaceports.html"]')).toBeVisible();
   await expect(page.locator('nav a[href="./debug-friendship-cards.html"]')).toBeVisible();
   await expect(page.locator('nav a[href="./debug-encounter-cards.html"]')).toBeVisible();
+  await expect(page.locator('nav a[href="./menu-preview.html"]')).toBeVisible();
 
   await page.locator("#layout-variant").selectOption("oneTopTwoBottom");
   await expect(page.locator("#layout-variant")).toHaveValue("oneTopTwoBottom");
