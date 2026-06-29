@@ -555,6 +555,45 @@ body.debug-card-page {
   gap: 0.75rem;
 }
 
+.encounter-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.75rem 0.85rem 0;
+}
+
+.encounter-editor-toolbar button,
+.encounter-export-panel button,
+.encounter-step-editor button {
+  min-height: 2.2rem;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  color: #f8fafc;
+  background: rgba(2, 6, 23, 0.72);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.encounter-editor-toolbar button,
+.encounter-step-editor button {
+  padding: 0.45rem 0.65rem;
+}
+
+.encounter-editor-section {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(2, 6, 23, 0.3);
+}
+
+.encounter-editor-section h3 {
+  grid-column: 1 / -1;
+  color: #fef3c7;
+  font-size: 0.92rem;
+}
+
 .encounter-editor-field {
   display: grid;
   gap: 0.35rem;
@@ -567,7 +606,8 @@ body.debug-card-page {
 .encounter-editor-field input,
 .encounter-editor-field textarea,
 .encounter-editor-field select,
-.encounter-export-panel textarea {
+.encounter-export-panel textarea,
+.encounter-export-panel input[type="file"] {
   width: 100%;
   border: 1px solid rgba(148, 163, 184, 0.35);
   color: #f8fafc;
@@ -587,6 +627,26 @@ body.debug-card-page {
   resize: vertical;
 }
 
+.encounter-editor-field--wide {
+  grid-column: 1 / -1;
+}
+
+.encounter-editor-field--checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.encounter-editor-field--checkbox input {
+  width: auto;
+}
+
+.encounter-array-editor {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.6rem;
+}
+
 .encounter-choice-editor {
   display: grid;
   gap: 0.6rem;
@@ -600,6 +660,32 @@ body.debug-card-page {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: 0.5rem;
   align-items: end;
+}
+
+.encounter-choice-editor-row,
+.encounter-effect-editor-row {
+  min-width: 0;
+  margin: 0;
+  padding: 0.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(2, 6, 23, 0.38);
+}
+
+.encounter-choice-editor-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.encounter-effect-editor-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.encounter-choice-editor-row legend,
+.encounter-effect-editor-row legend {
+  padding: 0 0.35rem;
+  color: #93c5fd;
+  font-weight: 900;
 }
 
 .encounter-validation-list {
@@ -618,6 +704,23 @@ body.debug-card-page {
 }
 
 .encounter-validation-list p {
+  font-size: 0.78rem;
+}
+
+.encounter-validation strong {
+  display: block;
+  color: #fef3c7;
+  margin-bottom: 0.4rem;
+}
+
+.encounter-validation ul {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0.65rem 0.65rem 0.65rem 1.5rem;
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  color: #fde68a;
+  background: rgba(113, 63, 18, 0.18);
   font-size: 0.78rem;
 }
 
@@ -640,7 +743,9 @@ body.debug-card-page {
   .debug-encounter-layout,
   .debug-card-grid,
   .encounter-editor-grid,
-  .encounter-choice-editor-row {
+  .encounter-editor-section,
+  .encounter-choice-editor-row,
+  .encounter-effect-editor-row {
     grid-template-columns: 1fr;
   }
 

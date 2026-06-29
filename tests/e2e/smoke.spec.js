@@ -91,6 +91,8 @@ test("card debug review pages load and filter cards", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Spieler-Menü-Vorschau" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Begegnungen" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Editor" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Passiver Spieler" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Unbeteiligter Spieler" })).toBeVisible();
   await expect(page.locator("#card-list details").first()).toBeVisible();
   await expect(page.locator("#encounter-simulator")).toBeVisible();
   await expect(page.locator('nav a[href="./menu-preview.html"]')).toBeVisible();
@@ -101,6 +103,19 @@ test("card debug review pages load and filter cards", async ({ page }) => {
   await expect(page.locator(".debug-sim-history")).toBeVisible();
   await page.getByRole("button", { name: "Export selected encounter" }).click();
   await expect(page.locator("#export-output")).toHaveValue(/"encounterNumber": 1/);
+  await page.getByRole("button", { name: "Passiver Spieler" }).click();
+  await expect(page.locator("#encounter-simulator")).toContainText(/Passiver|passive/);
+  await page.getByRole("button", { name: "Unbeteiligter Spieler" }).click();
+  await expect(page.locator("#encounter-simulator")).toContainText(/Unbeteiligter|Begegnung/);
+  await page.getByRole("button", { name: "Aktiver Spieler" }).click();
+  await page.getByRole("button", { name: "Step hinzufügen" }).click();
+  await expect(page.locator("#step-editor")).toContainText("new_step");
+  await page.locator("#add-active-choice").click();
+  await expect(page.locator("#step-editor")).toContainText("Choice 1");
+  await page.locator("#add-active-effect").click();
+  await expect(page.locator("#step-editor")).toContainText("Effekt 1");
+  const storedEncounterFlows = await page.evaluate(() => localStorage.getItem("starOdyssey.debug.encounterFlows.v1"));
+  expect(storedEncounterFlows).toContain("new_step");
   await page.locator("#card-search").fill("pirate");
   await expect(page.locator("#card-list details").first()).toBeVisible();
 

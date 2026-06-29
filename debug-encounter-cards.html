@@ -65,7 +65,8 @@
             <h2>Spieler-Menü-Vorschau</h2>
             <div class="debug-preview-toggle" role="group" aria-label="Vorschau-Spieler">
               <button id="preview-active-player" type="button">Aktiver Spieler</button>
-              <button id="preview-other-player" type="button">Nicht aktiver Spieler</button>
+              <button id="preview-passive-player" type="button">Passiver Spieler</button>
+              <button id="preview-observer-player" type="button">Unbeteiligter Spieler</button>
             </div>
           </header>
           <div id="encounter-simulator" class="encounter-player-preview"></div>
@@ -87,16 +88,27 @@
               <button id="reset-simulation" type="button">Zuruecksetzen</button>
             </div>
           </header>
+          <div class="encounter-editor-toolbar" aria-label="Step Werkzeuge">
+            <button id="add-step" type="button">Step hinzufügen</button>
+            <button id="duplicate-step" type="button">Step duplizieren</button>
+            <button id="delete-step" type="button">Step löschen</button>
+            <button id="move-step-up" type="button">Hoch</button>
+            <button id="move-step-down" type="button">Runter</button>
+            <button id="reset-selected" type="button">Reset selected encounter</button>
+          </div>
           <div id="flow-validation" class="encounter-validation"></div>
           <form id="step-editor" class="encounter-step-editor"></form>
           <section class="encounter-export-panel">
-            <h3>Export</h3>
+            <h3>Import / Export</h3>
             <div class="debug-card-actions">
               <button id="export-selected" type="button">Export selected encounter</button>
               <button id="export-all" type="button">Export all encounters</button>
               <button id="save-local" type="button">localStorage speichern</button>
+              <button id="import-flows" type="button">Import JSON</button>
+              <button id="reset-local" type="button">Lokale Änderungen verwerfen</button>
             </div>
-            <textarea id="export-output" readonly aria-label="Export JSON"></textarea>
+            <input id="import-file" type="file" accept="application/json,.json" />
+            <textarea id="export-output" aria-label="Export und Import JSON"></textarea>
           </section>
         </section>
       </section>

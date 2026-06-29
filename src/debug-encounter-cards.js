@@ -1,23 +1,43 @@
 import { getAllEncounterCards, getEncounterDeckIds } from "./data/encounterCards.js";
 import {
+  EFFECT_TYPE_LABELS,
+  EFFECT_TYPES,
+  ENCOUNTER_FLOW_STORAGE_KEY,
   STEP_KIND_LABELS,
   STEP_KINDS,
+  TARGET_GROUP_LABELS,
+  TARGET_GROUPS,
   cloneFlow,
+  createBlankChoice,
+  createBlankEffect,
+  createBlankStep,
   createEncounterFlows,
   describeEffect,
   exportFlow,
+  getChoicesForScope,
   getNextStepId,
   getStartStep,
   getStep,
+  mergeStoredEncounterFlows,
+  normalizeFlow,
+  readStoredEncounterFlows,
   validateFlow
 } from "./debug-encounter-flow-utils.js";
 
+const RESOURCE_TYPES = ["", "ore", "fuel", "carbon", "food", "goods"];
+const RESOURCE_LABELS = {
+  "": "Beliebig / nicht gesetzt",
+  ore: "Erz",
+  fuel: "Treibstoff",
+  carbon: "Carbon",
+  food: "Nahrung",
+  goods: "Handelsware"
+};
+
 const cards = getAllEncounterCards();
 const activeDeckIds = new Set(getEncounterDeckIds());
-const localStorageKey = "starOdyssey.debug.encounterFlows.v1";
 const baseFlows = createEncounterFlows(cards);
-const storedFlows = readStoredFlows();
-const flows = mergeStoredFlows(baseFlows, storedFlows);
+let flows = mergeStoredEncounterFlows(baseFlows, readStoredEncounterFlows());
 
 const state = {
   search: "",
@@ -43,7 +63,9 @@ const validationTarget = document.querySelector("#flow-validation");
 const editorForm = document.querySelector("#step-editor");
 const exportOutput = document.querySelector("#export-output");
 const activePreviewButton = document.querySelector("#preview-active-player");
-const otherPreviewButton = document.querySelector("#preview-other-player");
+const passivePreviewButton = document.querySelector("#preview-passive-player");
+const observerPreviewButton = document.querySelector("#preview-observer-player");
+const importFileInput = document.querySelector("#import-file");
 
 initializeFilters();
 bindControls();
@@ -83,23 +105,28 @@ function bindControls() {
     ensureSelectedStep();
     render();
   });
-  document.querySelector("#export-selected").addEventListener("click", () => exportSelectedFlow());
-  document.querySelector("#export-all").addEventListener("click", () => exportAllFlows());
-  document.querySelector("#save-local").addEventListener("click", () => saveFlowsToLocalStorage());
-  activePreviewButton.addEventListener("click", () => {
-    state.previewMode = "active";
-    renderPreviews();
-  });
-  otherPreviewButton.addEventListener("click", () => {
-    state.previewMode = "other";
-    renderPreviews();
-  });
+  document.querySelector("#add-step").addEventListener("click", addStep);
+  document.querySelector("#duplicate-step").addEventListener("click", duplicateStep);
+  document.querySelector("#delete-step").addEventListener("click", deleteStep);
+  document.querySelector("#move-step-up").addEventListener("click", () => moveStep(-1));
+  document.querySelector("#move-step-down").addEventListener("click", () => moveStep(1));
+  document.querySelector("#reset-selected").addEventListener("click", resetSelectedEncounter);
+  document.querySelector("#export-selected").addEventListener("click", exportSelectedFlow);
+  document.querySelector("#export-all").addEventListener("click", exportAllFlows);
+  document.querySelector("#save-local").addEventListener("click", () => saveFlowsToLocalStorage(true));
+  document.querySelector("#import-flows").addEventListener("click", importFlowsFromTextarea);
+  document.querySelector("#reset-local").addEventListener("click", resetLocalEdits);
+  activePreviewButton.addEventListener("click", () => setPreviewMode("active"));
+  passivePreviewButton.addEventListener("click", () => setPreviewMode("passive"));
+  observerPreviewButton.addEventListener("click", () => setPreviewMode("observer"));
+  importFileInput.addEventListener("change", importFlowsFromFile);
 }
 
 function render() {
   renderListAndStats();
   renderPreviews();
   renderEditor();
+  updateExportOutput();
 }
 
 function renderListAndStats() {
@@ -145,10 +172,7 @@ function renderCards(visibleFlows) {
     listTarget.append(empty);
     return;
   }
-
-  for (const flow of visibleFlows) {
-    listTarget.append(renderFlowDetails(flow));
-  }
+  for (const flow of visibleFlows) listTarget.append(renderFlowDetails(flow));
 }
 
 function renderFlowDetails(flow) {
@@ -163,18 +187,25 @@ function renderFlowDetails(flow) {
     renderPill(flow.type),
     renderPill(activeDeckIds.has(flow.id) ? "deck" : "reserve", activeDeckIds.has(flow.id) ? "debug-pill--ok" : "")
   );
-  summary.addEventListener("click", () => selectFlow(flow.id));
+  summary.addEventListener("click", () => {
+    selectFlow(flow.id);
+    ensureSelectedStep();
+    queueMicrotask(render);
+  });
 
   const body = document.createElement("div");
   body.className = "debug-card-body";
   const stepList = document.createElement("div");
   stepList.className = "encounter-step-list";
-
   for (const step of flow.steps) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `encounter-step-row${step.stepId === state.selectedStepId ? " is-active" : ""}`;
-    button.innerHTML = `<strong>${escapeHtml(step.stepId)}</strong><span>${escapeHtml(STEP_KIND_LABELS[step.kind] ?? step.kind)}</span><small>${escapeHtml(step.playerText || step.boardText || "-")}</small>`;
+    button.innerHTML = [
+      `<strong>${escapeHtml(step.stepId)}</strong>`,
+      `<span>${escapeHtml(STEP_KIND_LABELS[step.kind] ?? step.kind)}</span>`,
+      `<small>${escapeHtml(step.activePlayerText || step.passivePlayerText || step.boardText || "-")}</small>`
+    ].join("");
     button.addEventListener("click", () => {
       selectFlow(flow.id);
       state.selectedStepId = step.stepId;
@@ -201,10 +232,10 @@ function renderPreviews() {
   const flow = getSelectedFlow();
   const step = getCurrentStep();
   activePreviewButton.classList.toggle("is-active", state.previewMode === "active");
-  otherPreviewButton.classList.toggle("is-active", state.previewMode === "other");
+  passivePreviewButton.classList.toggle("is-active", state.previewMode === "passive");
+  observerPreviewButton.classList.toggle("is-active", state.previewMode === "observer");
   selectedCardLabel.textContent = flow ? `${flow.number}. ${flow.title}` : "";
   boardPreviewStepTarget.textContent = step ? step.stepId : "";
-
   renderBoardPreview(flow, step);
   renderPlayerPreview(flow, step);
 }
@@ -213,11 +244,10 @@ function renderBoardPreview(flow, step) {
   boardPreviewTarget.replaceChildren();
   const overlay = document.createElement("div");
   overlay.className = "encounter-board-overlay-preview";
-  const title = document.createElement("strong");
-  title.textContent = flow ? `Begegnung ${flow.number}` : "Keine Begegnung";
-  const text = document.createElement("p");
-  text.textContent = step?.boardText || "Kein oeffentlicher Spielfeldtext fuer diesen Step.";
-  overlay.append(title, text);
+  overlay.append(
+    createElement("strong", flow ? `Begegnung ${flow.number}` : "Keine Begegnung"),
+    createElement("p", replaceTokens(step?.boardText || "Kein öffentlicher Spielfeldtext für diesen Step."))
+  );
   boardPreviewTarget.append(renderMiniBoard(), overlay);
 }
 
@@ -225,55 +255,48 @@ function renderPlayerPreview(flow, step) {
   playerPreviewTarget.replaceChildren();
   const panel = document.createElement("section");
   panel.className = "encounter-controller-preview-panel";
-
-  const heading = document.createElement("h3");
-  heading.textContent = state.previewMode === "active" ? "Aktiver Spieler" : "Nicht aktiver Spieler";
-  panel.append(heading);
+  panel.append(createElement("h3", getPreviewHeading()));
 
   if (!flow || !step) {
-    panel.append(renderNotice("Keine Begegnung ausgewaehlt."));
+    panel.append(renderNotice("Keine Begegnung ausgewählt."));
     playerPreviewTarget.append(panel);
     return;
   }
 
-  if (state.previewMode === "other") {
-    panel.append(
-      renderNotice("Spieler X hat eine Begegnung ausgeloest."),
-      renderNotice("Warte, bis Spieler X die Begegnung abgeschlossen hat.")
-    );
-    playerPreviewTarget.append(panel);
-    return;
-  }
+  const text = getPreviewText(step);
+  if (text) panel.append(createElement("p", replaceTokens(text)));
 
-  if (step.playerText) {
-    const text = document.createElement("p");
-    text.textContent = step.playerText;
-    panel.append(text);
-  }
+  const effects = getPreviewEffects(step);
+  for (const effect of effects) panel.append(renderNotice(describeEffect(effect)));
 
-  if (step.effect?.type) {
-    panel.append(renderNotice(describeEffect(step.effect)));
-  }
-
-  const choiceRow = document.createElement("div");
-  choiceRow.className = "encounter-preview-actions";
-  const choices = getStepChoices(step);
-  if (choices.length === 0) {
-    choiceRow.append(renderNotice("Keine Aktionen verfuegbar."));
-  }
-  for (const choice of choices) {
+  const choices = getPreviewChoices(step);
+  const actionRow = document.createElement("div");
+  actionRow.className = "encounter-preview-actions";
+  if (choices.length) {
+    for (const choice of choices) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = choice.labelDe || choice.label || choice.id;
+      button.addEventListener("click", () => advanceSimulation(choice.id, state.previewMode));
+      actionRow.append(button);
+    }
+  } else if (effects.length && state.previewMode !== "observer") {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = choice.label || choice.id;
-    button.addEventListener("click", () => advanceSimulation(choice.id));
-    choiceRow.append(button);
+    button.textContent = "Aktion simulieren";
+    button.addEventListener("click", () => advanceSimulation(null, state.previewMode));
+    actionRow.append(button);
+  } else if (state.previewMode === "active" && hasPassiveWork(step)) {
+    actionRow.append(renderNotice("Warte, bis die betroffenen passiven Spieler gehandelt haben."));
+  } else {
+    actionRow.append(renderNotice("Keine Aktionen verfügbar."));
   }
-  panel.append(choiceRow);
+  panel.append(actionRow);
 
   if (state.simulationHistory.length > 0) {
     const history = document.createElement("p");
     history.className = "debug-sim-history";
-    history.textContent = `Verlauf: ${state.simulationHistory.join(" -> ")}`;
+    history.textContent = `Simulation: ${state.simulationHistory.join(" -> ")}`;
     panel.append(history);
   }
   playerPreviewTarget.append(panel);
@@ -282,103 +305,360 @@ function renderPlayerPreview(flow, step) {
 function renderEditor() {
   const flow = getSelectedFlow();
   const step = getSelectedStep();
-  validationTarget.replaceChildren();
   editorForm.replaceChildren();
-
+  validationTarget.replaceChildren();
   if (!flow || !step) {
-    validationTarget.append(renderNotice("Keine Begegnung ausgewaehlt."));
+    editorForm.append(renderNotice("Keine Begegnung oder kein Step ausgewählt."));
     return;
   }
 
-  const warnings = validateFlow(flow);
-  validationTarget.append(renderValidation(warnings));
-
-  const stepSelectField = createSelect("Aktueller Step", "stepId", flow.steps.map((candidate) => ({
-    value: candidate.stepId,
-    label: candidate.stepId
-  })), step.stepId);
-  const stepSelect = stepSelectField.control;
-  stepSelect.addEventListener("change", () => {
-    state.selectedStepId = stepSelect.value;
-    state.simulationStepId = stepSelect.value;
-    render();
-  });
-
-  const kindSelectField = createSelect("Step-Typ", "kind", STEP_KINDS.map((kind) => ({
-    value: kind,
-    label: STEP_KIND_LABELS[kind] ?? kind
-  })), step.kind);
-  const kindSelect = kindSelectField.control;
-  kindSelect.addEventListener("change", () => updateStep({ kind: kindSelect.value }));
-
+  renderValidation(flow);
   editorForm.append(
-    stepSelectField,
-    createTextInput("stepId", "Step-ID", step.stepId, (value) => renameStep(step.stepId, value)),
-    kindSelectField,
-    createTextarea("boardText", "Spielfeld-Text", step.boardText, (value) => updateStep({ boardText: value })),
-    createTextarea("playerText", "Aktiver-Spieler-Text", step.playerText, (value) => updateStep({ playerText: value })),
-    createSelect("Sichtbarkeit", "visibility", [
-      { value: "public", label: "oeffentlich" },
-      { value: "activePlayer", label: "nur aktiver Spieler" },
-      { value: "private", label: "privat" }
-    ], step.visibility ?? "public", (value) => updateStep({ visibility: value })),
-    createCheckbox("requiresInput", "Eingabe erforderlich", Boolean(step.requiresInput), (checked) => updateStep({ requiresInput: checked })),
-    createTextInput("effectType", "Effekt/Mechanik", step.effect?.type ?? "", (value) => {
-      updateStep({ effect: value ? { ...(step.effect ?? {}), type: value } : null });
-    }),
-    createSelect("nextStep", "Default-Folge-Step", [{ value: "", label: "-" }, ...flow.steps.map((candidate) => ({
-      value: candidate.stepId,
-      label: candidate.stepId
-    }))], step.nextStep ?? "", (value) => updateStep({ nextStep: value })),
-    createTextarea("notes", "Notizen", step.notes ?? "", (value) => updateStep({ notes: value })),
-    renderChoiceEditor(flow, step)
+    renderEncounterMetaEditor(flow),
+    renderStepBasicsEditor(flow, step),
+    renderTextEditor(step),
+    renderChoicesEditor(flow, step, "active", "Aktive Spieler-Choices"),
+    renderChoicesEditor(flow, step, "passive", "Passive Spieler-Choices"),
+    renderEffectsEditor(flow, step, "active", "Aktive Spieler-Effekte"),
+    renderEffectsEditor(flow, step, "passive", "Passive Spieler-Effekte"),
+    renderEffectsEditor(flow, step, "generic", "Allgemeine Effekte"),
+    renderNotesEditor(step)
   );
 }
 
-function renderChoiceEditor(flow, step) {
-  const wrapper = document.createElement("section");
-  wrapper.className = "encounter-choice-editor";
-  const title = document.createElement("h3");
-  title.textContent = "Choices";
-  wrapper.append(title);
-
-  (step.choices ?? []).forEach((choice, index) => {
-    const row = document.createElement("div");
-    row.className = "encounter-choice-editor-row";
-    row.append(
-      createTextInput(`choice-${index}-label`, "Label", choice.label ?? "", (value) => updateChoice(index, { label: value })),
-      createSelect(`choice-${index}-next`, "Ziel-Step", [{ value: "", label: "-" }, ...flow.steps.map((candidate) => ({
-        value: candidate.stepId,
-        label: candidate.stepId
-      }))], choice.nextStep ?? "", (value) => updateChoice(index, { nextStep: value }))
-    );
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "Choice entfernen";
-    remove.addEventListener("click", () => removeChoice(index));
-    row.append(remove);
-    wrapper.append(row);
-  });
-
-  const add = document.createElement("button");
-  add.type = "button";
-  add.textContent = "Choice hinzufuegen";
-  add.addEventListener("click", () => {
-    const selected = getSelectedStep();
-    selected.choices = [...(selected.choices ?? []), { id: `choice-${Date.now()}`, label: "Weiter", nextStep: selected.nextStep ?? "" }];
-    selected.nextStep = "";
-    saveFlowsToLocalStorage(false);
-    render();
-  });
-  wrapper.append(add);
-  return wrapper;
+function renderEncounterMetaEditor(flow) {
+  const section = renderEditorSection("Begegnung");
+  section.append(
+    renderInput("Titel", flow.title, (value) => {
+      flow.title = value;
+      persistSoft();
+      renderListAndStats();
+      renderPreviews();
+    }),
+    renderSelect("Start-Step", flow.startStepId, getStepOptions(flow), (value) => {
+      flow.startStepId = value;
+      persistAndRender();
+    })
+  );
+  return section;
 }
 
-function advanceSimulation(choiceId) {
+function renderStepBasicsEditor(flow, step) {
+  const section = renderEditorSection("Step-Eigenschaften");
+  section.append(
+    renderInput("Step-ID", step.stepId, (value) => {
+      const oldId = step.stepId;
+      step.stepId = sanitizeStepId(value);
+      updateStepReferences(flow, oldId, step.stepId);
+      state.selectedStepId = step.stepId;
+      state.simulationStepId = step.stepId;
+      persistAndRender();
+    }),
+    renderSelect("Step-Typ", step.kind, STEP_KINDS.map((kind) => [kind, STEP_KIND_LABELS[kind] ?? kind]), (value) => {
+      step.kind = value;
+      if (value === "passiveResourceGift" && !step.passivePlayerTarget) step.passivePlayerTarget = "allOtherPlayers";
+      persistAndRender();
+    }),
+    renderSelect("Sichtbarkeit", step.visibility, [
+      ["public", "Öffentlich"],
+      ["activePlayer", "Nur aktiver Spieler"],
+      ["passivePlayer", "Betroffene passive Spieler"],
+      ["observer", "Nur unbeteiligte Spieler"]
+    ], (value) => {
+      step.visibility = value;
+      persistAndRender();
+    }),
+    renderSelect("Passive Zielgruppe", step.passivePlayerTarget, [["", "Keine"], ...TARGET_GROUPS.map((target) => [target, TARGET_GROUP_LABELS[target] ?? target])], (value) => {
+      step.passivePlayerTarget = value;
+      persistAndRender();
+    }),
+    renderCheckbox("Benötigt Eingabe", step.requiresInput, (checked) => {
+      step.requiresInput = checked;
+      persistAndRender();
+    }),
+    renderSelect("Next-Step", step.nextStep, [["", "Kein direkter Next-Step"], ...getStepOptions(flow)], (value) => {
+      step.nextStep = value;
+      persistAndRender();
+    })
+  );
+  return section;
+}
+
+function renderTextEditor(step) {
+  const section = renderEditorSection("Vier Anzeigeebenen");
+  section.append(
+    renderTextarea("Public / Spielfeld", step.boardText, (value) => {
+      step.boardText = value;
+      persistSoft();
+      renderPreviews();
+    }),
+    renderTextarea("Aktiver Spieler", step.activePlayerText, (value) => {
+      step.activePlayerText = value;
+      persistSoft();
+      renderPreviews();
+    }),
+    renderTextarea("Betroffene passive Spieler", step.passivePlayerText, (value) => {
+      step.passivePlayerText = value;
+      persistSoft();
+      renderPreviews();
+    }),
+    renderTextarea("Unbeteiligte Spieler", step.observerText, (value) => {
+      step.observerText = value;
+      persistSoft();
+      renderPreviews();
+    })
+  );
+  return section;
+}
+
+function renderChoicesEditor(flow, step, scope, title) {
+  const choices = scope === "passive" ? step.passivePlayerChoices : step.activePlayerChoices;
+  const section = renderEditorSection(title);
+  const list = document.createElement("div");
+  list.className = "encounter-array-editor";
+  choices.forEach((choice, index) => list.append(renderChoiceRow(flow, choices, choice, index)));
+
+  const addButton = document.createElement("button");
+  addButton.id = scope === "passive" ? "add-passive-choice" : "add-active-choice";
+  addButton.type = "button";
+  addButton.textContent = "Choice hinzufügen";
+  addButton.addEventListener("click", () => {
+    choices.push(createBlankChoice(flow));
+    step.requiresInput = true;
+    persistAndRender();
+  });
+  section.append(list, addButton);
+  return section;
+}
+
+function renderChoiceRow(flow, choices, choice, index) {
+  const row = document.createElement("fieldset");
+  row.className = "encounter-choice-editor-row";
+  row.append(createElement("legend", `Choice ${index + 1}`));
+  row.append(
+    renderInput("ID", choice.id, (value) => {
+      choice.id = sanitizeStepId(value);
+      persistSoft();
+    }),
+    renderInput("Label DE", choice.labelDe, (value) => {
+      choice.labelDe = value;
+      choice.label = value;
+      persistSoft();
+      renderPreviews();
+    }),
+    renderInput("Label EN", choice.labelEn, (value) => {
+      choice.labelEn = value;
+      persistSoft();
+    }),
+    renderSelect("Ziel-Step", choice.nextStepId || choice.nextStep, [["", "Kein Ziel"], ...getStepOptions(flow)], (value) => {
+      choice.nextStepId = value;
+      choice.nextStep = value;
+      persistAndRender();
+    }),
+    renderInput("Bedingung", choice.condition, (value) => {
+      choice.condition = value;
+      persistSoft();
+    }),
+    renderTextarea("Notizen", choice.notes, (value) => {
+      choice.notes = value;
+      persistSoft();
+    })
+  );
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.textContent = "Choice löschen";
+  remove.addEventListener("click", () => {
+    choices.splice(index, 1);
+    persistAndRender();
+  });
+  row.append(remove);
+  return row;
+}
+
+function renderEffectsEditor(flow, step, scope, title) {
+  const effects = getEffectsForScope(step, scope);
+  const section = renderEditorSection(title);
+  const list = document.createElement("div");
+  list.className = "encounter-array-editor";
+  effects.forEach((effect, index) => list.append(renderEffectRow(flow, effects, effect, index)));
+
+  const addButton = document.createElement("button");
+  addButton.id = `add-${scope}-effect`;
+  addButton.type = "button";
+  addButton.textContent = "Effekt hinzufügen";
+  addButton.addEventListener("click", () => {
+    effects.push(createBlankEffect());
+    persistAndRender();
+  });
+  section.append(list, addButton);
+  return section;
+}
+
+function renderEffectRow(flow, effects, effect, index) {
+  const row = document.createElement("fieldset");
+  row.className = "encounter-effect-editor-row";
+  row.append(createElement("legend", `Effekt ${index + 1}`));
+  row.append(
+    renderSelect("Effekt-Typ", effect.effectType ?? effect.type, EFFECT_TYPES.map((type) => [type, EFFECT_TYPE_LABELS[type] ?? type]), (value) => {
+      effect.effectType = value;
+      effect.type = value;
+      persistAndRender();
+    }),
+    renderSelect("Ziel", effect.target, TARGET_GROUPS.map((target) => [target, TARGET_GROUP_LABELS[target] ?? target]), (value) => {
+      effect.target = value;
+      persistSoft();
+      renderPreviews();
+    }),
+    renderInput("Anzahl", effect.amount, (value) => {
+      effect.amount = value === "" ? "" : Number(value);
+      persistSoft();
+      renderPreviews();
+    }, "number"),
+    renderSelect("Rohstoff", effect.resourceType ?? effect.resource, RESOURCE_TYPES.map((type) => [type, RESOURCE_LABELS[type] ?? type]), (value) => {
+      effect.resourceType = value;
+      effect.resource = value;
+      persistSoft();
+      renderPreviews();
+    }),
+    renderInput("Ausbau-Typ", effect.upgradeType, (value) => {
+      effect.upgradeType = value;
+      persistSoft();
+    }),
+    renderInput("Halbe Medaillen", effect.medalAmount, (value) => {
+      effect.medalAmount = value === "" ? "" : Number(value);
+      persistSoft();
+    }, "number"),
+    renderInput("Public Log", effect.publicLogText, (value) => {
+      effect.publicLogText = value;
+      persistSoft();
+    }),
+    renderInput("Private Log", effect.privateLogText, (value) => {
+      effect.privateLogText = value;
+      persistSoft();
+    }),
+    renderSelect("Folge-Step nach Effekt", effect.nextStepAfterEffect, [["", "Keiner"], ...getStepOptions(flow)], (value) => {
+      effect.nextStepAfterEffect = value;
+      persistAndRender();
+    }),
+    renderTextarea("Notizen", effect.notes, (value) => {
+      effect.notes = value;
+      persistSoft();
+    })
+  );
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.textContent = "Effekt löschen";
+  remove.addEventListener("click", () => {
+    effects.splice(index, 1);
+    persistAndRender();
+  });
+  row.append(remove);
+  return row;
+}
+
+function renderNotesEditor(step) {
+  const section = renderEditorSection("Notizen");
+  section.append(renderTextarea("Notes", step.notes, (value) => {
+    step.notes = value;
+    persistSoft();
+  }));
+  return section;
+}
+
+function renderValidation(flow) {
+  const warnings = validateFlow(flow);
+  const title = document.createElement("strong");
+  title.textContent = warnings.length ? `${warnings.length} Hinweis(e)` : "Keine Validierungshinweise";
+  validationTarget.append(title);
+  if (!warnings.length) return;
+  const list = document.createElement("ul");
+  for (const warning of warnings) {
+    const item = document.createElement("li");
+    item.textContent = warning;
+    list.append(item);
+  }
+  validationTarget.append(list);
+}
+
+function setPreviewMode(mode) {
+  state.previewMode = mode;
+  renderPreviews();
+}
+
+function addStep() {
   const flow = getSelectedFlow();
+  if (!flow) return;
+  const stepId = getUniqueStepId(flow, "new_step");
+  const step = createBlankStep(stepId);
+  flow.steps.push(step);
+  state.selectedStepId = step.stepId;
+  state.simulationStepId = step.stepId;
+  persistAndRender();
+}
+
+function duplicateStep() {
+  const flow = getSelectedFlow();
+  const step = getSelectedStep();
+  if (!flow || !step) return;
+  const clone = cloneFlow({ steps: [step] }).steps[0];
+  clone.stepId = getUniqueStepId(flow, `${step.stepId}_copy`);
+  const index = flow.steps.findIndex((item) => item.stepId === step.stepId);
+  flow.steps.splice(index + 1, 0, clone);
+  state.selectedStepId = clone.stepId;
+  state.simulationStepId = clone.stepId;
+  persistAndRender();
+}
+
+function deleteStep() {
+  const flow = getSelectedFlow();
+  const step = getSelectedStep();
+  if (!flow || !step || flow.steps.length <= 1) return;
+  const index = flow.steps.findIndex((item) => item.stepId === step.stepId);
+  flow.steps.splice(index, 1);
+  if (flow.startStepId === step.stepId) flow.startStepId = flow.steps[0]?.stepId ?? "";
+  state.selectedStepId = flow.steps[Math.max(0, index - 1)]?.stepId ?? flow.startStepId;
+  state.simulationStepId = state.selectedStepId;
+  persistAndRender();
+}
+
+function moveStep(direction) {
+  const flow = getSelectedFlow();
+  const step = getSelectedStep();
+  if (!flow || !step) return;
+  const index = flow.steps.findIndex((item) => item.stepId === step.stepId);
+  const target = index + direction;
+  if (target < 0 || target >= flow.steps.length) return;
+  const [moved] = flow.steps.splice(index, 1);
+  flow.steps.splice(target, 0, moved);
+  persistAndRender();
+}
+
+function resetSelectedEncounter() {
+  const flow = getSelectedFlow();
+  if (!flow) return;
+  const base = baseFlows.find((item) => item.id === flow.id);
+  if (!base) return;
+  const index = flows.findIndex((item) => item.id === flow.id);
+  flows[index] = normalizeFlow(cloneFlow(base));
+  state.selectedStepId = getStartStep(flows[index])?.stepId ?? null;
+  state.simulationStepId = state.selectedStepId;
+  saveFlowsToLocalStorage(false);
+  render();
+}
+
+function resetLocalEdits() {
+  localStorage.removeItem(ENCOUNTER_FLOW_STORAGE_KEY);
+  flows = mergeStoredEncounterFlows(baseFlows, []);
+  ensureSelectedStep();
+  render();
+}
+
+function advanceSimulation(choiceId = null, scope = "active") {
   const step = getCurrentStep();
-  const nextStepId = getNextStepId(step, choiceId);
-  state.simulationHistory.push(step?.stepId ?? "?");
+  if (!step) return;
+  const effectNext = getPreviewEffects(step).find((effect) => effect.nextStepAfterEffect)?.nextStepAfterEffect;
+  const nextStepId = getNextStepId(step, choiceId, scope) || effectNext || step.nextStep;
+  state.simulationHistory.push(step.stepId);
   if (nextStepId) {
     state.simulationStepId = nextStepId;
     state.selectedStepId = nextStepId;
@@ -386,123 +666,103 @@ function advanceSimulation(choiceId) {
   render();
 }
 
-function getStepChoices(step) {
-  if (!step) return [];
-  if (step.choices?.length) return step.choices;
-  if (step.nextStep) return [{ id: "continue", label: "Weiter", nextStep: step.nextStep }];
-  return [];
-}
-
-function updateStep(patch) {
-  Object.assign(getSelectedStep(), patch);
-  saveFlowsToLocalStorage(false);
-  renderPreviews();
-  renderListAndStats();
-}
-
-function updateChoice(index, patch) {
-  const step = getSelectedStep();
-  step.choices[index] = { ...step.choices[index], ...patch };
-  saveFlowsToLocalStorage(false);
-  renderPreviews();
-}
-
-function removeChoice(index) {
-  const step = getSelectedStep();
-  step.choices.splice(index, 1);
-  saveFlowsToLocalStorage(false);
-  render();
-}
-
-function renameStep(oldStepId, newStepId) {
-  const normalized = newStepId.trim();
-  if (!normalized || normalized === oldStepId) return;
-  const flow = getSelectedFlow();
-  if (flow.steps.some((step) => step.stepId === normalized)) return;
-  const step = getSelectedStep();
-  step.stepId = normalized;
-  if (flow.startStepId === oldStepId) flow.startStepId = normalized;
-  for (const candidate of flow.steps) {
-    if (candidate.nextStep === oldStepId) candidate.nextStep = normalized;
-    for (const choice of candidate.choices ?? []) {
-      if (choice.nextStep === oldStepId) choice.nextStep = normalized;
-    }
-  }
-  state.selectedStepId = normalized;
-  state.simulationStepId = normalized;
-  saveFlowsToLocalStorage(false);
-  render();
-}
-
 function exportSelectedFlow() {
-  const payload = exportFlow(getSelectedFlow());
-  writeExport(payload, `encounter-${String(payload.encounterNumber).padStart(2, "0")}-flow.json`);
+  const flow = getSelectedFlow();
+  exportOutput.value = JSON.stringify(exportFlow(flow), null, 2);
 }
 
 function exportAllFlows() {
-  writeExport({
+  const payload = {
     exportedAt: new Date().toISOString(),
     source: "debug-encounter-cards.html",
-    encounters: flows.map(exportFlow)
-  }, "encounter-flow-overrides.json");
+    flows: flows.map(exportFlow)
+  };
+  exportOutput.value = JSON.stringify(payload, null, 2);
 }
 
-function writeExport(payload, fileName) {
-  const text = JSON.stringify(payload, null, 2);
-  exportOutput.value = text;
-  const blob = new Blob([text], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-function saveFlowsToLocalStorage(showExport = true) {
-  localStorage.setItem(localStorageKey, JSON.stringify(flows.map(exportFlow)));
-  if (showExport) {
-    exportOutput.value = JSON.stringify({ savedAt: new Date().toISOString(), encounters: flows.map(exportFlow) }, null, 2);
-  }
-}
-
-function readStoredFlows() {
+function importFlowsFromTextarea() {
   try {
-    const raw = localStorage.getItem(localStorageKey);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
+    const parsed = JSON.parse(exportOutput.value);
+    applyImportedFlows(parsed);
+    setExportMessage("Import erfolgreich.");
+  } catch (error) {
+    setExportMessage(`Import fehlgeschlagen: ${error.message}`);
   }
 }
 
-function mergeStoredFlows(base, stored) {
-  if (!Array.isArray(stored)) return base;
-  return base.map((flow) => {
-    const storedFlow = stored.find((candidate) => candidate.encounterId === flow.id || candidate.id === flow.id);
-    if (!storedFlow?.steps) return flow;
-    return {
-      ...flow,
-      startStepId: storedFlow.startStepId ?? flow.startStepId,
-      steps: storedFlow.steps.map((step) => cloneFlow({ steps: [step] }).steps[0])
-    };
-  });
+async function importFlowsFromFile() {
+  const file = importFileInput.files?.[0];
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    applyImportedFlows(parsed);
+    setExportMessage("Datei importiert.");
+  } catch (error) {
+    setExportMessage(`Import fehlgeschlagen: ${error.message}`);
+  } finally {
+    importFileInput.value = "";
+  }
+}
+
+function applyImportedFlows(payload) {
+  const imported = Array.isArray(payload) ? payload : payload.flows ? payload.flows : [payload];
+  const normalizedById = new Map(imported.map((flow) => {
+    const normalized = normalizeFlow(flow);
+    return [normalized.id || normalized.encounterId, normalized];
+  }));
+  flows = flows.map((flow) => normalizedById.get(flow.id) ? normalizeFlow({ ...flow, ...normalizedById.get(flow.id), id: flow.id, number: flow.number, type: flow.type }) : flow);
+  saveFlowsToLocalStorage(false);
+  ensureSelectedStep();
+  render();
+}
+
+function saveFlowsToLocalStorage(showExport = false) {
+  localStorage.setItem(ENCOUNTER_FLOW_STORAGE_KEY, JSON.stringify(flows.map(exportFlow)));
+  if (showExport) setExportMessage("localStorage gespeichert.");
+}
+
+function persistSoft() {
+  saveFlowsToLocalStorage(false);
+  updateExportOutput();
+}
+
+function persistAndRender() {
+  saveFlowsToLocalStorage(false);
+  render();
+}
+
+function updateExportOutput() {
+  const flow = getSelectedFlow();
+  if (!flow) return;
+  exportOutput.value = JSON.stringify(exportFlow(flow), null, 2);
+}
+
+function setExportMessage(message) {
+  const payload = {
+    message,
+    selectedEncounter: getSelectedFlow()?.id ?? null,
+    exportedAt: new Date().toISOString()
+  };
+  exportOutput.value = JSON.stringify(payload, null, 2);
 }
 
 function selectFlow(flowId) {
   if (state.selectedFlowId === flowId) return;
   state.selectedFlowId = flowId;
-  state.selectedStepId = null;
   state.simulationStepId = null;
   state.simulationHistory = [];
   ensureSelectedStep();
-  render();
 }
 
 function ensureSelectedStep() {
   const flow = getSelectedFlow();
   if (!flow) return;
-  const current = state.selectedStepId ? getStep(flow, state.selectedStepId) : null;
-  if (!current) state.selectedStepId = getStartStep(flow)?.stepId ?? flow.steps[0]?.stepId ?? null;
+  if (!getStep(flow, state.selectedStepId)) {
+    state.selectedStepId = getStartStep(flow)?.stepId ?? flow.steps[0]?.stepId ?? null;
+  }
+  if (state.simulationStepId && !getStep(flow, state.simulationStepId)) {
+    state.simulationStepId = state.selectedStepId;
+  }
 }
 
 function getSelectedFlow() {
@@ -516,40 +776,130 @@ function getSelectedStep() {
 
 function getCurrentStep() {
   const flow = getSelectedFlow();
-  return getStep(flow, state.simulationStepId) ?? getSelectedStep();
+  return getStep(flow, state.simulationStepId || state.selectedStepId) ?? getStartStep(flow);
+}
+
+function getPreviewHeading() {
+  if (state.previewMode === "passive") return "Betroffener passiver Spieler";
+  if (state.previewMode === "observer") return "Unbeteiligter Spieler";
+  return "Aktiver Spieler";
+}
+
+function getPreviewText(step) {
+  if (state.previewMode === "passive") return step.passivePlayerText || "Dieser Step hat keine passive Spieleraktion.";
+  if (state.previewMode === "observer") return step.observerText || "{activePlayerName} ist in einer Begegnung.";
+  return step.activePlayerText || step.boardText || "";
+}
+
+function getPreviewChoices(step) {
+  return getChoicesForScope(step, state.previewMode);
+}
+
+function getPreviewEffects(step) {
+  if (state.previewMode === "passive") return step.passivePlayerEffects ?? [];
+  if (state.previewMode === "observer") return [];
+  return [...(step.activePlayerEffects ?? []), ...(step.effects ?? [])];
+}
+
+function hasPassiveWork(step) {
+  return Boolean(step?.passivePlayerText || step?.passivePlayerChoices?.length || step?.passivePlayerEffects?.length);
+}
+
+function getEffectsForScope(step, scope) {
+  if (scope === "passive") return step.passivePlayerEffects;
+  if (scope === "generic") return step.effects;
+  return step.activePlayerEffects;
+}
+
+function updateStepReferences(flow, oldId, newId) {
+  if (!oldId || !newId || oldId === newId) return;
+  if (flow.startStepId === oldId) flow.startStepId = newId;
+  for (const step of flow.steps) {
+    if (step.nextStep === oldId) step.nextStep = newId;
+    for (const choice of [...(step.activePlayerChoices ?? []), ...(step.passivePlayerChoices ?? []), ...(step.choices ?? [])]) {
+      if (choice.nextStep === oldId) choice.nextStep = newId;
+      if (choice.nextStepId === oldId) choice.nextStepId = newId;
+    }
+    for (const effect of [...(step.activePlayerEffects ?? []), ...(step.passivePlayerEffects ?? []), ...(step.effects ?? [])]) {
+      if (effect.nextStepAfterEffect === oldId) effect.nextStepAfterEffect = newId;
+    }
+  }
+}
+
+function getStepOptions(flow) {
+  return (flow?.steps ?? []).map((step) => [step.stepId, step.stepId]);
+}
+
+function getUniqueStepId(flow, base) {
+  const ids = new Set(flow.steps.map((step) => step.stepId));
+  let candidate = sanitizeStepId(base);
+  let counter = 2;
+  while (ids.has(candidate)) {
+    candidate = `${sanitizeStepId(base)}_${counter}`;
+    counter += 1;
+  }
+  return candidate;
+}
+
+function sanitizeStepId(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_/-]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "step";
 }
 
 function getCardForFlow(flow) {
-  return cards.find((card) => card.id === flow.id) ?? null;
+  return cards.find((card) => card.id === flow?.id) ?? null;
 }
 
-function formatExcelRows(card) {
-  if (!Array.isArray(card?.excelRows) || card.excelRows.length === 0) return "-";
-  return card.excelRows.map((row) => row.cells.filter(Boolean).join(" | ")).filter(Boolean).join("\n");
-}
-
-function renderValidation(warnings) {
-  const wrapper = document.createElement("div");
-  wrapper.className = warnings.length ? "encounter-validation-list is-warning" : "encounter-validation-list";
-  const title = document.createElement("strong");
-  title.textContent = warnings.length ? `${warnings.length} Hinweis(e)` : "Keine Validierungshinweise";
-  wrapper.append(title);
-  warnings.slice(0, 8).forEach((warning) => {
-    const item = document.createElement("p");
-    item.textContent = warning;
-    wrapper.append(item);
+function setAllDetails(open) {
+  listTarget.querySelectorAll("details").forEach((details) => {
+    details.open = open;
   });
+}
+
+function renderStat(label, value) {
+  const stat = document.createElement("div");
+  stat.className = "debug-stat";
+  stat.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+  return stat;
+}
+
+function renderTitle(title, subtitle, extra = "") {
+  const wrapper = document.createElement("div");
+  wrapper.className = "debug-card-title";
+  wrapper.append(createElement("strong", title), createElement("span", [subtitle, extra].filter(Boolean).join(" · ")));
   return wrapper;
+}
+
+function renderPill(label, className = "") {
+  const pill = document.createElement("span");
+  pill.className = `debug-pill ${className}`.trim();
+  pill.textContent = label ?? "-";
+  return pill;
+}
+
+function renderFieldGrid(fields) {
+  const grid = document.createElement("dl");
+  grid.className = "debug-card-grid";
+  for (const [label, value] of fields) {
+    const item = document.createElement("div");
+    item.className = "debug-field";
+    item.append(createElement("dt", label), createElement("dd", value ?? "-"));
+    grid.append(item);
+  }
+  return grid;
 }
 
 function renderMiniBoard() {
   const board = document.createElement("div");
   board.className = "debug-mini-board";
-  for (let index = 0; index < 16; index += 1) {
-    const dot = document.createElement("span");
-    dot.style.left = `${8 + (index % 4) * 26}%`;
-    dot.style.top = `${14 + Math.floor(index / 4) * 23}%`;
-    board.append(dot);
+  for (let index = 0; index < 30; index += 1) {
+    const point = document.createElement("span");
+    point.style.left = `${10 + (index % 6) * 16}%`;
+    point.style.top = `${12 + Math.floor(index / 6) * 17}%`;
+    board.append(point);
   }
   return board;
 }
@@ -561,103 +911,51 @@ function renderNotice(text) {
   return notice;
 }
 
-function renderFieldGrid(fields) {
-  const grid = document.createElement("dl");
-  grid.className = "debug-card-grid";
-  for (const [label, value] of fields) grid.append(renderField(label, value));
-  return grid;
+function renderEditorSection(title) {
+  const section = document.createElement("section");
+  section.className = "encounter-editor-section";
+  section.append(createElement("h3", title));
+  return section;
 }
 
-function renderField(label, value) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "debug-field";
-  const term = document.createElement("dt");
-  term.textContent = label;
-  const description = document.createElement("dd");
-  description.textContent = value ?? "-";
-  wrapper.append(term, description);
-  return wrapper;
-}
-
-function createTextInput(id, label, value, onChange) {
-  const field = createFieldWrapper(label);
+function renderInput(label, value, onChange, type = "text") {
   const input = document.createElement("input");
-  input.id = id;
+  input.type = type;
   input.value = value ?? "";
-  input.addEventListener("change", () => onChange(input.value));
-  field.append(input);
-  return field;
+  if (type === "number") input.step = "any";
+  input.addEventListener("input", () => onChange(input.value));
+  return labelWrap(label, input);
 }
 
-function createTextarea(id, label, value, onChange) {
-  const field = createFieldWrapper(label);
-  const input = document.createElement("textarea");
-  input.id = id;
-  input.value = value ?? "";
-  input.addEventListener("change", () => onChange(input.value));
-  field.append(input);
-  return field;
+function renderTextarea(label, value, onChange) {
+  const textarea = document.createElement("textarea");
+  textarea.value = value ?? "";
+  textarea.rows = 4;
+  textarea.addEventListener("input", () => onChange(textarea.value));
+  return labelWrap(label, textarea, "encounter-editor-field--wide");
 }
 
-function createSelect(label, id, options, value, onChange = null) {
-  const field = createFieldWrapper(label);
+function renderSelect(label, value, options, onChange) {
   const select = document.createElement("select");
-  select.id = id;
-  select.replaceChildren(...options.map((option) => createOption(option.value, option.label)));
+  select.replaceChildren(...options.map(([optionValue, optionLabel]) => createOption(optionValue, optionLabel)));
   select.value = value ?? "";
-  if (onChange) select.addEventListener("change", () => onChange(select.value));
-  field.append(select);
-  field.control = select;
-  return field;
+  select.addEventListener("change", () => onChange(select.value));
+  return labelWrap(label, select);
 }
 
-function createCheckbox(id, label, value, onChange) {
-  const field = createFieldWrapper(label);
+function renderCheckbox(label, checked, onChange) {
   const input = document.createElement("input");
-  input.id = id;
   input.type = "checkbox";
-  input.checked = value;
+  input.checked = Boolean(checked);
   input.addEventListener("change", () => onChange(input.checked));
-  field.append(input);
-  return field;
+  return labelWrap(label, input, "encounter-editor-field--checkbox");
 }
 
-function createFieldWrapper(labelText) {
-  const label = document.createElement("label");
-  label.className = "encounter-editor-field";
-  const span = document.createElement("span");
-  span.textContent = labelText;
-  label.append(span);
-  return label;
-}
-
-function renderTitle(id, titleDe, titleEn) {
-  const wrapper = document.createElement("span");
-  wrapper.className = "debug-card-title";
-  const title = document.createElement("strong");
-  title.textContent = titleDe;
-  const meta = document.createElement("span");
-  meta.textContent = `${id} · ${titleEn}`;
-  wrapper.append(title, meta);
+function labelWrap(label, input, className = "") {
+  const wrapper = document.createElement("label");
+  wrapper.className = `encounter-editor-field ${className}`.trim();
+  wrapper.append(createElement("span", label), input);
   return wrapper;
-}
-
-function renderPill(text, extraClass = "") {
-  const pill = document.createElement("span");
-  pill.className = `debug-pill ${extraClass}`.trim();
-  pill.textContent = text;
-  return pill;
-}
-
-function renderStat(label, value) {
-  const stat = document.createElement("div");
-  stat.className = "debug-stat";
-  const labelNode = document.createElement("span");
-  labelNode.textContent = label;
-  const valueNode = document.createElement("strong");
-  valueNode.textContent = value;
-  stat.append(labelNode, valueNode);
-  return stat;
 }
 
 function createOption(value, label) {
@@ -667,10 +965,23 @@ function createOption(value, label) {
   return option;
 }
 
-function setAllDetails(open) {
-  listTarget.querySelectorAll("details").forEach((details) => {
-    details.open = open;
-  });
+function createElement(tag, text, className = "") {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  element.textContent = text ?? "";
+  return element;
+}
+
+function formatExcelRows(card) {
+  if (!card?.excelRows?.length) return "-";
+  return card.excelRows.join(", ");
+}
+
+function replaceTokens(text) {
+  return String(text ?? "")
+    .replaceAll("{activePlayerName}", "Tina")
+    .replaceAll("{playerName}", "Tina")
+    .replaceAll("{passivePlayerName}", "Rob");
 }
 
 function escapeHtml(value) {

@@ -3,13 +3,16 @@ import {
   STEP_KIND_LABELS,
   createEncounterFlows,
   describeEffect,
+  getChoicesForScope,
   getNextStepId,
   getStartStep,
-  getStep
+  getStep,
+  mergeStoredEncounterFlows,
+  readStoredEncounterFlows
 } from "./debug-encounter-flow-utils.js";
 
 const cards = getAllEncounterCards();
-const flows = createEncounterFlows(cards);
+const flows = mergeStoredEncounterFlows(createEncounterFlows(cards), readStoredEncounterFlows());
 const reviewStorageKey = "starOdyssey.debug.encounterReviewStatus.v1";
 
 const state = {
@@ -164,8 +167,11 @@ function renderController() {
   stepMeta.textContent = `${step.stepId} · ${STEP_KIND_LABELS[step.kind] ?? step.kind}`;
   controllerTarget.append(stepMeta);
 
-  if (step.playerText) controllerTarget.append(createElement("p", step.playerText));
-  if (step.effect?.type) controllerTarget.append(createElement("p", describeEffect(step.effect), "encounter-sim-effect-note"));
+  const playerText = step.activePlayerText || step.boardText;
+  if (playerText) controllerTarget.append(createElement("p", playerText));
+  for (const effect of [...(step.activePlayerEffects ?? []), ...(step.effects ?? [])]) {
+    controllerTarget.append(createElement("p", describeEffect(effect), "encounter-sim-effect-note"));
+  }
 
   const controls = document.createElement("div");
   controls.className = "encounter-sim-actions";
@@ -181,13 +187,15 @@ function renderController() {
 }
 
 function renderStepControls(step, controls) {
-  if (["mothershipComparison", "combat"].includes(step.kind)) {
+  if (["mothershipRoll", "mothershipCompare", "combat"].includes(step.kind)) {
     const rollButton = createActionButton("Wurf simulieren", () => {
       const choice = getRollChoice(step);
       advance(choice?.id);
     });
     controls.append(rollButton);
-    for (const choice of step.choices ?? []) controls.append(createActionButton(choice.label, () => advance(choice.id)));
+    for (const choice of getChoicesForScope(step, "active")) {
+      controls.append(createActionButton(choice.labelDe || choice.label, () => advance(choice.id)));
+    }
     return;
   }
 
@@ -197,21 +205,22 @@ function renderStepControls(step, controls) {
     return;
   }
 
-  if (step.kind === "resourceReward") {
+  if (step.kind === "resourceRewardChoice") {
     ["Erz", "Treibstoff", "Carbon", "Nahrung", "Handelsware"].forEach((resource) => {
       controls.append(createActionButton(resource, () => advance("confirm")));
     });
     return;
   }
 
-  if (["jumpShip", "shipSelection", "grantTradeShip"].includes(step.kind)) {
+  if (["boardJump", "shipSelection", "giftTradeShip"].includes(step.kind)) {
     controls.append(createElement("p", "Nutze das Dummy-Board oben oder den Schnellbutton."));
     controls.append(createActionButton("Schiff / Ziel simulieren", () => advance("confirm")));
     return;
   }
 
-  const choices = step.choices?.length
-    ? step.choices
+  const activeChoices = getChoicesForScope(step, "active");
+  const choices = activeChoices.length
+    ? activeChoices
     : step.nextStep
       ? [{ id: "continue", label: "Weiter", nextStep: step.nextStep }]
       : [];
@@ -222,7 +231,7 @@ function renderStepControls(step, controls) {
   }
 
   for (const choice of choices) {
-    controls.append(createActionButton(choice.label || choice.id, () => advance(choice.id)));
+    controls.append(createActionButton(choice.labelDe || choice.label || choice.id, () => advance(choice.id)));
   }
 }
 
@@ -279,21 +288,22 @@ function applyPreset(preset) {
 
 function handleBoardPick() {
   const step = getCurrentStep();
-  if (!["jumpShip", "shipSelection", "grantTradeShip"].includes(step?.kind)) return;
+  if (!["boardJump", "shipSelection", "giftTradeShip"].includes(step?.kind)) return;
   advance("confirm");
 }
 
 function getRollChoice(step) {
-  if (!step.choices?.length) return null;
+  const choices = getChoicesForScope(step, "active");
+  if (!choices.length) return null;
   const roll = Number(state.simValues.manualRoll) || 0;
-  if (roll >= 3) return step.choices[0];
-  return step.choices[1] ?? step.choices[0];
+  if (roll >= 3) return choices[0];
+  return choices[1] ?? choices[0];
 }
 
 function advance(choiceId) {
   const flow = getSelectedFlow();
   const step = getCurrentStep();
-  const nextStepId = getNextStepId(step, choiceId);
+  const nextStepId = getNextStepId(step, choiceId, "active");
   state.history.push(step?.stepId ?? "?");
   if (nextStepId) {
     state.currentStepId = nextStepId;
@@ -317,7 +327,8 @@ function getCurrentStep() {
 }
 
 function getFirstLine(flow) {
-  return getStartStep(flow)?.playerText?.split("\n")[0] ?? flow.title;
+  const start = getStartStep(flow);
+  return (start?.activePlayerText || start?.boardText || flow.title).split("\n")[0];
 }
 
 function readReviewStatus() {
