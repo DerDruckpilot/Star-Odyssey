@@ -174,8 +174,27 @@ const placementVfx = {
   currentTime: 0,
   nextId: 1
 };
-const productionVfxDuration = 1320;
-const productionVfxStaggerMs = 95;
+const DICE_RESULT_HOLD_MS = 1100;
+const DICE_RESULT_FADE_MS = 320;
+const PRODUCTION_HIGHLIGHT_MS = 1500;
+const PRODUCTION_CHIP_PULSE_MS = 1050;
+const PRODUCTION_TRAIL_MS = 1250;
+const PRODUCTION_TARGET_PULSE_MS = 980;
+const PRODUCTION_LABEL_MS = 1150;
+const PRODUCTION_STAGGER_MS = 1150;
+const PRODUCTION_WRAPUP_MS = 650;
+const PRODUCTION_MAX_STAGGER_STEPS = 2;
+const PRODUCTION_CHIP_DELAY_MS = 120;
+const PRODUCTION_TRAIL_DELAY_MS = 420;
+const PRODUCTION_TARGET_DELAY_MS = 620;
+const PRODUCTION_LABEL_DELAY_MS = 720;
+const PRODUCTION_EVENT_TOTAL_MS = Math.max(
+  PRODUCTION_HIGHLIGHT_MS,
+  PRODUCTION_CHIP_DELAY_MS + PRODUCTION_CHIP_PULSE_MS,
+  PRODUCTION_TRAIL_DELAY_MS + PRODUCTION_TRAIL_MS,
+  PRODUCTION_TRAIL_DELAY_MS + PRODUCTION_TARGET_DELAY_MS + PRODUCTION_TARGET_PULSE_MS,
+  PRODUCTION_TRAIL_DELAY_MS + PRODUCTION_LABEL_DELAY_MS + PRODUCTION_LABEL_MS
+);
 const productionVfx = {
   items: [],
   resourceFlashes: [],
@@ -211,8 +230,6 @@ const diceRollAnimation = {
   frameRequestId: null,
   currentTime: 0
 };
-const DICE_RESULT_HOLD_MS = 1100;
-const DICE_RESULT_FADE_MS = 320;
 const mothershipSpeedAnimation = {
   item: null,
   frameRequestId: null,
@@ -1133,12 +1150,13 @@ function startProductionVfx(productionData) {
 
   productionVfx.items = events;
   productionVfx.resourceFlashes = flashes;
+  const latestDelay = events.reduce((maxDelay, event) => Math.max(maxDelay, event.delay ?? 0), 0);
   productionVfx.timeoutId = setTimeout(() => {
     productionVfx.items = [];
     productionVfx.resourceFlashes = [];
     productionVfx.timeoutId = null;
     render();
-  }, productionVfxDuration + productionVfxStaggerMs * Math.max(events.length - 1, 0) + 220);
+  }, latestDelay + PRODUCTION_EVENT_TOTAL_MS + PRODUCTION_WRAPUP_MS);
 }
 
 function buildProductionVfxItems(productionData) {
@@ -1168,7 +1186,7 @@ function buildProductionVfxItems(productionData) {
         id: `production-vfx-${productionVfx.nextId++}`,
         x: planetPosition.x,
         y: planetPosition.y,
-        delay: index * productionVfxStaggerMs,
+        delay: Math.min(index, PRODUCTION_MAX_STAGGER_STEPS) * PRODUCTION_STAGGER_MS,
         color,
         recipients
       };
@@ -1890,37 +1908,37 @@ function renderProductionVfxOverlay() {
       cx: event.x,
       cy: event.y,
       r: 48,
-      style: `--production-color: ${event.color}; animation-delay: ${delay}ms;`
+      style: `--production-color: ${event.color}; --production-planet-ms: ${PRODUCTION_HIGHLIGHT_MS}ms; animation-delay: ${delay}ms;`
     }));
     overlay.append(createSvgElement("circle", {
       class: "production-vfx-chip-pulse",
       cx: event.x,
       cy: event.y,
       r: 19,
-      style: `--production-color: ${event.color}; animation-delay: ${delay + 60}ms;`
+      style: `--production-color: ${event.color}; --production-chip-ms: ${PRODUCTION_CHIP_PULSE_MS}ms; animation-delay: ${delay + PRODUCTION_CHIP_DELAY_MS}ms;`
     }));
 
     for (const recipient of event.recipients ?? []) {
-      const trailDelay = delay + 150;
+      const trailDelay = delay + PRODUCTION_TRAIL_DELAY_MS;
       overlay.append(createSvgElement("path", {
         class: "production-vfx-trail",
         d: `M ${event.x} ${event.y} L ${recipient.x} ${recipient.y}`,
         pathLength: "1",
-        style: `--production-color: ${event.color}; animation-delay: ${trailDelay}ms;`
+        style: `--production-color: ${event.color}; --production-trail-ms: ${PRODUCTION_TRAIL_MS}ms; animation-delay: ${trailDelay}ms;`
       }));
       overlay.append(createSvgElement("circle", {
         class: "production-vfx-target-pulse",
         cx: recipient.x,
         cy: recipient.y,
         r: 26,
-        style: `--production-color: ${recipient.playerColor}; animation-delay: ${trailDelay + 360}ms;`
+        style: `--production-color: ${recipient.playerColor}; --production-target-ms: ${PRODUCTION_TARGET_PULSE_MS}ms; animation-delay: ${trailDelay + PRODUCTION_TARGET_DELAY_MS}ms;`
       }));
       const label = createSvgElement("text", {
         class: "production-vfx-label",
         x: recipient.x,
         y: recipient.y - 32,
         "text-anchor": "middle",
-        style: `--production-color: ${event.color}; animation-delay: ${trailDelay + 430}ms;`
+        style: `--production-color: ${event.color}; --production-label-ms: ${PRODUCTION_LABEL_MS}ms; animation-delay: ${trailDelay + PRODUCTION_LABEL_DELAY_MS}ms;`
       });
       label.textContent = "+1";
       overlay.append(label);

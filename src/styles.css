@@ -646,7 +646,7 @@ h1 {
 
 .player-hud-resources dd.is-resource-gain-flash,
 .resource-summary dd.is-resource-gain-flash {
-  animation: resource-gain-flash 980ms ease-out;
+  animation: resource-gain-flash 1400ms ease-out;
 }
 
 .player-hud-content {
@@ -1152,19 +1152,19 @@ h1 {
 
 .production-vfx-planet-pulse {
   filter: blur(0.5px);
-  animation: production-planet-pulse 760ms ease-out both;
+  animation: production-planet-pulse var(--production-planet-ms, 1500ms) ease-out both;
 }
 
 .production-vfx-chip-pulse {
   fill: transparent;
   stroke-width: 5;
-  animation: production-chip-pulse 620ms ease-out both;
+  animation: production-chip-pulse var(--production-chip-ms, 1050ms) ease-out both;
 }
 
 .production-vfx-target-pulse {
   fill: transparent;
   stroke-width: 6;
-  animation: production-target-pulse 520ms ease-out both;
+  animation: production-target-pulse var(--production-target-ms, 980ms) ease-out both;
 }
 
 .production-vfx-trail {
@@ -1176,7 +1176,7 @@ h1 {
   stroke-dashoffset: 1;
   opacity: 0;
   filter: drop-shadow(0 0 8px var(--production-color));
-  animation: production-trail-flow 720ms ease-in-out both;
+  animation: production-trail-flow var(--production-trail-ms, 1250ms) ease-in-out both;
 }
 
 .production-vfx-label {
@@ -1188,7 +1188,7 @@ h1 {
   font-weight: 900;
   opacity: 0;
   filter: drop-shadow(0 0 8px var(--production-color));
-  animation: production-label-pop 620ms ease-out both;
+  animation: production-label-pop var(--production-label-ms, 1150ms) ease-out both;
 }
 
 .viewport-debug-panel {
