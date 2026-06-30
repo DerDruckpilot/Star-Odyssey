@@ -1713,6 +1713,29 @@ function updateMainMenuFocus(buttons, nextIndex, shouldFocus = false) {
   if (shouldFocus) buttons[focusedMainMenuButtonIndex]?.focus();
 }
 
+function renderMainMenuRotateHint() {
+  const hint = document.createElement("aside");
+  hint.className = "main-menu-rotate-hint";
+  hint.setAttribute("role", "status");
+  hint.setAttribute("aria-live", "polite");
+
+  const icon = document.createElement("div");
+  icon.className = "main-menu-rotate-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "↻";
+
+  const title = document.createElement("strong");
+  title.textContent = state.language === "en" ? "Please rotate your device" : "Bitte Gerät drehen";
+
+  const copy = document.createElement("span");
+  copy.textContent = state.language === "en"
+    ? "Star Odyssey is designed for landscape play."
+    : "Star Odyssey ist für die Querformat-Ansicht ausgelegt.";
+
+  hint.append(icon, title, copy);
+  return hint;
+}
+
 function renderMenu() {
   const screen = document.createElement("section");
   screen.className = "menu-screen main-menu-screen";
@@ -1783,7 +1806,7 @@ function renderMenu() {
     }
   });
 
-  screen.append(scene);
+  screen.append(scene, renderMainMenuRotateHint());
   return screen;
 }
 

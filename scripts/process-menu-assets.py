@@ -5,7 +5,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,25 +69,125 @@ def copy_raw_files() -> None:
         shutil.copy2(source, RAW_DIR / source.name)
 
 
-def build_light_alpha(image: Image.Image) -> Image.Image:
+PRESERVE_ENCLOSED_LIGHT_KEYS = {
+    "logo_space_odyssey",
+    "bg_planet_bottom_left",
+    "bg_galaxy_bottom_right",
+}
+
+
+def build_light_alpha(image: Image.Image, preserve_enclosed_light: bool = False) -> Image.Image:
     rgba = image.convert("RGBA")
+    bg_mask = find_connected_light_background(rgba)
     pixels = rgba.load()
+    mask_pixels = bg_mask.load()
     width, height = rgba.size
     for y in range(height):
         for x in range(width):
             r, g, b, _ = pixels[x, y]
-            mean = (r + g + b) / 3
-            neutral = max(r, g, b) - min(r, g, b)
-            if mean > 224 and neutral < 28:
-                alpha = 0
-            elif mean > 205 and neutral < 18:
-                alpha = int((224 - mean) * 8)
+            remove_pixel = mask_pixels[x, y] == 128
+            if not preserve_enclosed_light and is_light_background_pixel((r, g, b, 255)):
+                remove_pixel = True
+            if remove_pixel:
+                pixels[x, y] = (r, g, b, 0)
             else:
-                alpha = 255
-            pixels[x, y] = (r, g, b, max(0, min(255, alpha)))
-    alpha = rgba.getchannel("A").filter(ImageFilter.GaussianBlur(0.45))
-    rgba.putalpha(alpha)
+                pixels[x, y] = (r, g, b, 255)
+    rgba = soften_alpha_edge(rgba, bg_mask)
     return crop_alpha(rgba)
+
+
+def find_connected_light_background(image: Image.Image) -> Image.Image:
+    hsv = image.convert("HSV")
+    _, saturation, value = hsv.split()
+    low_sat = saturation.point(lambda pixel: 255 if pixel < 45 else 0)
+    high_value = value.point(lambda pixel: 255 if pixel > 210 else 0)
+    very_low_sat = saturation.point(lambda pixel: 255 if pixel < 24 else 0)
+    medium_value = value.point(lambda pixel: 255 if pixel > 188 else 0)
+    candidate = ImageChops.lighter(ImageChops.multiply(low_sat, high_value), ImageChops.multiply(very_low_sat, medium_value))
+    mask = candidate.convert("L")
+    width, height = mask.size
+    pixels = mask.load()
+    for x in range(width):
+        if pixels[x, 0] == 255:
+            ImageDraw.floodfill(mask, (x, 0), 128, thresh=0)
+        if pixels[x, height - 1] == 255:
+            ImageDraw.floodfill(mask, (x, height - 1), 128, thresh=0)
+    for y in range(height):
+        if pixels[0, y] == 255:
+            ImageDraw.floodfill(mask, (0, y), 128, thresh=0)
+        if pixels[width - 1, y] == 255:
+            ImageDraw.floodfill(mask, (width - 1, y), 128, thresh=0)
+    return mask
+
+
+def is_light_background_pixel(pixel: tuple[int, int, int, int]) -> bool:
+    r, g, b, _ = pixel
+    mean = (r + g + b) / 3
+    neutral = max(r, g, b) - min(r, g, b)
+    return (mean > 210 and neutral < 42) or (mean > 188 and neutral < 24)
+
+
+def soften_alpha_edge(image: Image.Image, bg_mask: Image.Image) -> Image.Image:
+    alpha = image.getchannel("A")
+    softened = alpha.filter(ImageFilter.GaussianBlur(0.38))
+    pixels = image.load()
+    alpha_pixels = softened.load()
+    mask_pixels = bg_mask.load()
+    width, height = image.size
+    for y in range(height):
+        for x in range(width):
+            r, g, b, _ = pixels[x, y]
+            alpha_value = 0 if mask_pixels[x, y] == 128 else alpha_pixels[x, y]
+            if alpha_value < 210 and is_light_background_pixel((r, g, b, 255)):
+                alpha_value = 0
+            pixels[x, y] = (r, g, b, max(0, min(255, alpha_value)))
+    return image
+
+
+def polish_foreground(image: Image.Image, key: str) -> Image.Image:
+    if key == "logo_space_odyssey":
+        image = ImageEnhance.Contrast(image).enhance(1.18)
+        image = ImageEnhance.Sharpness(image).enhance(1.12)
+    elif key == "bg_planet_bottom_left":
+        image = remove_planet_outer_halo(image)
+    elif key == "bg_galaxy_bottom_right":
+        image = soften_galaxy_outer_edge(image)
+    return image
+
+
+def remove_planet_outer_halo(image: Image.Image) -> Image.Image:
+    image = image.convert("RGBA")
+    alpha = image.getchannel("A")
+    bbox = alpha.point(lambda value: 255 if value > 16 else 0).getbbox()
+    if not bbox:
+        return image
+    left, top, right, bottom = bbox
+    cx = (left + right) / 2
+    cy = (top + bottom) / 2
+    radius = min(right - left, bottom - top) * 0.475
+    fade = max(8, min(right - left, bottom - top) * 0.012)
+    pixels = image.load()
+    width, height = image.size
+    for y in range(height):
+        for x in range(width):
+            r, g, b, a = pixels[x, y]
+            if a == 0:
+                continue
+            distance = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+            if distance > radius + fade:
+                a = 0
+            elif distance > radius:
+                a = int(a * (1 - ((distance - radius) / fade)))
+            pixels[x, y] = (r, g, b, max(0, min(255, a)))
+    return crop_alpha(image)
+
+
+def soften_galaxy_outer_edge(image: Image.Image) -> Image.Image:
+    image = image.convert("RGBA")
+    alpha = image.getchannel("A")
+    alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(0.55))
+    image.putalpha(alpha)
+    return crop_alpha(image)
 
 
 def build_dark_overlay(image: Image.Image) -> Image.Image:
@@ -138,7 +238,8 @@ def process_asset(spec: AssetSpec) -> dict:
             elif spec.mode == "dark-overlay":
                 processed = build_dark_overlay(source)
             else:
-                processed = build_light_alpha(source)
+                processed = build_light_alpha(source, preserve_enclosed_light=spec.key in PRESERVE_ENCLOSED_LIGHT_KEYS)
+            processed = polish_foreground(processed, spec.key)
             processed.save(output_path)
             record["width"], record["height"] = processed.size
             record["hasAlpha"] = processed.mode == "RGBA"

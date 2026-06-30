@@ -78,6 +78,26 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await controllerTwo.close();
 });
 
+test("main menu uses a 16:9 stage and shows a portrait rotate hint", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+  const scene = page.locator(".main-menu-scene");
+  await expect(scene).toBeVisible();
+  const desktopBox = await scene.boundingBox();
+  expect(desktopBox?.width).toBeGreaterThan(1270);
+  expect(Math.abs((desktopBox.width / desktopBox.height) - (16 / 9))).toBeLessThan(0.02);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.locator(".main-menu-rotate-hint")).toBeVisible();
+  await expect(scene).toBeHidden();
+
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto("/");
+  await expect(scene).toBeVisible();
+  await expect(page.locator(".main-menu-rotate-hint")).toBeHidden();
+});
+
 test("card debug review pages load and filter cards", async ({ page }) => {
   await page.goto("/debug-friendship-cards.html");
   await expect(page.getByRole("heading", { name: "Freundschaftskarten" })).toBeVisible();

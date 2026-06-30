@@ -100,18 +100,38 @@ select {
 }
 
 .main-menu-screen {
+  position: relative;
   width: 100vw;
   height: var(--app-viewport-height);
   min-height: var(--app-viewport-height);
+  display: grid;
+  place-items: center;
   padding: 0;
   gap: 0;
   overflow: hidden;
-  background: #020617;
+  background:
+    radial-gradient(circle at 14% 88%, rgba(14, 165, 233, 0.22), transparent 24rem),
+    radial-gradient(circle at 84% 78%, rgba(168, 85, 247, 0.18), transparent 22rem),
+    url("../public/assets/ui/menu/processed/background/bg_space_base_4k.png") center / cover no-repeat,
+    #020617;
+}
+
+.main-menu-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(2, 6, 23, 0.32), transparent 18%, transparent 82%, rgba(2, 6, 23, 0.32)),
+    radial-gradient(circle at 50% 50%, transparent 44%, rgba(2, 6, 23, 0.18));
+  z-index: 0;
 }
 
 .main-menu-scene {
   position: relative;
+  z-index: 1;
   width: min(100vw, calc(var(--app-viewport-height) * 16 / 9));
+  height: min(var(--app-viewport-height), calc(100vw * 9 / 16));
   aspect-ratio: 16 / 9;
   overflow: hidden;
   isolation: isolate;
@@ -178,6 +198,54 @@ select {
   background: rgba(2, 6, 23, 0.58);
   color: #bae6fd;
   text-align: center;
+}
+
+.main-menu-rotate-hint {
+  display: none;
+  position: relative;
+  z-index: 2;
+  width: min(86vw, 24rem);
+  padding: 1.4rem;
+  border: 1px solid rgba(125, 211, 252, 0.42);
+  background: rgba(2, 6, 23, 0.78);
+  box-shadow: 0 1.2rem 4rem rgba(0, 0, 0, 0.38), inset 0 0 2rem rgba(14, 165, 233, 0.1);
+  color: #f8fafc;
+  text-align: center;
+  gap: 0.65rem;
+}
+
+.main-menu-rotate-icon {
+  width: 3.2rem;
+  height: 3.2rem;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  border: 1px solid rgba(125, 211, 252, 0.38);
+  border-radius: 999px;
+  color: #7dd3fc;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.main-menu-rotate-hint strong {
+  display: block;
+  font-size: clamp(1.2rem, 7vw, 1.8rem);
+}
+
+.main-menu-rotate-hint span {
+  display: block;
+  color: #cbd5e1;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) and (orientation: portrait) {
+  .main-menu-scene {
+    display: none;
+  }
+
+  .main-menu-rotate-hint {
+    display: grid;
+  }
 }
 
 .loading-screen {
