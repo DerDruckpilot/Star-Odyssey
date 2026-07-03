@@ -1,5 +1,3 @@
-import { encounterSpreadsheetTextsByNumber } from "./encounterSpreadsheetTexts.js";
-
 const R = {
   ore: "ore",
   fuel: "fuel",
@@ -8,476 +6,302 @@ const R = {
   goods: "goods"
 };
 
+const U = {
+  drive: "drive",
+  cargo: "cargo",
+  cannon: "cannon"
+};
+
 const gainHalf = { type: "gainHalfMedal", amount: 1 };
 const loseHalf = { type: "loseHalfMedal", amount: 1 };
-const blockShip = { type: "blockFirstShip" };
+const loseWholeMedal = { type: "loseHalfMedal", amount: 2 };
 const grantTradeShip = { type: "grantShip", shipType: "tradeShip" };
+const chooseShipBlock = { type: "chooseShipBlock" };
+const chooseUpgradeGain = { type: "chooseUpgradeGain", amount: 1 };
+const chooseUpgradeLoss = { type: "chooseUpgradeLoss", amount: 1 };
 const jumpShip = { type: "jumpShip" };
 const drawNextEncounter = { type: "drawNextEncounter" };
 
 const encounterCards = [
-  createEncounterCard({
-    number: 1,
-    id: "spreadsheet-01",
-    type: "merchant",
-    titleDe: "Haendlergeschenk I",
-    titleEn: "Merchant Gift I",
-    promptDe: "Ein Haendler bietet ein Geschenk an. Waehle, wie viele Rohstoffe du weitergibst.",
-    promptEn: "A merchant offers a gift. Choose how many resources you pass on.",
-    choices: [
-      createChoice("gift-0", "Nichts geben", "Give nothing", [
-        { type: "collectGiftsFromOpponents", amount: 1 },
-        { type: "loseHalfMedal", amount: 2 }
-      ]),
-      createChoice("gift-1", "1 Rohstoff geben", "Give 1 resource", [
-        { type: "chooseResourceLoss", amount: 1 },
-        { type: "gainResource", resource: R.food, amount: 1 },
-        loseHalf
-      ]),
-      createChoice("gift-2", "2 Rohstoffe geben", "Give 2 resources", [
-        { type: "chooseResourceLoss", amount: 2 },
-        { type: "chooseResourceGain", amount: 1 },
-        gainHalf
-      ]),
-      createChoice("gift-3", "3 Rohstoffe geben", "Give 3 resources", [
-        { type: "chooseResourceLoss", amount: 3 },
-        { type: "chooseResourceGain", amount: 2 },
-        gainHalf
-      ])
-    ],
-    resultsDe: "Das Haendlergeschenk wurde abgehandelt.",
-    resultsEn: "The merchant gift is resolved."
-  }),
-  createEncounterCard({
-    number: 2,
-    id: "spreadsheet-02",
-    type: "merchant",
-    titleDe: "Haendlergeschenk II",
-    titleEn: "Merchant Gift II",
-    promptDe: "Ein Haendler erwartet ein Geschenk und bietet eine Gegenleistung.",
-    promptEn: "A merchant expects a gift and offers something in return.",
-    choices: [
-      createChoice("gift-0", "Nichts geben", "Give nothing", [loseHalf]),
-      createChoice("gift-1", "1 Rohstoff geben", "Give 1 resource", [
-        { type: "chooseResourceLoss", amount: 1 },
-        { type: "chooseResourceGain", amount: 1 }
-      ]),
-      createChoice("gift-2", "2 Rohstoffe geben", "Give 2 resources", [
-        { type: "chooseResourceLoss", amount: 2 },
-        { type: "chooseResourceGain", amount: 1 },
-        gainHalf
-      ]),
-      createChoice("gift-3", "3 Rohstoffe geben", "Give 3 resources", [
-        { type: "chooseResourceLoss", amount: 3 },
-        { type: "chooseUpgradeGain", amount: 1 },
-        gainHalf
-      ])
-    ],
-    resultsDe: "Der Handel ist abgeschlossen.",
-    resultsEn: "The trade is complete."
-  }),
-  createEncounterCard({
-    number: 3,
-    id: "spreadsheet-03",
-    type: "merchant",
-    titleDe: "Haendlergeschenk III",
-    titleEn: "Merchant Gift III",
-    promptDe: "Ein Haendler prueft deine Grosszuegigkeit.",
-    promptEn: "A merchant tests your generosity.",
-    choices: [
-      createChoice("gift-0", "Nichts geben", "Give nothing", [loseHalf]),
-      createChoice("gift-1", "1 Rohstoff geben", "Give 1 resource", [
-        { type: "chooseResourceLoss", amount: 1 }
-      ]),
-      createChoice("gift-2", "2 Rohstoffe geben", "Give 2 resources", [
-        { type: "chooseResourceLoss", amount: 2 },
-        gainHalf
-      ]),
-      createChoice("gift-3", "3 Rohstoffe geben", "Give 3 resources", [
-        { type: "chooseResourceLoss", amount: 3 }
-      ])
-    ],
-    resultsDe: "Das Geschenk wurde bewertet.",
-    resultsEn: "The gift is judged."
-  }),
-  createEncounterCard({
-    number: 4,
-    id: "spreadsheet-04",
-    type: "merchant",
-    titleDe: "Haendlergeschenk IV",
-    titleEn: "Merchant Gift IV",
-    promptDe: "Ein Haendler bietet verschiedene Gegenleistungen fuer deine Gabe.",
-    promptEn: "A merchant offers different rewards for your gift.",
-    choices: [
-      createChoice("gift-0", "Nichts geben", "Give nothing", [
-        { type: "gainResource", resource: R.goods, amount: 1 }
-      ]),
-      createChoice("gift-1", "1 Rohstoff geben", "Give 1 resource", [
-        { type: "chooseResourceLoss", amount: 1 },
-        { type: "chooseResourceGain", amount: 1 },
-        gainHalf
-      ]),
-      createChoice("gift-2", "2 Rohstoffe geben", "Give 2 resources", [
-        { type: "chooseResourceLoss", amount: 2 },
-        { type: "chooseResourceGain", amount: 2 },
-        gainHalf
-      ]),
-      createChoice("gift-3", "3 Rohstoffe geben", "Give 3 resources", [
-        { type: "chooseResourceLoss", amount: 3 },
-        { type: "gainSelectedResources" }
-      ])
-    ],
-    resultsDe: "Der Haendler zieht weiter.",
-    resultsEn: "The merchant moves on."
-  }),
-  createEncounterCard({
-    number: 5,
-    id: "spreadsheet-05",
-    type: "merchant",
-    titleDe: "Handelsfuerst I",
-    titleEn: "Trade Lord I",
-    promptDe: "Ein Handelsfuerst erwartet ein Geschenk.",
-    promptEn: "A trade lord expects a gift.",
-    choices: [
-      createChoice("gift-0", "Nichts geben", "Give nothing", [blockShip, loseHalf]),
-      createChoice("gift-1", "1 Rohstoff geben", "Give 1 resource", [
-        { type: "chooseResourceLoss", amount: 1 },
-        loseHalf
-      ]),
-      createChoice("gift-2", "2 Rohstoffe geben", "Give 2 resources", [
-        { type: "chooseResourceLoss", amount: 2 },
-        { type: "chooseResourceGain", amount: 1 },
-        gainHalf
-      ]),
-      createChoice("gift-3", "3 Rohstoffe geben", "Give 3 resources", [
-        { type: "chooseResourceLoss", amount: 3 },
-        grantTradeShip
-      ])
-    ],
-    resultsDe: "Der Handelsfuerst reagiert auf dein Geschenk.",
-    resultsEn: "The trade lord reacts to your gift."
-  }),
-  createEncounterCard({
-    number: 6,
-    id: "spreadsheet-06",
-    type: "merchant",
-    titleDe: "Handelsfuerst II",
-    titleEn: "Trade Lord II",
-    promptDe: "Ein Handelsfuerst verhandelt hart.",
-    promptEn: "A trade lord bargains hard.",
-    choices: [
-      createChoice("gift-0", "Nichts geben", "Give nothing", [blockShip, loseHalf]),
-      createChoice("gift-1", "1 Rohstoff geben", "Give 1 resource", [
-        { type: "chooseResourceLoss", amount: 1 },
-        loseHalf
-      ]),
-      createChoice("gift-2", "2 Rohstoffe geben", "Give 2 resources", [
-        { type: "chooseResourceLoss", amount: 2 },
-        { type: "chooseResourceGain", amount: 1 },
-        gainHalf
-      ]),
-      createChoice("gift-3", "3 Rohstoffe geben", "Give 3 resources", [
-        { type: "chooseResourceLoss", amount: 3 },
-        grantTradeShip
-      ])
-    ],
-    resultsDe: "Die Verhandlung ist abgeschlossen.",
-    resultsEn: "The negotiation is resolved."
-  }),
-  createEncounterCard({
-    number: 7,
-    id: "spreadsheet-07",
-    type: "pirate",
-    titleDe: "Piratenueberfall rechts",
-    titleEn: "Pirate Raid Right",
-    promptDe: "Nach einem Geschenk greift ein Pirat an. Willst du kaempfen?",
-    promptEn: "After a gift, a pirate attacks. Do you want to fight?",
-    choices: [
-      createGiftPirateChoice("fight-0", 0, 1),
-      createGiftPirateChoice("fight-1", 1, 1),
-      createGiftPirateChoice("fight-2", 2, 1),
-      createGiftPirateChoice("fight-3", 3, 1),
-      createGiftPirateDecline("decline-0", 0, getSpreadsheetCell(7, 3, 2)),
-      createGiftPirateDecline("decline-1", 1, getSpreadsheetCell(7, 3, 2)),
-      createGiftPirateDecline("decline-2", 2, getSpreadsheetCell(7, 3, 2)),
-      createGiftPirateDecline("decline-3", 3, getSpreadsheetCell(7, 3, 2))
-    ],
-    resultsDe: "Der Piratenueberfall ist entschieden.",
-    resultsEn: "The pirate raid is resolved."
-  }),
-  createEncounterCard({
-    number: 8,
-    id: "spreadsheet-08",
-    type: "pirate",
-    titleDe: "Piratenueberfall links",
-    titleEn: "Pirate Raid Left",
-    promptDe: "Nach einem Geschenk greift ein Pirat an. Willst du kaempfen?",
-    promptEn: "After a gift, a pirate attacks. Do you want to fight?",
-    choices: [
-      createGiftPirateChoice("fight-0", 0, -1),
-      createGiftPirateChoice("fight-1", 1, -1),
-      createGiftPirateChoice("fight-2", 2, -1),
-      createGiftPirateChoice("fight-3", 3, -1),
-      createGiftPirateDecline("decline-0", 0, getSpreadsheetCell(8, 3, 2)),
-      createGiftPirateDecline("decline-1", 1, getSpreadsheetCell(8, 3, 2)),
-      createGiftPirateDecline("decline-2", 2, getSpreadsheetCell(8, 3, 2)),
-      createGiftPirateDecline("decline-3", 3, getSpreadsheetCell(8, 3, 2))
-    ],
-    resultsDe: "Der Piratenueberfall ist entschieden.",
-    resultsEn: "The pirate raid is resolved."
-  }),
-  createEncounterCard({
-    number: 9,
-    id: "spreadsheet-09",
-    type: "pirate",
-    titleDe: "Pirat fordert Tribut I",
-    titleEn: "Pirate Tribute I",
-    promptDe: "Ein Pirat fordert 2 Rohstoffe. Zahlst du oder kaempfst du?",
-    promptEn: "A pirate demands 2 resources. Do you pay or fight?",
-    choices: [
-      withChoiceResultText(
-        createChoice("pay", "2 Rohstoffe zahlen", "Pay 2 resources", [{ type: "chooseResourceLoss", amount: 2 }]),
-        getSpreadsheetCell(9, 2, 0)
-      ),
-      createChoice("fight", "Kaempfen", "Fight", [
-        {
-          type: "combat",
-          neighborOffset: 1,
-          promptText: localizedDe(getSpreadsheetCell(9, 2, 1)),
-          winText: localizedDe(getSpreadsheetCell(9, 4, 1)),
-          loseText: localizedDe(getSpreadsheetCell(9, 4, 2)),
-          onWin: [grantTradeShip],
-          onLose: [{ type: "chooseUpgradeLoss", amount: 1 }, loseHalf]
-        }
-      ], { resultText: localizedDe(getSpreadsheetCell(9, 2, 1)) })
-    ],
-    resultsDe: "Der Konflikt mit den Piraten ist entschieden.",
-    resultsEn: "The pirate conflict is resolved."
-  }),
-  createEncounterCard({
-    number: 10,
-    id: "spreadsheet-10",
-    type: "pirate",
-    titleDe: "Pirat fordert Tribut II",
-    titleEn: "Pirate Tribute II",
-    promptDe: "Ein Pirat fordert 2 Rohstoffe. Zahlst du oder kaempfst du?",
-    promptEn: "A pirate demands 2 resources. Do you pay or fight?",
-    choices: [
-      withChoiceResultText(
-        createChoice("pay", "2 Rohstoffe zahlen", "Pay 2 resources", [{ type: "chooseResourceLoss", amount: 2 }]),
-        getSpreadsheetCell(10, 2, 0)
-      ),
-      createChoice("fight", "Kaempfen", "Fight", [
-        {
-          type: "combat",
-          neighborOffset: 2,
-          promptText: localizedDe(getSpreadsheetCell(10, 2, 1)),
-          winText: localizedDe(getSpreadsheetCell(10, 4, 1)),
-          loseText: localizedDe(getSpreadsheetCell(10, 4, 2)),
-          onWin: [{ type: "gainResource", resource: R.carbon, amount: 2 }, gainHalf],
-          onLose: [blockShip, gainHalf]
-        }
-      ], { resultText: localizedDe(getSpreadsheetCell(10, 2, 1)) })
-    ],
-    resultsDe: "Der Pirat zieht weiter.",
-    resultsEn: "The pirate moves on."
-  }),
-  createEncounterCard({
-    number: 11,
-    id: "spreadsheet-11",
-    type: "pirate",
-    titleDe: "Pirat fordert Tribut III",
-    titleEn: "Pirate Tribute III",
-    promptDe: "Ein Pirat fordert 2 Rohstoffe. Zahlst du oder kaempfst du?",
-    promptEn: "A pirate demands 2 resources. Do you pay or fight?",
-    choices: [
-      withChoiceResultText(createChoice("pay", "2 Rohstoffe zahlen", "Pay 2 resources", [
-        { type: "chooseResourceLoss", amount: 2 },
-        blockShip
-      ]), getSpreadsheetCell(11, 2, 0)),
-      createChoice("fight", "Kaempfen", "Fight", [
-        {
-          type: "combat",
-          neighborOffset: -1,
-          promptText: localizedDe(getSpreadsheetCell(11, 2, 1)),
-          winText: localizedDe(getSpreadsheetCell(11, 4, 1)),
-          loseText: localizedDe(getSpreadsheetCell(11, 4, 2)),
-          onWin: [{ type: "gainResource", resource: R.ore, amount: 2 }, gainHalf],
-          onLose: [{ type: "chooseUpgradeLoss", amount: 1 }]
-        }
-      ], { resultText: localizedDe(getSpreadsheetCell(11, 2, 1)) })
-    ],
-    resultsDe: "Der Tribut wurde geklaert.",
-    resultsEn: "The tribute is resolved."
-  }),
-  createPirateTradeCard(12, "spreadsheet-12", [
-    { range: [0, 2], effects: [loseHalf] },
-    { range: [3, 3], effects: [{ type: "loseSelectedResources" }, gainHalf] },
-    { range: [4, 5], effects: [] }
-  ], [loseHalf]),
-  createPirateTradeCard(13, "spreadsheet-13", [
-    { range: [0, 2], effects: [] },
-    { range: [3, 3], effects: [{ type: "loseSelectedResources" }, gainHalf] },
-    { range: [4, 5], effects: [loseHalf] }
-  ], []),
-  createEncounterCard({
-    number: 14,
-    id: "spreadsheet-14",
-    type: "pirate",
-    titleDe: "Piratensuche I",
-    titleEn: "Pirate Search I",
-    promptDe: "Ein Pirat bietet Beute an. Nimmst du an?",
-    promptEn: "A pirate offers loot. Do you accept?",
-    choices: [
-      createChoice("accept", "Annehmen", "Accept", [
-        { type: "chooseResourceLoss", amount: 1 },
-        {
-          type: "mothershipOutcomeRoll",
-          outcomes: applyOutcomeTexts([
-            { range: [0, 2], effects: [loseHalf] },
-            { range: [3, 3], effects: [{ type: "drawFromOpponents", amountPerOpponent: 1 }, loseHalf] },
-            { range: [4, 5], effects: [{ type: "drawFromOpponents", amountPerOpponent: 1 }] }
-          ], 14)
-        }
-      ], { resultText: localizedDe(getSpreadsheetCell(14, 2, 0)) }),
-      withChoiceResultText(createChoice("decline", "Ablehnen", "Decline", [gainHalf]), getSpreadsheetCell(14, 2, 1))
-    ],
-    resultsDe: "Die Piratensuche ist abgeschlossen.",
-    resultsEn: "The pirate search is complete."
-  }),
-  createEncounterCard({
-    number: 15,
-    id: "spreadsheet-15",
-    type: "pirate",
-    titleDe: "Piratensuche II",
-    titleEn: "Pirate Search II",
-    promptDe: "Ein Pirat lockt mit Beute. Nimmst du an?",
-    promptEn: "A pirate tempts you with loot. Do you accept?",
-    choices: [
-      createChoice("accept", "Annehmen", "Accept", [
-        { type: "chooseResourceLoss", amount: 1 },
-        {
-          type: "mothershipOutcomeRoll",
-          outcomes: applyOutcomeTexts([
-            { range: [0, 2], effects: [{ type: "drawFromOpponents", amountPerOpponent: 1 }] },
-            { range: [3, 3], effects: [{ type: "drawFromOpponents", amountPerOpponent: 1 }, loseHalf] },
-            { range: [4, 5], effects: [loseHalf] }
-          ], 15)
-        }
-      ], { resultText: localizedDe(getSpreadsheetCell(15, 2, 0)) }),
-      withChoiceResultText(createChoice("decline", "Ablehnen", "Decline", []), getSpreadsheetCell(15, 2, 1))
-    ],
-    resultsDe: "Die Begegnung mit dem Piraten endet.",
-    resultsEn: "The pirate encounter ends."
-  }),
-  createPirateAttackCard(16, "spreadsheet-16", 1, [{ type: "chooseUpgradeGain", amount: 1 }, gainHalf], [{ type: "chooseUpgradeLoss", amount: 1 }]),
-  createPirateAttackCard(17, "spreadsheet-17", -2, [{ type: "gainResource", resource: R.ore, amount: 2 }, gainHalf], [{ type: "chooseUpgradeLoss", amount: 1 }, gainHalf]),
-  createPirateAttackCard(18, "spreadsheet-18", -1, [grantTradeShip], [blockShip]),
-  createDistressCard(19, "spreadsheet-19", 2, [grantTradeShip], [{ type: "chooseUpgradeLoss", amount: 1 }], []),
-  createDistressCard(20, "spreadsheet-20", -1, [gainHalf, { type: "drawFromOpponents", amountPerOpponent: 1 }], [{ type: "chooseUpgradeLoss", amount: 1 }, gainHalf], [loseHalf]),
-  createDistressCard(21, "spreadsheet-21", 1, [{ type: "chooseUpgradeGain", amount: 1 }, gainHalf], [{ type: "chooseUpgradeLoss", amount: 1 }], [loseHalf]),
-  createRescueCard(22, "spreadsheet-22", -2, [{ type: "gainResource", resource: R.goods, amount: 2 }, gainHalf], [blockShip], []),
-  createRescueCard(23, "spreadsheet-23", 1, [{ type: "chooseResourceGain", amount: 2 }, gainHalf], [{ type: "chooseUpgradeLoss", amount: 1 }, gainHalf], [loseHalf]),
-  createRescueCard(24, "spreadsheet-24", -1, [jumpShip, gainHalf], [blockShip, gainHalf], [loseHalf]),
-  createSpaceDistortionCard(25, "spreadsheet-25", -1, [jumpShip], [blockShip]),
-  createSpaceDistortionCard(26, "spreadsheet-26", 1, [jumpShip], [blockShip]),
-  createSpaceDistortionCard(27, "spreadsheet-27", 2, [jumpShip], [{ type: "chooseUpgradeLoss", amount: 1 }]),
-  createEncounterCard({
-    number: 28,
-    id: "spreadsheet-28",
-    type: "wandering",
-    titleDe: "Wanderndes Volk I",
-    titleEn: "Wandering People I",
-    promptDe: "Ein wanderndes Volk bittet um Spenden.",
-    promptEn: "A wandering people asks for donations.",
-    choices: [
-      createChoice("donate-0", "Nichts spenden", "Donate nothing", [{ type: "chooseUpgradeLoss", amount: 1 }, loseHalf]),
-      createChoice("donate-1", "1 Rohstoff spenden", "Donate 1 resource", [{ type: "chooseResourceLoss", amount: 1 }, gainHalf]),
-      createChoice("donate-2", "2 Rohstoffe spenden", "Donate 2 resources", [{ type: "chooseResourceLoss", amount: 2 }, jumpShip]),
-      createChoice("donate-3", "3 Rohstoffe spenden", "Donate 3 resources", [{ type: "chooseResourceLoss", amount: 3 }, jumpShip])
-    ],
-    resultsDe: "Das wandernde Volk zieht weiter.",
-    resultsEn: "The wandering people moves on."
-  }),
-  createEncounterCard({
-    number: 29,
-    id: "spreadsheet-29",
-    type: "wandering",
-    titleDe: "Wanderndes Volk II",
-    titleEn: "Wandering People II",
-    promptDe: "Ein wanderndes Volk bittet um Spenden.",
-    promptEn: "A wandering people asks for donations.",
-    choices: [
-      createChoice("donate-0", "Nichts spenden", "Donate nothing", []),
-      createChoice("donate-1", "1 Rohstoff spenden", "Donate 1 resource", [{ type: "chooseResourceLoss", amount: 1 }, gainHalf]),
-      createChoice("donate-2", "2 Rohstoffe spenden", "Donate 2 resources", [{ type: "chooseResourceLoss", amount: 2 }, gainHalf]),
-      createChoice("donate-3", "3 Rohstoffe spenden", "Donate 3 resources", [{ type: "chooseResourceLoss", amount: 3 }, grantTradeShip])
-    ],
-    resultsDe: "Die Spende ist abgehandelt.",
-    resultsEn: "The donation is resolved."
-  }),
-  createEncounterCard({
-    number: 30,
-    id: "spreadsheet-30",
-    type: "wandering",
-    titleDe: "Wanderndes Volk III",
-    titleEn: "Wandering People III",
-    promptDe: "Ein wanderndes Volk bittet um Spenden.",
-    promptEn: "A wandering people asks for donations.",
-    choices: [
-      createChoice("donate-0", "Nichts spenden", "Donate nothing", [loseHalf]),
-      createChoice("donate-1", "1 Rohstoff spenden", "Donate 1 resource", [{ type: "chooseResourceLoss", amount: 1 }, loseHalf]),
-      createChoice("donate-2", "2 Rohstoffe spenden", "Donate 2 resources", [{ type: "chooseResourceLoss", amount: 2 }, gainHalf]),
-      createChoice("donate-3", "3 Rohstoffe spenden", "Donate 3 resources", [{ type: "chooseResourceLoss", amount: 3 }, jumpShip, gainHalf])
-    ],
-    resultsDe: "Das wandernde Volk bewertet deine Hilfe.",
-    resultsEn: "The wandering people judges your help."
-  }),
-  createEncounterCard({
-    number: 31,
-    id: "spreadsheet-31",
-    type: "global",
-    titleDe: "Zahn der Zeit I",
-    titleEn: "Tooth of Time I",
-    promptDe: "Der Zahn der Zeit trifft alle mit mehr als 8 echten Anbauten.",
-    promptEn: "The tooth of time affects everyone with more than 8 real upgrades.",
-    choices: [
-      createChoice("continue", "Ausfuehren", "Execute", [
-        { type: "globalUpgradeLossAbove", threshold: 8, amount: 1 },
-        { type: "drawNextEncounter", reshuffleAll: true }
-      ])
-    ],
-    resultsDe: "Der Zahn der Zeit loest eine Folgebegegnung aus.",
-    resultsEn: "The tooth of time triggers a follow-up encounter."
-  }),
-  createEncounterCard({
-    number: 32,
-    id: "spreadsheet-32",
-    type: "global",
-    titleDe: "Zahn der Zeit II",
-    titleEn: "Tooth of Time II",
-    promptDe: "Der Zahn der Zeit trifft alle mit mehr als 6 echten Anbauten. Die groessten Frachtraeume erhalten Ruhm.",
-    promptEn: "The tooth of time affects everyone with more than 6 real upgrades. The largest cargo holds gain fame.",
-    choices: [
-      createChoice("continue", "Ausfuehren", "Execute", [
-        { type: "globalUpgradeLossAbove", threshold: 6, amount: 1 },
-        { type: "globalLeaderHalfMedal", metric: "cargo", amount: 1 },
-        { type: "drawNextEncounter", reshuffleAll: true }
-      ])
-    ],
-    resultsDe: "Der Zahn der Zeit loest eine Folgebegegnung aus.",
-    resultsEn: "The tooth of time triggers a follow-up encounter."
-  })
+  createMerchantCard(1, "haendler-geschenk-1", [
+    merchantAmountChoice(0, "Der Händler erzählt allen von deiner Armut. Jeder Mitspieler schenkt dir einen Rohstoff. Du verlierst aber eine ganze Medaille.", [
+      { type: "collectGiftsFromOpponents", amount: 1 },
+      loseWholeMedal
+    ]),
+    merchantAmountChoice(1, "Der Händler bedauert deine Armut und schenkt dir eine Nahrung. Du verlierst aber eine halbe Medaille.", [
+      payResources(1),
+      { type: "gainResource", resource: R.food, amount: 1 },
+      loseHalf
+    ]),
+    merchantAmountChoice(2, "Der Händler ist zufrieden. Du erhältst 1 beliebigen Rohstoff und 1 halbe Medaille.", [
+      payResources(2),
+      { type: "chooseResourceGain", amount: 1 },
+      gainHalf
+    ]),
+    merchantAmountChoice(3, "Der Händler ist begeistert. Du erhältst 2 beliebige Rohstoffe und 1 halbe Medaille.", [
+      payResources(3),
+      { type: "chooseResourceGain", amount: 2 },
+      gainHalf
+    ])
+  ]),
+  createMerchantCard(2, "haendler-geschenk-2", [
+    merchantAmountChoice(0, "Der Händler ist enttäuscht. Du verlierst eine halbe Medaille.", [loseHalf]),
+    merchantAmountChoice(1, "Der Händler gibt dir einen beliebigen Rohstoff.", [
+      payResources(1),
+      { type: "chooseResourceGain", amount: 1 }
+    ]),
+    merchantAmountChoice(2, "Der Händler ist zufrieden. Du erhältst 1 beliebigen Rohstoff und 1 halbe Medaille.", [
+      payResources(2),
+      { type: "chooseResourceGain", amount: 1 },
+      gainHalf
+    ]),
+    merchantAmountChoice(3, "Der Händler schenkt dir einen beliebigen Mutterschiff-Ausbau und 1 halbe Medaille.", [
+      payResources(3),
+      chooseUpgradeGain,
+      gainHalf
+    ])
+  ]),
+  createMerchantCard(3, "haendler-geschenk-3", [
+    merchantAmountChoice(0, "Der Händler ist enttäuscht. Du verlierst eine halbe Medaille.", [loseHalf]),
+    merchantAmountChoice(1, "Der Händler nimmt deinen Rohstoff an.", [payResources(1)]),
+    merchantAmountChoice(2, "Der Händler dankt dir. Du erhältst 1 halbe Medaille.", [
+      payResources(2),
+      gainHalf
+    ]),
+    merchantAmountChoice(3, "Der Händler belohnt dich mit 1 Handelsware und 1 halben Medaille.", [
+      payResources(3),
+      { type: "gainResource", resource: R.goods, amount: 1 },
+      gainHalf
+    ])
+  ]),
+  createMerchantCard(4, "haendler-geschenk-4", [
+    merchantAmountChoice(0, "Der Händler schenkt dir eine Handelsware.", [
+      { type: "gainResource", resource: R.goods, amount: 1 }
+    ]),
+    merchantAmountChoice(1, "Der Händler schenkt dir 1 beliebigen Rohstoff und 1 halbe Medaille.", [
+      payResources(1),
+      { type: "chooseResourceGain", amount: 1 },
+      gainHalf
+    ]),
+    merchantAmountChoice(2, "Der Händler schenkt dir 2 beliebige Rohstoffe und 1 halbe Medaille.", [
+      payResources(2),
+      { type: "chooseResourceGain", amount: 2 },
+      gainHalf
+    ]),
+    merchantAmountChoice(3, "Der Händler gibt dir deine Rohstoffe zurück.", [
+      payResources(3),
+      { type: "gainSelectedResources" }
+    ])
+  ]),
+  createMerchantCard(5, "haendler-geschenk-5", [
+    merchantAmountChoice(0, "Der Händler wendet sich ab. Wähle eins deiner Schiffe. Es darf in dieser Runde nicht fliegen. Du verlierst eine halbe Medaille.", [
+      chooseShipBlock,
+      loseHalf
+    ]),
+    merchantAmountChoice(1, "Der Händler nimmt deinen Rohstoff. Du verlierst eine halbe Medaille.", [
+      payResources(1),
+      loseHalf
+    ]),
+    merchantAmountChoice(2, "Der Händler schenkt dir 1 beliebigen Rohstoff und 1 halbe Medaille.", [
+      payResources(2),
+      { type: "chooseResourceGain", amount: 1 },
+      gainHalf
+    ]),
+    merchantAmountChoice(3, "Der Händler schenkt dir ein Handelsschiff.", [
+      payResources(3),
+      grantTradeShip
+    ])
+  ]),
+  createMerchantCard(6, "haendler-geschenk-6", [
+    merchantAmountChoice(0, "Der Händler wendet sich ab. Wähle eins deiner Schiffe. Es darf in dieser Runde nicht fliegen. Du verlierst eine halbe Medaille.", [
+      chooseShipBlock,
+      loseHalf
+    ]),
+    merchantAmountChoice(1, "Der Händler nimmt deinen Rohstoff. Du verlierst eine halbe Medaille.", [
+      payResources(1),
+      loseHalf
+    ]),
+    merchantAmountChoice(2, "Der Händler schenkt dir 1 beliebigen Rohstoff und 1 halbe Medaille.", [
+      payResources(2),
+      { type: "chooseResourceGain", amount: 1 },
+      gainHalf
+    ]),
+    merchantAmountChoice(3, "Der Händler schenkt dir ein Handelsschiff.", [
+      payResources(3),
+      grantTradeShip
+    ])
+  ]),
+  createMerchantPirateCard(7, "haendler-raumpirat-rechts", 1),
+  createMerchantPirateCard(8, "haendler-raumpirat-links", -1),
+  createPirateDemandCard(9, "raumpirat-forderung-rechts", 1, [
+    grantTradeShip
+  ], [
+    chooseUpgradeLoss,
+    gainHalf
+  ], false),
+  createPirateDemandCard(10, "raumpirat-forderung-zweiter-rechts", 2, [
+    { type: "gainResource", resource: R.ore, amount: 2 },
+    gainHalf
+  ], [
+    chooseShipBlock,
+    gainHalf
+  ], false),
+  createPirateDemandCard(11, "raumpirat-forderung-links", -1, [
+    { type: "gainResource", resource: R.ore, amount: 2 },
+    gainHalf
+  ], [
+    chooseUpgradeLoss
+  ], true),
+  createPirateTradeCard(12, "raumpirat-hehlerei-1", [gainHalf], [
+    { range: [1, 2], resultText: L("Die Hehlerei misslingt. Du verlierst eine halbe Medaille."), effects: [loseHalf] },
+    { range: [3, 3], resultText: L("Die Hehlerei fliegt auf. Du verlierst die erhaltenen Rohstoffe und eine halbe Medaille."), effects: [{ type: "loseSelectedResources" }, loseHalf] },
+    { range: [4, 5], resultText: L("Der Tausch gelingt."), effects: [] }
+  ]),
+  createPirateTradeCard(13, "raumpirat-hehlerei-2", [], [
+    { range: [1, 2], resultText: L("Der Tausch gelingt."), effects: [] },
+    { range: [3, 3], resultText: L("Die Hehlerei fliegt auf. Du verlierst die erhaltenen Rohstoffe und eine halbe Medaille."), effects: [{ type: "loseSelectedResources" }, loseHalf] },
+    { range: [4, 5], resultText: L("Der Raumpirat verschwindet. Du verlierst eine halbe Medaille."), effects: [loseHalf] }
+  ]),
+  createPirateRaidCard(14, "piratenangriff-hehler-1", [gainHalf], [
+    { range: [1, 2], resultText: L("Der Überfall misslingt. Du verlierst eine halbe Medaille."), effects: [loseHalf] },
+    { range: [3, 3], resultText: L("Der Überfall gelingt, aber du verlierst eine halbe Medaille."), effects: [{ type: "drawFromOpponents", amountPerOpponent: 1 }, loseHalf] },
+    { range: [4, 5], resultText: L("Der Überfall gelingt."), effects: [{ type: "drawFromOpponents", amountPerOpponent: 1 }] }
+  ]),
+  createPirateRaidCard(15, "piratenangriff-hehler-2", [], [
+    { range: [1, 2], resultText: L("Der Überfall gelingt."), effects: [{ type: "drawFromOpponents", amountPerOpponent: 1 }] },
+    { range: [3, 3], resultText: L("Der Überfall gelingt, aber du verlierst eine halbe Medaille."), effects: [{ type: "drawFromOpponents", amountPerOpponent: 1 }, loseHalf] },
+    { range: [4, 5], resultText: L("Der Überfall misslingt. Du verlierst eine halbe Medaille."), effects: [loseHalf] }
+  ]),
+  createFleeCombatCard(16, "raumpirat-flucht-rechts", 1, [
+    chooseUpgradeGain,
+    gainHalf
+  ], [
+    chooseUpgradeLoss
+  ]),
+  createFleeCombatCard(17, "raumpirat-flucht-zweiter-links", -2, [
+    { type: "gainResource", resource: R.ore, amount: 2 },
+    gainHalf
+  ], [
+    chooseUpgradeLoss,
+    gainHalf
+  ]),
+  createFleeCombatCard(18, "raumpirat-flucht-links", -1, [
+    grantTradeShip
+  ], [
+    chooseShipBlock
+  ]),
+  createDistressCard(19, "notruf-rettung-1", 2, [], [
+    grantTradeShip
+  ], [
+    chooseUpgradeLoss
+  ]),
+  createDistressCard(20, "notruf-diplomat", -1, [loseHalf], [
+    gainHalf,
+    { type: "drawFromOpponents", amountPerOpponent: 1 }
+  ], [
+    chooseUpgradeLoss,
+    gainHalf
+  ]),
+  createDistressCard(21, "notruf-wissendes-volk", 1, [loseHalf], [
+    chooseUpgradeGain,
+    gainHalf
+  ], [
+    chooseUpgradeLoss
+  ]),
+  createPirateHelpCard(22, "piratenangriff-hilfe", 2, [], [
+    { type: "gainResource", resource: R.goods, amount: 2 },
+    gainHalf
+  ], [
+    chooseShipBlock
+  ]),
+  createPirateHelpCard(23, "piratenangriff-gruenes-volk", 1, [loseHalf], [
+    { type: "chooseResourceGain", amount: 2 },
+    gainHalf
+  ], [
+    chooseUpgradeLoss,
+    gainHalf
+  ]),
+  createPirateHelpCard(24, "piratenangriff-wanderndes-volk", -1, [loseHalf], [
+    jumpShip,
+    gainHalf
+  ], [
+    chooseShipBlock,
+    gainHalf
+  ]),
+  createSpaceDistortionCard(25, "raumzerrung-raumsprung-1", -1, [
+    jumpShip
+  ], [
+    chooseShipBlock
+  ]),
+  createSpaceDistortionCard(26, "raumzerrung-raumsprung-2", 1, [
+    jumpShip
+  ], [
+    chooseShipBlock
+  ]),
+  createSpaceDistortionCard(27, "raumzerrung-raumsprung-3", 2, [
+    jumpShip
+  ], [
+    chooseUpgradeLoss
+  ]),
+  createWanderingCard(28, "wanderndes-volk-raumsprung-1", [
+    merchantAmountChoice(0, "Der Fluch des wandernden Volkes trifft dich. Wähle einen beliebigen Ausbau deines Mutterschiffs und entferne ihn. Außerdem verlierst du eine halbe Medaille.", [
+      chooseUpgradeLoss,
+      loseHalf
+    ]),
+    merchantAmountChoice(1, "Du erhältst den Segen des wandernden Volkes und eine halbe Medaille.", [
+      payResources(1),
+      gainHalf
+    ]),
+    merchantAmountChoice(2, "Als Dank wird ein Raumsprung gewährt. Wähle eines deiner Schiffe, mit diesem darfst du einen Raumsprung ausführen.", [
+      payResources(2),
+      jumpShip
+    ]),
+    merchantAmountChoice(3, "Als Dank wird ein Raumsprung gewährt. Wähle eines deiner Schiffe, mit diesem darfst du einen Raumsprung ausführen.", [
+      payResources(3),
+      jumpShip
+    ])
+  ]),
+  createWanderingCard(29, "wanderndes-volk-handelsschiff", [
+    merchantAmountChoice(0, "Das wandernde Volk zieht weiter.", []),
+    merchantAmountChoice(1, "Das wandernde Volk dankt dir. Du erhältst eine halbe Medaille.", [
+      payResources(1),
+      gainHalf
+    ]),
+    merchantAmountChoice(2, "Das wandernde Volk dankt dir. Du erhältst eine halbe Medaille.", [
+      payResources(2),
+      gainHalf
+    ]),
+    merchantAmountChoice(3, "Das wandernde Volk schenkt dir ein Handelsschiff.", [
+      payResources(3),
+      grantTradeShip
+    ])
+  ]),
+  createWanderingCard(30, "wanderndes-volk-raumsprung-2", [
+    merchantAmountChoice(0, "Das wandernde Volk ist enttäuscht. Du verlierst eine halbe Medaille.", [loseHalf]),
+    merchantAmountChoice(1, "Das wandernde Volk ist nicht zufrieden. Du verlierst eine halbe Medaille.", [
+      payResources(1),
+      loseHalf
+    ]),
+    merchantAmountChoice(2, "Das wandernde Volk dankt dir. Du erhältst eine halbe Medaille.", [
+      payResources(2),
+      gainHalf
+    ]),
+    merchantAmountChoice(3, "Das wandernde Volk dankt dir mit einer halben Medaille und einem Raumsprung.", [
+      payResources(3),
+      gainHalf,
+      jumpShip
+    ])
+  ]),
+  createToothOfTimeCard(31, "zahn-der-zeit", 8, false),
+  createToothOfTimeCard(32, "zahn-der-zeit-galaktischer-rat", 6, true)
 ];
 
 export function getAllEncounterCards() {
-  return encounterCards;
+  return encounterCards.map((card) => ({ ...card }));
 }
 
 export function getEncounterDeckIds() {
-  return encounterCards
-    .filter((card) => card.implemented && card.inDeck !== false)
-    .map((card) => card.id);
+  return encounterCards.filter((card) => card.inDeck !== false).map((card) => card.id);
 }
 
 export function getEncounterCardById(cardId) {
@@ -489,344 +313,306 @@ function createEncounterCard({
   id,
   type,
   titleDe,
-  titleEn,
+  titleEn = titleDe,
   promptDe,
-  promptEn,
-  choices = [],
-  resultsDe = "",
-  resultsEn = "",
-  implemented = true,
-  inDeck = true,
-  notes = "Aus Begegnungen.xlsx uebernommen."
+  promptEn = promptDe,
+  choices,
+  resultsDe = "Die Begegnung ist abgeschlossen.",
+  resultsEn = "The encounter is resolved.",
+  notes = ""
 }) {
-  const spreadsheetText = encounterSpreadsheetTextsByNumber[number] ?? null;
-  const exactPromptDe = spreadsheetText?.promptDe || promptDe;
-  const exactResultsDe = resultsDe;
-  const exactChoices = applySpreadsheetChoiceLabels(choices, spreadsheetText);
-
   return {
-    id,
-    number,
+    id: `spreadsheet-${String(number).padStart(2, "0")}`,
+    slug: id,
     cardNumber: number,
+    number,
     type,
+    title: L(titleDe, titleEn),
     titleDe,
     titleEn,
-    promptDe: exactPromptDe,
+    prompt: L(promptDe, promptEn),
+    promptDe,
     promptEn,
-    title: { de: titleDe, en: titleEn },
-    prompt: { de: exactPromptDe, en: promptEn },
-    choices: exactChoices,
-    resultsDe: exactResultsDe,
-    resultsEn,
-    results: { de: exactResultsDe, en: resultsEn },
-    excelRows: spreadsheetText?.rows ?? [],
-    excelLinesDe: spreadsheetText?.linesDe ?? [],
-    requiresInput: false,
-    requiresCombat: false,
+    choices,
     effects: [],
-    implemented,
-    inDeck,
-    source: "Begegnungen.xlsx",
+    results: L(resultsDe, resultsEn),
+    resultsDe,
+    resultsEn,
+    implemented: true,
+    inDeck: true,
+    source: `docs/encounter-card-markdown/begegnung_karte_${String(number).padStart(2, "0")}_*.md`,
     notes
   };
 }
 
-function applySpreadsheetChoiceLabels(choices, spreadsheetText) {
-  if (!spreadsheetText || !Array.isArray(choices)) return choices;
-
-  return choices.map((choice, index) => {
-    const labelDe = getSpreadsheetChoiceLabel(choice, index, spreadsheetText) ?? choice.labelDe;
-    const resultDe = choice.resultText ? null : getSpreadsheetChoiceResultText(choice, index, spreadsheetText);
-    return {
-      ...choice,
-      labelDe,
-      label: {
-        ...choice.label,
-        de: labelDe
-      },
-      resultText: choice.resultText ?? (resultDe ? { de: resultDe } : null)
-    };
-  });
-}
-
-function getSpreadsheetChoiceLabel(choice, index, spreadsheetText) {
-  const donationMatch = choice.id.match(/(?:gift|donate)-(\d+)/);
-  if (donationMatch) return donationMatch[1];
-
-  const fightDonationMatch = choice.id.match(/^fight-(\d+)$/);
-  if (fightDonationMatch) return `${fightDonationMatch[1]} · Ja`;
-
-  const declineDonationMatch = choice.id.match(/^decline-(\d+)$/);
-  if (declineDonationMatch) return `${declineDonationMatch[1]} · Nein`;
-
-  const yesNoLabels = getFirstYesNoLabels(spreadsheetText);
-  if (yesNoLabels.length >= 2) {
-    if (["accept", "help", "attempt", "pay", "flee"].includes(choice.id)) return yesNoLabels[0];
-    if (["decline", "fight"].includes(choice.id)) return yesNoLabels[1];
-    return yesNoLabels[index] ?? null;
-  }
-
-  if (choice.id === "continue") return "Fortfahren";
-  return null;
-}
-
-function getFirstYesNoLabels(spreadsheetText) {
-  for (const row of spreadsheetText.rows ?? []) {
-    const labels = (row.cells ?? []).filter((cell) => cell === "Ja" || cell === "Nein");
-    if (labels.includes("Ja") && labels.includes("Nein")) {
-      return ["Ja", "Nein"];
-    }
-  }
-  return [];
-}
-
-function getSpreadsheetChoiceResultText(choice, index, spreadsheetText) {
-  const donationMatch = choice.id.match(/(?:gift|donate)-(\d+)/);
-  if (donationMatch) {
-    return findSpreadsheetResultForChoiceKey(spreadsheetText, donationMatch[1]);
-  }
-
-  const yesNoKey = getSpreadsheetYesNoChoiceKey(choice, index);
-  if (yesNoKey) {
-    return findSpreadsheetResultForChoiceKey(spreadsheetText, yesNoKey);
-  }
-
-  if (choice.id === "continue") {
-    return spreadsheetText.linesDe?.[0] ?? null;
-  }
-
-  return null;
-}
-
-function getSpreadsheetYesNoChoiceKey(choice, index) {
-  if (["accept", "help", "attempt", "pay", "flee"].includes(choice.id)) return "Ja";
-  if (["decline", "fight"].includes(choice.id)) return "Nein";
-  return index === 0 ? "Ja" : index === 1 ? "Nein" : null;
-}
-
-function findSpreadsheetResultForChoiceKey(spreadsheetText, key) {
-  const rows = spreadsheetText.rows ?? [];
-  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
-    const cells = rows[rowIndex].cells ?? [];
-    for (let cellIndex = 0; cellIndex < cells.length; cellIndex += 1) {
-      if (!spreadsheetChoiceCellMatches(cells[cellIndex], key)) continue;
-      const sameRowResult = cells.slice(cellIndex + 1).find((cell) => isSpreadsheetResultText(cell));
-      if (sameRowResult) return sameRowResult;
-      const nextRowResult = rows[rowIndex + 1]?.cells?.[cellIndex];
-      if (isSpreadsheetResultText(nextRowResult)) return nextRowResult;
-      const nextRowFallback = rows[rowIndex + 1]?.cells?.find((cell) => isSpreadsheetResultText(cell));
-      if (nextRowFallback) return nextRowFallback;
-    }
-  }
-  return null;
-}
-
-function spreadsheetChoiceCellMatches(cell, key) {
-  if (typeof cell !== "string") return false;
-  const normalized = cell.trim();
-  if (normalized === key) return true;
-  if (!/^\d+$/.test(key)) return false;
-  return normalized
-    .split(",")
-    .map((entry) => entry.trim())
-    .includes(key);
-}
-
-function isSpreadsheetResultText(cell) {
-  return typeof cell === "string"
-    && cell.trim().length > 0
-    && cell !== "Ja"
-    && cell !== "Nein"
-    && !/^\d+(?:\s*,\s*\d+)*$/.test(cell.trim());
-}
-
-function localizedDe(text) {
-  return typeof text === "string" && text.trim().length > 0 ? { de: text } : null;
-}
-
-function getSpreadsheetCell(number, rowIndex, cellIndex) {
-  const cell = encounterSpreadsheetTextsByNumber[number]?.rows?.[rowIndex]?.cells?.[cellIndex];
-  return typeof cell === "string" && cell.trim().length > 0 ? cell : null;
-}
-
-function withChoiceResultText(choice, resultTextDe) {
-  const resultText = localizedDe(resultTextDe);
-  return resultText ? { ...choice, resultText } : choice;
-}
-
-function createChoice(id, labelDe, labelEn, effects = [], options = {}) {
+function createChoice(id, labelDe, labelEn = labelDe, effects = [], options = {}) {
   return {
     id,
-    labelDe,
-    labelEn,
-    label: { de: labelDe, en: labelEn },
-    effects,
-    ...(options.resultText ? { resultText: options.resultText } : {})
+    label: L(labelDe, labelEn),
+    effects: flattenEffects(effects),
+    resultText: options.resultText ? normalizeText(options.resultText) : null
   };
 }
 
-function createGiftPirateChoice(id, giftAmount, neighborOffset) {
-  const number = neighborOffset === 1 ? 7 : 8;
-  const effects = [];
-  if (giftAmount > 0) effects.push({ type: "chooseResourceLoss", amount: giftAmount });
-  effects.push({
-    type: "combat",
-    neighborOffset,
-    promptText: localizedDe(getSpreadsheetCell(number, 3, 0)),
-    winText: localizedDe(getSpreadsheetCell(number, 5, 0)),
-    loseText: localizedDe(getSpreadsheetCell(number, 5, 1)),
-    onWin: [{ type: "gainSelectedResources" }, gainHalf],
-    onLose: [blockShip]
-  });
-  return withChoiceResultText(createChoice(
-    id,
-    `${giftAmount} Rohstoff(e) geben und kaempfen`,
-    `Give ${giftAmount} resource(s) and fight`,
-    effects
-  ), getSpreadsheetCell(number, 3, 0));
-}
-
-function createGiftPirateDecline(id, giftAmount, resultTextDe = null) {
-  const effects = [];
-  if (giftAmount > 0) effects.push({ type: "chooseResourceLoss", amount: giftAmount });
-  return withChoiceResultText(createChoice(
-    id,
-    `${giftAmount} Rohstoff(e) geben und nicht kaempfen`,
-    `Give ${giftAmount} resource(s) and do not fight`,
-    effects
-  ), resultTextDe);
-}
-
-function applyOutcomeTexts(outcomes, number) {
-  return outcomes.map((outcome, index) => ({
-    ...outcome,
-    resultText: localizedDe(getSpreadsheetCell(number, 3 + index, 1))
-  }));
-}
-
-function createPirateTradeCard(number, id, outcomes, declineEffects) {
+function createMerchantCard(number, id, choices) {
   return createEncounterCard({
     number,
     id,
-    type: "pirate",
-    titleDe: `Piratentausch ${number - 11}`,
-    titleEn: `Pirate Trade ${number - 11}`,
-    promptDe: "Ein Pirat bietet einen riskanten Tausch an: 1 Rohstoff gegen 2 Rohstoffe.",
-    promptEn: "A pirate offers a risky trade: 1 resource for 2 resources.",
+    type: "merchant",
+    titleDe: `Händler ${number}`,
+    titleEn: `Merchant ${number}`,
+    promptDe: "Du begegnest einem Händler. Wie viele Rohstoffe (bis zu 3) schenkst du ihm?",
+    promptEn: "You meet a merchant. How many resources, up to 3, do you give him?",
+    choices,
+    notes: "Markdown replacement card: merchant donation flow."
+  });
+}
+
+function createWanderingCard(number, id, choices) {
+  return createEncounterCard({
+    number,
+    id,
+    type: "wandering-people",
+    titleDe: "Wanderndes Volk",
+    titleEn: "Wandering People",
+    promptDe: "Du triffst ein Raumschiff des wandernden Volkes. Dieses in der ganzen Galaxie verehrte Volk bittet dich um eine Spende. Wie viele Rohstoffe (bis zu 3) schenkst du?",
+    promptEn: "You meet a ship of the wandering people. This revered people asks for a donation. How many resources, up to 3, do you give?",
+    choices,
+    notes: "Markdown replacement card: wandering people donation flow."
+  });
+}
+
+function merchantAmountChoice(amount, resultDe, effects) {
+  return createChoice(
+    `gift-${amount}`,
+    `${amount} Rohstoff${amount === 1 ? "" : "e"}`,
+    `${amount} resource${amount === 1 ? "" : "s"}`,
+    effects,
+    { resultText: L(resultDe) }
+  );
+}
+
+function createMerchantPirateCard(number, id, neighborOffset) {
+  const attackPrompt = L("Der Händler entpuppt sich als Raumpirat. Greifst du ihn an?");
+  const branch = {
+    type: "branchChoice",
+    promptText: attackPrompt,
     choices: [
-      createChoice("accept", "Tausch annehmen", "Accept trade", [
+      createChoice("attack", "Ja", "Yes", [
+        {
+          type: "combat",
+          neighborOffset,
+          winText: L("Sieg. Du erhältst deine Geschenke zurück und dazu eine halbe Medaille."),
+          loseText: L("Niederlage. Hast du dem Piraten Rohstoffe gegeben, verschwinden sie. Außerdem wählst du eins deiner Schiffe. Es darf in dieser Runde nicht fliegen."),
+          onWin: [
+            { type: "gainSelectedResources" },
+            gainHalf
+          ],
+          onLose: [
+            chooseShipBlock
+          ]
+        }
+      ], { resultText: L("Du musst kämpfen.") }),
+      createChoice("decline", "Nein", "No", [], {
+        resultText: L("Der Pirat verschwindet. Hast du ihm Rohstoffe gegeben, nimmt er sie mit.")
+      })
+    ]
+  };
+
+  return createEncounterCard({
+    number,
+    id,
+    type: "merchant-pirate",
+    titleDe: "Händler / Raumpirat",
+    titleEn: "Merchant / Space Pirate",
+    promptDe: "Du begegnest einem Händler. Wie viele Rohstoffe (bis zu 3) schenkst du ihm?",
+    promptEn: "You meet a merchant. How many resources, up to 3, do you give him?",
+    choices: [0, 1, 2, 3].map((amount) => merchantAmountChoice(amount, attackPrompt.de, [
+      payResources(amount),
+      branch
+    ])),
+    notes: "The amount choice is followed by exact resource payment and an attack/decline branch."
+  });
+}
+
+function createPirateDemandCard(number, id, neighborOffset, winEffects, loseEffects, payThenBlock) {
+  const payEffects = [
+    payResources(2),
+    ...(payThenBlock ? [chooseShipBlock] : [])
+  ];
+  return createEncounterCard({
+    number,
+    id,
+    type: "space-pirate",
+    titleDe: "Raumpirat",
+    titleEn: "Space Pirate",
+    promptDe: "Ein Raumpirat fordert zwei deiner Rohstoffe. Gibst du ihm die Rohstoffe?",
+    promptEn: "A space pirate demands two of your resources. Do you give them to him?",
+    choices: [
+      createChoice("pay", "Ja", "Yes", payEffects, {
+        resultText: L(payThenBlock
+          ? "Der Raumpirat nimmt die Rohstoffe. Außerdem wählst du eins deiner Schiffe. Es darf in dieser Runde nicht fliegen."
+          : "Der Raumpirat nimmt die Rohstoffe und verschwindet.")
+      }),
+      createChoice("fight", "Nein", "No", [
+        {
+          type: "combat",
+          neighborOffset,
+          winText: L("Sieg. Der Raumpirat wird vertrieben."),
+          loseText: L("Niederlage. Der Raumpirat beschädigt dein Mutterschiff."),
+          onWin: winEffects,
+          onLose: loseEffects
+        }
+      ], { resultText: L("Du stellst dich dem Raumpiraten.") })
+    ],
+    notes: "Pirate demand card from Markdown."
+  });
+}
+
+function createPirateTradeCard(number, id, declineEffects, outcomes) {
+  return createEncounterCard({
+    number,
+    id,
+    type: "pirate-fence",
+    titleDe: "Raumpirat / Hehlerei",
+    titleEn: "Space Pirate / Fence",
+    promptDe: "Du triffst einen Raumpiraten, der dir anbietet, einen deiner Rohstoffe gegen zwei beliebige andere umzutauschen. Willigst du ein?",
+    promptEn: "You meet a space pirate who offers to trade one of your resources for two resources of your choice. Do you accept?",
+    choices: [
+      createChoice("accept", "Ja", "Yes", [
         { type: "chooseResourceLoss", amount: 1 },
         { type: "chooseResourceGain", amount: 2 },
-        { type: "mothershipOutcomeRoll", outcomes: applyOutcomeTexts(outcomes, number) }
-      ], { resultText: localizedDe(getSpreadsheetCell(number, 2, 0)) }),
-      withChoiceResultText(createChoice("decline", "Ablehnen", "Decline", declineEffects), getSpreadsheetCell(number, 2, 1))
+        { type: "mothershipOutcomeRoll", outcomes }
+      ], { resultText: L("Du lässt dich auf den Handel ein.") }),
+      createChoice("decline", "Nein", "No", declineEffects, {
+        resultText: L("Du lehnst den Handel ab.")
+      })
     ],
-    resultsDe: "Der Piratentausch ist entschieden.",
-    resultsEn: "The pirate trade is resolved."
+    notes: "Hehlerei rolls use only the colored ball value."
   });
 }
 
-function createPirateAttackCard(number, id, neighborOffset, winEffects, loseEffects) {
+function createPirateRaidCard(number, id, declineEffects, outcomes) {
   return createEncounterCard({
     number,
     id,
-    type: "pirate",
-    titleDe: `Piratenangriff ${number - 15}`,
-    titleEn: `Pirate Attack ${number - 15}`,
-    promptDe: "Piraten greifen an. Du kannst fliehen oder direkt kaempfen.",
-    promptEn: "Pirates attack. You may flee or fight directly.",
+    type: "pirate-raid",
+    titleDe: "Raumpirat / Überfall",
+    titleEn: "Space Pirate / Raid",
+    promptDe: "Du begegnest einem Raumpiraten, der dir anbietet, für einen beliebigen Rohstoff deine Mitspieler zu überfallen. Bist du einverstanden?",
+    promptEn: "You meet a space pirate who offers to raid your opponents for one resource of your choice. Do you agree?",
     choices: [
-      createChoice("flee", "Fliehen versuchen", "Try to flee", [
+      createChoice("accept", "Ja", "Yes", [
+        { type: "chooseResourceLoss", amount: 1 },
+        { type: "mothershipOutcomeRoll", outcomes }
+      ], { resultText: L("Du gibst dem Raumpiraten einen Rohstoff.") }),
+      createChoice("decline", "Nein", "No", declineEffects, {
+        resultText: L("Du lehnst den Überfall ab.")
+      })
+    ],
+    notes: "Pirate raid rolls use only the colored ball value."
+  });
+}
+
+function createFleeCombatCard(number, id, neighborOffset, winEffects, loseEffects) {
+  return createEncounterCard({
+    number,
+    id,
+    type: "pirate-flee-combat",
+    titleDe: "Raumpirat / Flucht oder Kampf",
+    titleEn: "Space Pirate / Flee or Fight",
+    promptDe: "Ein Raumpirat greift dich an. Möchtest du fliehen?",
+    promptEn: "A space pirate attacks you. Do you want to flee?",
+    choices: [
+      createChoice("flee", "Ja", "Yes", [
         {
           type: "comparison",
           metric: "drive",
           neighborOffset,
-          promptText: localizedDe(getSpreadsheetCell(number, 2, 0)),
-          successText: localizedDe(getSpreadsheetCell(number, 4, 0)),
-          failureText: localizedDe(getSpreadsheetCell(number, 4, 1)),
+          successText: L("Deine Flucht gelingt."),
+          failureText: L("Die Flucht misslingt. Du musst kämpfen."),
           onSuccess: [],
-          onFailure: [{
-            type: "combat",
-            neighborOffset,
-            promptText: localizedDe(getSpreadsheetCell(number, 4, 1)),
-            winText: localizedDe(getSpreadsheetCell(number, 6, 1)),
-            loseText: localizedDe(getSpreadsheetCell(number, 6, 2)),
-            onWin: winEffects,
-            onLose: loseEffects
-          }]
+          onFailure: [
+            {
+              type: "combat",
+              neighborOffset,
+              winText: L("Sieg. Der Raumpirat ist besiegt."),
+              loseText: L("Niederlage. Der Raumpirat trifft dich hart."),
+              onWin: winEffects,
+              onLose: loseEffects
+            }
+          ]
         }
-      ], { resultText: localizedDe(getSpreadsheetCell(number, 2, 0)) }),
-      createChoice("fight", "Direkt kaempfen", "Fight directly", [
+      ], { resultText: L("Du versuchst zu fliehen.") }),
+      createChoice("fight", "Nein", "No", [
         {
           type: "combat",
           neighborOffset,
-          promptText: localizedDe(getSpreadsheetCell(number, 4, 1)),
-          winText: localizedDe(getSpreadsheetCell(number, 6, 1)),
-          loseText: localizedDe(getSpreadsheetCell(number, 6, 2)),
+          winText: L("Sieg. Der Raumpirat ist besiegt."),
+          loseText: L("Niederlage. Der Raumpirat trifft dich hart."),
           onWin: winEffects,
           onLose: loseEffects
         }
-      ], { resultText: localizedDe(getSpreadsheetCell(number, 4, 1)) })
+      ], { resultText: L("Du stellst dich dem Kampf.") })
     ],
-    resultsDe: "Der Piratenangriff ist abgehandelt.",
-    resultsEn: "The pirate attack is resolved."
+    notes: "Flee uses drive comparison without a special roll; combat uses mothership combat."
   });
 }
 
-function createDistressCard(number, id, neighborOffset, successEffects, failureEffects, declineEffects) {
+function createDistressCard(number, id, neighborOffset, declineEffects, successEffects, failureEffects) {
   return createEncounterCard({
     number,
     id,
-    type: "distress",
-    titleDe: `Notruf ${number - 18}`,
-    titleEn: `Distress Call ${number - 18}`,
-    promptDe: "Ein Schiff sendet einen Notruf. Willst du helfen?",
-    promptEn: "A ship sends a distress call. Do you help?",
+    type: "distress-call",
+    titleDe: "Notruf",
+    titleEn: "Distress Call",
+    promptDe: "Du erhältst den Notruf eines Raumschiffes, das antriebslos auf eine Sonne zutreibt. Möchtest du helfen?",
+    promptEn: "You receive the distress call of a ship drifting helplessly toward a sun. Do you want to help?",
     choices: [
-      createChoice("help", "Helfen", "Help", [
+      createChoice("help", "Ja", "Yes", [
         {
           type: "comparison",
           metric: "speed",
           neighborOffset,
-          promptText: localizedDe(getSpreadsheetCell(number, 2, 0)),
-          successText: localizedDe(getSpreadsheetCell(number, 4, 0)),
-          failureText: localizedDe(getSpreadsheetCell(number, 4, 1)),
+          successText: L("Die Rettung gelingt."),
+          failureText: L("Die Rettung misslingt."),
           onSuccess: successEffects,
           onFailure: failureEffects
         }
-      ], { resultText: localizedDe(getSpreadsheetCell(number, 2, 0)) }),
-      withChoiceResultText(createChoice("decline", "Nicht helfen", "Do not help", declineEffects), getSpreadsheetCell(number, 2, 2))
+      ], { resultText: L("Du versuchst zu helfen.") }),
+      createChoice("decline", "Nein", "No", declineEffects, {
+        resultText: L("Du antwortest nicht auf den Notruf.")
+      })
     ],
-    resultsDe: "Der Notruf ist abgeschlossen.",
-    resultsEn: "The distress call is resolved."
+    notes: "Distress card with special speed comparison roll."
   });
 }
 
-function createRescueCard(number, id, neighborOffset, winEffects, loseEffects, declineEffects) {
+function createPirateHelpCard(number, id, neighborOffset, declineEffects, winEffects, loseEffects) {
   return createEncounterCard({
     number,
     id,
-    type: "distress",
-    titleDe: `Rettung ${number - 21}`,
-    titleEn: `Rescue ${number - 21}`,
-    promptDe: "Ein Schiff wird von Piraten angegriffen. Willst du eingreifen?",
-    promptEn: "A ship is attacked by pirates. Do you intervene?",
+    type: "pirate-attack-help",
+    titleDe: "Piratenangriff",
+    titleEn: "Pirate Attack",
+    promptDe: "Du siehst ein Raumschiff, das von einem Piraten angegriffen wird. Möchtest du helfen?",
+    promptEn: "You see a ship being attacked by a pirate. Do you want to help?",
     choices: [
-      createChoice("help", "Eingreifen", "Intervene", [
+      createChoice("help", "Ja", "Yes", [
         {
           type: "combat",
           neighborOffset,
-          promptText: localizedDe(getSpreadsheetCell(number, 2, 0)),
-          winText: localizedDe(getSpreadsheetCell(number, 4, 0)),
-          loseText: localizedDe(getSpreadsheetCell(number, 4, 1)),
+          winText: L("Sieg. Du hast geholfen."),
+          loseText: L("Niederlage. Der Pirat setzt dir zu."),
           onWin: winEffects,
           onLose: loseEffects
         }
-      ], { resultText: localizedDe(getSpreadsheetCell(number, 2, 0)) }),
-      withChoiceResultText(createChoice("decline", "Nicht eingreifen", "Do not intervene", declineEffects), getSpreadsheetCell(number, 2, 2))
+      ], { resultText: L("Du greifst in den Kampf ein.") }),
+      createChoice("decline", "Nein", "No", declineEffects, {
+        resultText: L("Du greifst nicht ein.")
+      })
     ],
-    resultsDe: "Die Rettung ist entschieden.",
-    resultsEn: "The rescue is resolved."
+    notes: "Pirate help card with combat against the specified neighbor."
   });
 }
 
@@ -835,26 +621,94 @@ function createSpaceDistortionCard(number, id, neighborOffset, successEffects, f
     number,
     id,
     type: "space-distortion",
-    titleDe: `Raumzerrung ${number - 24}`,
-    titleEn: `Space Distortion ${number - 24}`,
-    promptDe: "Eine Raumzerrung oeffnet sich. Willst du den Sprung wagen?",
-    promptEn: "A space distortion opens. Do you risk the jump?",
+    titleDe: "Raumzerrung",
+    titleEn: "Space Distortion",
+    promptDe: "Du gerätst in die Nähe einer Raumzerrung. Willst du einen Raumsprung versuchen?",
+    promptEn: "You drift close to a space distortion. Do you want to attempt a spatial jump?",
     choices: [
-      createChoice("attempt", "Sprung wagen", "Attempt jump", [
+      createChoice("attempt", "Ja", "Yes", [
         {
           type: "comparison",
           metric: "speed",
           neighborOffset,
-          promptText: localizedDe(getSpreadsheetCell(number, 2, 0)),
-          successText: localizedDe(getSpreadsheetCell(number, 4, 0)),
-          failureText: localizedDe(getSpreadsheetCell(number, 4, 1)),
+          successText: L("Der Raumsprung gelingt."),
+          failureText: L("Der Raumsprung misslingt."),
           onSuccess: successEffects,
           onFailure: failureEffects
         }
-      ], { resultText: localizedDe(getSpreadsheetCell(number, 2, 0)) }),
-      withChoiceResultText(createChoice("decline", "Nicht springen", "Do not jump", [drawNextEncounter]), getSpreadsheetCell(number, 2, 2))
+      ], { resultText: L("Du wagst den Raumsprung.") }),
+      createChoice("decline", "Nein", "No", [drawNextEncounter], {
+        resultText: L("Du wagst den Raumsprung nicht. Ziehe eine neue Begegnungskarte.")
+      })
     ],
-    resultsDe: "Die Raumzerrung ist abgehandelt.",
-    resultsEn: "The space distortion is resolved."
+    notes: "Spatial jump attempts use a special speed comparison and do not consume normal movement."
+  });
+}
+
+function createToothOfTimeCard(number, id, threshold, hasGalacticCouncil) {
+  const effects = [
+    {
+      type: "globalUpgradeLossAbove",
+      threshold,
+      amount: 1
+    }
+  ];
+  if (hasGalacticCouncil) {
+    effects.push({
+      type: "globalLeaderHalfMedal",
+      metric: "cargo",
+      amount: 1
+    });
+  }
+  effects.push({ type: "drawNextEncounter", reshuffleAll: true });
+
+  return createEncounterCard({
+    number,
+    id,
+    type: "time-tooth",
+    titleDe: hasGalacticCouncil ? "Zahn der Zeit / Galaktischer Rat" : "Zahn der Zeit",
+    titleEn: hasGalacticCouncil ? "Tooth of Time / Galactic Council" : "Tooth of Time",
+    promptDe: hasGalacticCouncil
+      ? "Jeder, dessen Mutterschiff mehr als sechs Ausbauten besitzt, wählt einen beliebigen Ausbau und entfernt ihn. Die Spieler, deren Mutterschiffe über die meisten Frachtringe verfügen, erhalten eine halbe Medaille."
+      : "Jeder, dessen Mutterschiff mehr als acht Ausbauten besitzt, wählt einen beliebigen Ausbau und entfernt ihn.",
+    promptEn: hasGalacticCouncil
+      ? "Everyone whose mothership has more than six upgrades chooses one upgrade and removes it. The players with the most cargo rings receive half a medal."
+      : "Everyone whose mothership has more than eight upgrades chooses one upgrade and removes it.",
+    choices: [
+      createChoice("continue", "Weiter", "Continue", effects, {
+        resultText: hasGalacticCouncil
+          ? L("Galaktischer Rat: Die Spieler mit den meisten Frachtringen erhalten eine halbe Medaille. Neue Begegnung: Die Begegnungen wurden neu gemischt.")
+          : L("Neue Begegnung: Die Begegnungen wurden neu gemischt.")
+      })
+    ],
+    resultsDe: "Die Begegnungen wurden neu gemischt.",
+    resultsEn: "The encounters were reshuffled.",
+    notes: "Counts only real physical mothership upgrades. Friendship bonuses are ignored."
+  });
+}
+
+function payResources(amount) {
+  return amount > 0 ? { type: "chooseResourceLoss", amount } : { type: "none" };
+}
+
+function L(de, en = de) {
+  return { de, en };
+}
+
+function normalizeText(text) {
+  if (!text) return null;
+  if (typeof text === "string") return L(text);
+  return {
+    de: typeof text.de === "string" ? text.de : "",
+    en: typeof text.en === "string" ? text.en : (typeof text.de === "string" ? text.de : "")
+  };
+}
+
+function flattenEffects(effects) {
+  return effects.flatMap((effect) => {
+    if (!effect) return [];
+    if (Array.isArray(effect)) return flattenEffects(effect);
+    if (effect.type === "none") return [];
+    return [effect];
   });
 }

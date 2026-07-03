@@ -1004,6 +1004,7 @@ function selectBoardElement(type, id) {
   if (!state.gameState) return;
 
   if (type === "ship" && confirmEncounterJumpShip(id)) return;
+  if (type === "ship" && confirmEncounterBlockShip(id)) return;
   if (type === "spacePoint" && confirmEncounterTargetAt(id)) return;
   if (type === "spacePoint" && state.gameState.activeEncounter?.pendingStep?.type === "boardTargetSelection") return;
   if (type === "spacePoint" && confirmPendingTradeStationAt(id)) return;
@@ -1134,6 +1135,23 @@ function confirmEncounterJumpShip(shipId) {
       selectedElement: { type: "ship", id: shipId }
     }
   });
+  saveCurrentGameState();
+  render();
+  return true;
+}
+
+function confirmEncounterBlockShip(shipId) {
+  const pendingStep = state.gameState?.activeEncounter?.pendingStep;
+  if (
+    !state.encounterBoardSelectionActive ||
+    pendingStep?.type !== "shipBlockSelection" ||
+    !pendingStep.shipIds?.includes(shipId)
+  ) {
+    return false;
+  }
+
+  state.gameState = submitEncounterPending(state.gameState, { shipId });
+  state.encounterBoardSelectionActive = false;
   saveCurrentGameState();
   render();
   return true;
@@ -2361,7 +2379,7 @@ function renderEncounterModal() {
   if (state.view !== "board" || !encounter) return document.createDocumentFragment();
 
   const overlay = document.createElement("div");
-  const isBoardSelection = ["shipJumpSelection", "boardTargetSelection"].includes(encounter.pendingStep?.type);
+  const isBoardSelection = ["shipJumpSelection", "boardTargetSelection", "shipBlockSelection"].includes(encounter.pendingStep?.type);
   if (isBoardSelection && state.encounterBoardSelectionActive) return document.createDocumentFragment();
   overlay.className = `encounter-modal-overlay${isBoardSelection ? " encounter-modal-overlay--board-selection" : ""}`;
   overlay.setAttribute("role", "dialog");
@@ -2378,7 +2396,9 @@ function getEncounterActionPlayer() {
   const encounter = state.gameState?.activeEncounter;
   const pendingOwnerPlayerId = encounter?.pendingStep?.type === "opponentResourceGiftSelection"
     ? encounter.pendingStep.currentGiverPlayerId
-    : getActivePlayer()?.id;
+    : encounter?.pendingStep?.type === "globalUpgradeLossSelection"
+      ? encounter.pendingStep.currentTargetPlayerId
+      : getActivePlayer()?.id;
 
   return state.gameState?.players?.find((player) => player.id === pendingOwnerPlayerId)
     ?? getActivePlayer();
@@ -3116,6 +3136,11 @@ function renderEncounterActions(player) {
     return wrapper;
   }
 
+  if (encounter.pendingStep?.type === "choiceSelection") {
+    wrapper.append(renderEncounterChoiceSelection(encounter.pendingStep));
+    return wrapper;
+  }
+
   if (encounter.pendingStep?.type === "resourceSelection") {
     wrapper.append(renderEncounterResourceSelection(encounter.pendingStep));
     return wrapper;
@@ -3123,6 +3148,11 @@ function renderEncounterActions(player) {
 
   if (encounter.pendingStep?.type === "upgradeSelection") {
     wrapper.append(renderEncounterUpgradeSelection(encounter.pendingStep));
+    return wrapper;
+  }
+
+  if (encounter.pendingStep?.type === "shipBlockSelection") {
+    wrapper.append(renderEncounterShipBlockSelection(encounter.pendingStep));
     return wrapper;
   }
 
@@ -3158,6 +3188,23 @@ function renderEncounterActions(player) {
     choiceList.append(button);
   }
   wrapper.append(choiceList);
+  return wrapper;
+}
+
+function renderEncounterChoiceSelection(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  const promptText = getLocalizedEncounterText(pendingStep.promptText);
+  if (promptText) {
+    const prompt = document.createElement("p");
+    prompt.textContent = promptText;
+    wrapper.append(prompt);
+  }
+
+  for (const choice of pendingStep.choices ?? []) {
+    const label = getLocalizedEncounterText(choice.label) || choice.id;
+    wrapper.append(createButton(label, () => submitEncounterPendingAction({ choiceId: choice.id }), "small-button"));
+  }
   return wrapper;
 }
 
@@ -3259,6 +3306,23 @@ function renderEncounterTargetSelection(pendingStep) {
   wrapper.className = "encounter-choice-list";
 
   wrapper.append(createButton(t("encounterSelectTargetPoint"), () => {
+    state.encounterBoardSelectionActive = true;
+    render();
+  }, "small-button"));
+  return wrapper;
+}
+
+function renderEncounterShipBlockSelection(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  const hintText = getLocalizedEncounterText(pendingStep.hint);
+  if (hintText) {
+    const hint = document.createElement("p");
+    hint.textContent = hintText;
+    wrapper.append(hint);
+  }
+
+  wrapper.append(createButton(t("encounterSelectJumpShip"), () => {
     state.encounterBoardSelectionActive = true;
     render();
   }, "small-button"));
@@ -5776,7 +5840,7 @@ function getReachableNodeMap() {
 function isEncounterJumpShipTarget(shipId) {
   const pendingEncounterStep = state.gameState?.activeEncounter?.pendingStep;
   return state.encounterBoardSelectionActive
-    && pendingEncounterStep?.type === "shipJumpSelection"
+    && ["shipJumpSelection", "shipBlockSelection"].includes(pendingEncounterStep?.type)
     && pendingEncounterStep.shipIds?.includes(shipId);
 }
 
@@ -7385,12 +7449,30 @@ function getRemoteEncounterStateForController() {
 
 function getRemoteEncounterPendingStep(pendingStep) {
   if (!pendingStep) return null;
+  if (pendingStep.type === "choiceSelection") {
+    return {
+      type: "choiceSelection",
+      promptText: getLocalizedEncounterText(pendingStep.promptText),
+      choices: (pendingStep.choices ?? []).map((choice) => ({
+        id: choice.id,
+        label: getLocalizedEncounterText(choice.label) || choice.id,
+        available: true
+      }))
+    };
+  }
   if (pendingStep.type === "resourceSelection") {
     return {
       type: "resourceSelection",
       mode: pendingStep.mode,
       amount: pendingStep.amount,
       selectedResources: pendingStep.selectedResources ?? {}
+    };
+  }
+  if (pendingStep.type === "shipBlockSelection") {
+    return {
+      type: "shipBlockSelection",
+      shipIds: pendingStep.shipIds ?? [],
+      hint: getLocalizedEncounterText(pendingStep.hint)
     };
   }
   if (pendingStep.type === "upgradeSelection") {
@@ -7448,7 +7530,7 @@ function getRemoteBoardActionPlayerId() {
   const pendingEncounterStep = state.gameState?.activeEncounter?.pendingStep;
   if (
     state.encounterBoardSelectionActive &&
-    ["shipJumpSelection", "boardTargetSelection"].includes(pendingEncounterStep?.type)
+    ["shipJumpSelection", "boardTargetSelection", "shipBlockSelection"].includes(pendingEncounterStep?.type)
   ) {
     return getEncounterActionPlayer()?.id ?? null;
   }
@@ -7477,6 +7559,7 @@ function getRemoteBoardActionPlayerId() {
 function getRemoteBoardMode() {
   const pendingEncounterStep = state.gameState?.activeEncounter?.pendingStep;
   if (state.encounterBoardSelectionActive && pendingEncounterStep?.type === "shipJumpSelection") return t("selectOwnShip");
+  if (state.encounterBoardSelectionActive && pendingEncounterStep?.type === "shipBlockSelection") return t("selectOwnShip");
   if (state.encounterBoardSelectionActive && pendingEncounterStep?.type === "boardTargetSelection") return t("encounterSelectTargetPoint");
   if (state.gameState?.board?.pendingShipPlacement) return t("chooseStartPointHint");
   if (state.gameState?.board?.pendingSpaceportUpgrade) return t("chooseStartPointHint");
@@ -7589,6 +7672,7 @@ function getRemoteControllerActions() {
     const pendingEncounterStep = state.gameState.activeEncounter.pendingStep;
     const hasNoEncounterTargets =
       (pendingEncounterStep?.type === "shipJumpSelection" && (pendingEncounterStep.shipIds ?? []).length === 0) ||
+      (pendingEncounterStep?.type === "shipBlockSelection" && (pendingEncounterStep.shipIds ?? []).length === 0) ||
       (pendingEncounterStep?.type === "boardTargetSelection" && (pendingEncounterStep.validNodeIds ?? []).length === 0);
     if (hasNoEncounterTargets) {
       actions.push(createRemoteAction("finishEncounter", t("finishEncounter"), {}, { requiresActivePlayer: true }));
@@ -7847,7 +7931,7 @@ function executeRemoteAction(actionId, payload = {}) {
     case "encounter.startBoardSelection":
       if (
         isRemoteActionPlayerActive(playerId) &&
-        ["shipJumpSelection", "boardTargetSelection"].includes(state.gameState?.activeEncounter?.pendingStep?.type)
+        ["shipJumpSelection", "boardTargetSelection", "shipBlockSelection"].includes(state.gameState?.activeEncounter?.pendingStep?.type)
       ) {
         state.encounterBoardSelectionActive = true;
         render();
@@ -7856,6 +7940,9 @@ function executeRemoteAction(actionId, payload = {}) {
     case "board.select":
       if (isRemoteActionPlayerActive(playerId) && payload.type && payload.id) {
         if (payload.type === "ship" && confirmEncounterJumpShip(payload.id)) {
+          break;
+        }
+        if (payload.type === "ship" && confirmEncounterBlockShip(payload.id)) {
           break;
         }
         if (payload.type === "spacePoint" && confirmEncounterTargetAt(payload.id)) {

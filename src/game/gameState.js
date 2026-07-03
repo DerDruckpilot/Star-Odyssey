@@ -2670,6 +2670,16 @@ function normalizeLocalizedText(text) {
 function normalizePendingEncounterStep(pendingStep) {
   if (!pendingStep || typeof pendingStep !== "object") return null;
 
+  if (pendingStep.type === "choiceSelection") {
+    return {
+      type: "choiceSelection",
+      promptText: normalizeLocalizedText(pendingStep.promptText),
+      choices: normalizeEncounterPendingChoices(pendingStep.choices),
+      contextPayload: normalizeEncounterPendingContext(pendingStep.contextPayload),
+      remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
+    };
+  }
+
   if (pendingStep.type === "resourceSelection") {
     return {
       type: "resourceSelection",
@@ -2714,6 +2724,17 @@ function normalizePendingEncounterStep(pendingStep) {
     };
   }
 
+  if (pendingStep.type === "shipBlockSelection") {
+    return {
+      type: "shipBlockSelection",
+      shipIds: Array.isArray(pendingStep.shipIds)
+        ? pendingStep.shipIds.filter((shipId) => typeof shipId === "string")
+        : [],
+      hint: normalizeLocalizedText(pendingStep.hint),
+      remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
+    };
+  }
+
   if (pendingStep.type === "opponentResourceGiftSelection") {
     return {
       type: "opponentResourceGiftSelection",
@@ -2743,6 +2764,30 @@ function normalizePendingEncounterStep(pendingStep) {
   }
 
   return null;
+}
+
+function normalizeEncounterPendingChoices(choices) {
+  return Array.isArray(choices)
+    ? choices
+      .map((choice) => ({
+        id: typeof choice?.id === "string" ? choice.id : "",
+        label: normalizeLocalizedText(choice?.label),
+        resultText: normalizeLocalizedText(choice?.resultText),
+        effects: Array.isArray(choice?.effects) ? choice.effects : []
+      }))
+      .filter((choice) => choice.id)
+    : [];
+}
+
+function normalizeEncounterPendingContext(contextPayload) {
+  if (!contextPayload || typeof contextPayload !== "object") return {};
+  return {
+    ...contextPayload,
+    lastSelectedResources: normalizeResources(contextPayload.lastSelectedResources),
+    lastSelectionMode: typeof contextPayload.lastSelectionMode === "string"
+      ? contextPayload.lastSelectionMode
+      : null
+  };
 }
 
 function hasSupplyDrawnThisTurn(gameState) {
@@ -3063,6 +3108,20 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
   switch (effect.type) {
     case "none":
       return { state };
+    case "branchChoice":
+      return {
+        state,
+        pendingStep: {
+          type: "choiceSelection",
+          promptText: normalizeLocalizedText(effect.promptText),
+          choices: normalizeEncounterPendingChoices(effect.choices),
+          contextPayload: {
+            lastSelectedResources: normalizeResources(payload.lastSelectedResources),
+            lastSelectionMode: typeof payload.lastSelectionMode === "string" ? payload.lastSelectionMode : null
+          },
+          remainingEffects: []
+        }
+      };
     case "gainResource": {
       const nextState = updateEncounterWorkingPlayer(state, activePlayerId, (player) => withResourceDelta(player, effect.resource, effect.amount ?? 1));
       return {
@@ -3224,6 +3283,9 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
           : 0
       }));
       const maxValue = Math.max(...metricValues.map((entry) => entry.value), 0);
+      if (maxValue <= 0) {
+        return { state };
+      }
       const targetIds = metricValues
         .filter((entry) => entry.value === maxValue)
         .map((entry) => entry.playerId);
@@ -3547,6 +3609,30 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
     }
     case "grantShip":
       return applyEncounterShipGift(gameState, state, activePlayerId, effect.shipType ?? "tradeShip");
+    case "chooseShipBlock": {
+      const shipIds = getEncounterBlockableShips(state, activePlayerId).map((ship) => ship.id);
+      if (shipIds.length === 0) {
+        return {
+          state,
+          logEntries: [createEncounterLog("logEncounterNoShipBlocked", {
+            player: activePlayer.name
+          })]
+        };
+      }
+
+      return {
+        state,
+        pendingStep: {
+          type: "shipBlockSelection",
+          shipIds,
+          hint: {
+            de: "Wähle ein eigenes Schiff. Es darf in dieser Runde nicht fliegen.",
+            en: "Choose one of your ships. It may not fly this turn."
+          },
+          remainingEffects: []
+        }
+      };
+    }
     case "blockFirstShip":
       return applyEncounterShipBlock(state, activePlayerId);
     default:
@@ -3557,6 +3643,26 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
 function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, pendingStep, payload = {}) {
   const state = createEncounterWorkingState(gameState);
   const remainingEffects = pendingStep.remainingEffects ?? [];
+
+  if (pendingStep.type === "choiceSelection") {
+    const choice = (pendingStep.choices ?? []).find((entry) => entry.id === payload.choiceId);
+    if (!choice) return null;
+
+    return runEncounterEffectSequence(
+      gameState,
+      state,
+      activePlayer.id,
+      [...(choice.effects ?? []), ...remainingEffects],
+      card,
+      {
+        ...(pendingStep.contextPayload ?? {}),
+        ...payload
+      },
+      {
+        resultText: choice.resultText ?? null
+      }
+    );
+  }
 
   if (pendingStep.type === "resourceSelection") {
     const selectedResources = normalizeResources(pendingStep.selectedResources);
@@ -3786,6 +3892,33 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
         ...specialResult.logEntries,
         ...(followUp.logEntries ?? [])
       ]
+    };
+  }
+
+  if (pendingStep.type === "shipBlockSelection") {
+    const shipId = payload.shipId;
+    if (typeof shipId !== "string" || !pendingStep.shipIds?.includes(shipId)) return null;
+    const ship = normalizeShips(state.board?.ships)
+      .find((candidate) => candidate.id === shipId && candidate.ownerPlayerId === activePlayer.id);
+    if (!ship) return null;
+
+    const nextState = {
+      ...state,
+      remainingMovementByShipId: {
+        ...state.remainingMovementByShipId,
+        [ship.id]: 0
+      }
+    };
+    const baseLog = createEncounterLog("logEncounterShipBlocked", {
+      player: activePlayer.name,
+      ship: ship.type
+    });
+    const followUp = runEncounterEffectSequence(gameState, nextState, activePlayer.id, remainingEffects, card, payload, {});
+    if (!followUp) return null;
+
+    return {
+      ...followUp,
+      logEntries: [baseLog, ...(followUp.logEntries ?? [])]
     };
   }
 
@@ -4225,9 +4358,7 @@ function placePendingGiftedShips(gameState, boardLayout) {
 }
 
 function applyEncounterShipBlock(state, activePlayerId) {
-  const ships = normalizeShips(state.board?.ships)
-    .filter((ship) => ship.ownerPlayerId === activePlayerId)
-    .sort(compareShipsForOrdinal);
+  const ships = getEncounterBlockableShips(state, activePlayerId);
   const blockedShip = ships[0];
   if (!blockedShip) {
     return {
@@ -4251,6 +4382,12 @@ function applyEncounterShipBlock(state, activePlayerId) {
       ship: blockedShip.type
     })]
   };
+}
+
+function getEncounterBlockableShips(state, activePlayerId) {
+  return normalizeShips(state.board?.ships)
+    .filter((ship) => ship.ownerPlayerId === activePlayerId)
+    .sort(compareShipsForOrdinal);
 }
 
 function getEncounterJumpShips(state, activePlayerId) {

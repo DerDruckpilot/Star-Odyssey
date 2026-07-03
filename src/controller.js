@@ -850,7 +850,9 @@ function renderEncounterPanel() {
     return panel;
   }
 
-  const promptText = gameState.encounter.resultText || gameState.encounter.prompt || "";
+  const promptText = gameState.encounter.pendingStep?.type === "choiceSelection"
+    ? (gameState.encounter.pendingStep.promptText || gameState.encounter.resultText || gameState.encounter.prompt || "")
+    : (gameState.encounter.resultText || gameState.encounter.prompt || "");
   if (promptText) {
     const prompt = document.createElement("p");
     prompt.className = "encounter-prompt";
@@ -865,6 +867,14 @@ function renderEncounterPanel() {
   if (isOwner && gameState.encounter.status === "resolved") {
     const finishAction = findAction("finishEncounter");
     if (finishAction) panel.append(renderActionGrid([finishAction]));
+  } else if (isOwner && gameState.encounter.pendingStep?.type === "choiceSelection") {
+    panel.append(renderActionGrid((gameState.encounter.pendingStep.choices ?? []).map((choice) => ({
+      id: "encounter.submitPending",
+      label: choice.label,
+      payload: { choiceId: choice.id },
+      disabled: !choice.available,
+      requiresActivePlayer: true
+    }))));
   } else if (isOwner && gameState.encounter.pendingStep?.type === "resourceSelection") {
     panel.append(renderControllerEncounterResourceSelection(gameState.encounter.pendingStep));
   } else if (isOwner && gameState.encounter.pendingStep?.type === "upgradeSelection") {
@@ -873,14 +883,14 @@ function renderEncounterPanel() {
     panel.append(renderControllerEncounterOpponentGiftSelection(gameState.encounter.pendingStep));
   } else if (isOwner && gameState.encounter.pendingStep?.type === "globalUpgradeLossSelection") {
     panel.append(renderControllerEncounterGlobalUpgradeSelection(gameState.encounter.pendingStep));
-  } else if (isOwner && ["shipJumpSelection", "boardTargetSelection"].includes(gameState.encounter.pendingType)) {
+  } else if (isOwner && ["shipJumpSelection", "boardTargetSelection", "shipBlockSelection"].includes(gameState.encounter.pendingType)) {
     const pendingStep = gameState.encounter.pendingStep ?? {};
-    const hasTargets = gameState.encounter.pendingType === "shipJumpSelection"
-      ? (pendingStep.shipIds ?? []).length > 0
-      : (pendingStep.validNodeIds ?? []).length > 0;
+    const hasTargets = gameState.encounter.pendingType === "boardTargetSelection"
+      ? (pendingStep.validNodeIds ?? []).length > 0
+      : (pendingStep.shipIds ?? []).length > 0;
     if (hasTargets) {
       panel.append(createButton(
-        gameState.encounter.pendingType === "shipJumpSelection" ? "Schiff wählen" : "Ziel wählen",
+        gameState.encounter.pendingType === "boardTargetSelection" ? "Ziel wählen" : "Schiff wählen",
         () => {
           sendNamedAction("encounter.startBoardSelection");
           boardFullscreen = true;
@@ -1644,7 +1654,7 @@ function applyStructuredEncounterBoardState(content) {
   const pendingStep = gameState?.encounter?.pendingStep;
   if (!gameState?.encounter?.active || !pendingStep) return;
 
-  if (pendingStep.type === "shipJumpSelection") {
+  if (["shipJumpSelection", "shipBlockSelection"].includes(pendingStep.type)) {
     for (const shipId of pendingStep.shipIds ?? []) {
       const ship = content.querySelector(`[data-board-type='ship'][data-board-id='${cssEscape(shipId)}']`);
       ship?.classList.add("is-encounter-jump-target");
@@ -1937,12 +1947,12 @@ function isFlightMovementBoardMode() {
 function isEncounterBoardSelectionMode() {
   return Boolean(
     gameState?.encounter?.active &&
-    ["shipJumpSelection", "boardTargetSelection"].includes(gameState.encounter.pendingType)
+    ["shipJumpSelection", "boardTargetSelection", "shipBlockSelection"].includes(gameState.encounter.pendingType)
   );
 }
 
 function isEncounterShipJumpBoardMode() {
-  return Boolean(gameState?.encounter?.pendingType === "shipJumpSelection");
+  return Boolean(["shipJumpSelection", "shipBlockSelection"].includes(gameState?.encounter?.pendingType));
 }
 
 function isEncounterTargetBoardMode() {

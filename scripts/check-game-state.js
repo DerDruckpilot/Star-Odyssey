@@ -930,6 +930,42 @@ assert(tradeLordGiftGame.players[0].resources.fuel === 1, "Chosen encounter rewa
 assert(tradeLordGiftGame.players[0].halfMedals === 2, "Trade lord reward should grant the half medal after the resource choice.");
 assert(tradeLordGiftGame.activeEncounter?.status === "resolved", "Trade lord gift encounter should be finishable after all pending choices.");
 
+let merchantPirateGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+merchantPirateGame = {
+  ...merchantPirateGame,
+  phase: "flight",
+  currentPlayerIndex: 0,
+  players: merchantPirateGame.players.map((player, index) => ({
+    ...player,
+    resources: index === 0
+      ? { ore: 2, fuel: 0, carbon: 0, food: 0, goods: 0 }
+      : player.resources,
+    halfMedals: index === 0 ? 1 : player.halfMedals
+  }))
+};
+merchantPirateGame = determineFlightSpeed(merchantPirateGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "spreadsheet-07"
+});
+merchantPirateGame = revealPendingFlightEncounter(merchantPirateGame);
+merchantPirateGame = resolveEncounterChoice(merchantPirateGame, { choiceId: "gift-2" });
+merchantPirateGame = updateEncounterResourceSelection(merchantPirateGame, "ore", 1);
+merchantPirateGame = updateEncounterResourceSelection(merchantPirateGame, "ore", 1);
+merchantPirateGame = submitEncounterPending(merchantPirateGame);
+assert(merchantPirateGame.activeEncounter?.pendingStep?.type === "choiceSelection", "Merchant pirate cards should ask the attack follow-up after paid resources.");
+merchantPirateGame = submitEncounterPending(merchantPirateGame, {
+  choiceId: "attack",
+  forcedRoll: { balls: ["red", "red"] },
+  forcedOpponentRoll: { balls: ["black", "black"] }
+});
+assert(merchantPirateGame.players[0].resources.ore === 2, "Winning against the merchant pirate should return previously given resources.");
+assert(merchantPirateGame.players[0].halfMedals === 2, "Winning against the merchant pirate should grant a half medal.");
+assert(merchantPirateGame.activeEncounter?.status === "resolved", "Merchant pirate follow-up should resolve after the selected branch.");
+
 let giftedTradeShipGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
   playerCount: 2,
@@ -1018,13 +1054,13 @@ assert(
   "Encounter deck should only contain implemented cards."
 );
 assert(
-  getEncounterCardById("spreadsheet-28")?.promptDe === "Du triffst ein Raumschiff des Wandernden Volkes.\nDieses in der ganzen Galaxis verehrte Volk bittet dich um eine Spende. Wie viele Rohstoffe (bis zu 3) schenkst du?\nLege die Rohstoffe sofort in den Vorrat.",
-  "Encounter prompts should use the exact spreadsheet text."
+  getEncounterCardById("spreadsheet-28")?.promptDe === "Du triffst ein Raumschiff des wandernden Volkes. Dieses in der ganzen Galaxie verehrte Volk bittet dich um eine Spende. Wie viele Rohstoffe (bis zu 3) schenkst du?",
+  "Encounter prompts should use the exact Markdown text."
 );
-const wanderingDonationJumpText = "Als Dank wird dir ein Raumsprung\ngewährt. Wähle eines deiner\nSchiffe. Mit diesem darfst du den\nRaumsprung ausführen.";
+const wanderingDonationJumpText = "Als Dank wird ein Raumsprung gewährt. Wähle eines deiner Schiffe, mit diesem darfst du einen Raumsprung ausführen.";
 assert(
-  getEncounterCardById("spreadsheet-28")?.choices.find((choice) => choice.id === "donate-2")?.resultText?.de === wanderingDonationJumpText,
-  "Encounter choices should keep the exact spreadsheet follow-up text."
+  getEncounterCardById("spreadsheet-28")?.choices.find((choice) => choice.id === "gift-2")?.resultText?.de === wanderingDonationJumpText,
+  "Encounter choices should keep the exact Markdown follow-up text."
 );
 let wanderingFollowUpGame = {
   ...encounterBaseState,
@@ -1037,7 +1073,7 @@ wanderingFollowUpGame = determineFlightSpeed(wanderingFollowUpGame, {
   encounterCardId: "spreadsheet-28"
 });
 wanderingFollowUpGame = revealPendingFlightEncounter(wanderingFollowUpGame);
-wanderingFollowUpGame = resolveEncounterChoice(wanderingFollowUpGame, { choiceId: "donate-2" });
+wanderingFollowUpGame = resolveEncounterChoice(wanderingFollowUpGame, { choiceId: "gift-2" });
 assert(
   !wanderingFollowUpGame.activeEncounter?.resultText,
   "Encounter follow-up text should wait until concrete donated resources are confirmed."
@@ -1051,7 +1087,7 @@ wanderingFollowUpGame = updateEncounterResourceSelection(wanderingFollowUpGame, 
 wanderingFollowUpGame = submitEncounterPending(wanderingFollowUpGame);
 assert(
   wanderingFollowUpGame.activeEncounter?.resultText?.de === wanderingDonationJumpText,
-  "Encounter follow-up state should show the spreadsheet text after resource payment."
+  "Encounter follow-up state should show the Markdown text after resource payment."
 );
 assert(
   wanderingFollowUpGame.activeEncounter?.pendingStep?.type === "shipJumpSelection",
@@ -1069,8 +1105,8 @@ pirateStepGame = resolveEncounterChoice(pirateStepGame, {
   forcedOpponentRoll: { balls: ["blue", "blue"] }
 });
 const pirateFightText = pirateStepGame.activeEncounter?.resultText?.de ?? "";
-assert(pirateFightText.includes("SIEG:"), "Combat encounters should show the selected combat result text.");
-assert(!pirateFightText.includes("NIEDERLAGE:"), "Combat encounters should not show unselected failure text.");
+assert(pirateFightText.includes("Sieg."), "Combat encounters should show the selected combat result text.");
+assert(!pirateFightText.includes("Niederlage."), "Combat encounters should not show unselected failure text.");
 assert(!pirateFightText.includes("Hast du gleich"), "Combat encounters should not dump earlier decision steps after the result.");
 
 let pirateFleeGame = determineFlightSpeed(encounterBaseState, {
@@ -1085,7 +1121,7 @@ pirateFleeGame = resolveEncounterChoice(pirateFleeGame, {
 });
 const pirateFleeText = pirateFleeGame.activeEncounter?.resultText?.de ?? "";
 assert(pirateFleeText === "Deine Flucht gelingt.", "Successful flee checks should show only the flee success text.");
-assert(!pirateFleeText.includes("SIEG:") && !pirateFleeText.includes("NIEDERLAGE:"), "Successful flee checks should not show combat branches.");
+assert(!pirateFleeText.includes("Sieg.") && !pirateFleeText.includes("Niederlage."), "Successful flee checks should not show combat branches.");
 
 let distortionEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
