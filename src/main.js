@@ -2394,14 +2394,39 @@ function renderEncounterModal() {
 
 function getEncounterActionPlayer() {
   const encounter = state.gameState?.activeEncounter;
-  const pendingOwnerPlayerId = encounter?.pendingStep?.type === "opponentResourceGiftSelection"
-    ? encounter.pendingStep.currentGiverPlayerId
-    : encounter?.pendingStep?.type === "globalUpgradeLossSelection"
-      ? encounter.pendingStep.currentTargetPlayerId
-      : getActivePlayer()?.id;
+  let pendingOwnerPlayerId = getActivePlayer()?.id;
+  if (encounter?.pendingStep?.type === "opponentResourceGiftSelection") {
+    pendingOwnerPlayerId = encounter.pendingStep.currentGiverPlayerId;
+  } else if (encounter?.pendingStep?.type === "globalUpgradeLossSelection") {
+    pendingOwnerPlayerId = encounter.pendingStep.currentTargetPlayerId;
+  } else if (encounter?.pendingStep?.type === "dualMothershipRoll") {
+    pendingOwnerPlayerId = getDualMothershipRollActionPlayerId(encounter.pendingStep) ?? pendingOwnerPlayerId;
+  }
 
   return state.gameState?.players?.find((player) => player.id === pendingOwnerPlayerId)
     ?? getActivePlayer();
+}
+
+function getDualMothershipRollActionPlayerId(pendingStep) {
+  if (!pendingStep || pendingStep.type !== "dualMothershipRoll") return null;
+  if (!pendingStep.activeRoll) return pendingStep.activePlayerId ?? null;
+  if (!pendingStep.targetRoll) return pendingStep.targetPlayerId ?? null;
+  return pendingStep.activePlayerId ?? null;
+}
+
+function isDualMothershipRollParticipant(pendingStep, playerId) {
+  return Boolean(
+    pendingStep?.type === "dualMothershipRoll" &&
+    playerId &&
+    (pendingStep.activePlayerId === playerId || pendingStep.targetPlayerId === playerId)
+  );
+}
+
+function hasDualMothershipRollForPlayer(pendingStep, playerId) {
+  if (!isDualMothershipRollParticipant(pendingStep, playerId)) return false;
+  return pendingStep.activePlayerId === playerId
+    ? Boolean(pendingStep.activeRoll)
+    : Boolean(pendingStep.targetRoll);
 }
 
 function renderPlayerHudTabs() {
@@ -3125,9 +3150,16 @@ function renderEncounterActions(player) {
     return wrapper;
   }
 
+  if (encounter.pendingStep?.type === "dualMothershipRoll") {
+    wrapper.append(renderEncounterDualMothershipRoll(encounter.pendingStep, player));
+    return wrapper;
+  }
+
   const pendingOwnerPlayerId = encounter.pendingStep?.type === "opponentResourceGiftSelection"
     ? encounter.pendingStep.currentGiverPlayerId
-    : activePlayer?.id;
+    : encounter.pendingStep?.type === "globalUpgradeLossSelection"
+      ? encounter.pendingStep.currentTargetPlayerId
+      : activePlayer?.id;
 
   if (player?.id !== pendingOwnerPlayerId) {
     const waiting = document.createElement("p");
@@ -3188,6 +3220,35 @@ function renderEncounterActions(player) {
     choiceList.append(button);
   }
   wrapper.append(choiceList);
+  return wrapper;
+}
+
+function renderEncounterDualMothershipRoll(pendingStep, player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  const prompt = document.createElement("p");
+  prompt.textContent = t("encounterMothershipRollPrompt");
+  wrapper.append(prompt);
+
+  if (!isDualMothershipRollParticipant(pendingStep, player?.id)) {
+    const waiting = document.createElement("p");
+    waiting.textContent = t("notYourTurn");
+    wrapper.append(waiting);
+    return wrapper;
+  }
+
+  if (hasDualMothershipRollForPlayer(pendingStep, player.id)) {
+    const waiting = document.createElement("p");
+    waiting.textContent = t("encounterMothershipRollDone");
+    wrapper.append(waiting);
+    return wrapper;
+  }
+
+  wrapper.append(createButton(
+    t("encounterMothershipRollButton"),
+    () => submitEncounterPendingAction({ playerId: player.id }),
+    "small-button"
+  ));
   return wrapper;
 }
 
@@ -7449,6 +7510,16 @@ function getRemoteEncounterStateForController() {
 
 function getRemoteEncounterPendingStep(pendingStep) {
   if (!pendingStep) return null;
+  if (pendingStep.type === "dualMothershipRoll") {
+    return {
+      type: "dualMothershipRoll",
+      mode: pendingStep.mode,
+      activePlayerId: pendingStep.activePlayerId,
+      targetPlayerId: pendingStep.targetPlayerId,
+      activeRolled: Boolean(pendingStep.activeRoll),
+      targetRolled: Boolean(pendingStep.targetRoll)
+    };
+  }
   if (pendingStep.type === "choiceSelection") {
     return {
       type: "choiceSelection",
@@ -7758,6 +7829,11 @@ function isRemoteActionPlayerActive(playerId) {
 }
 
 function isRemoteEncounterActionPlayer(playerId) {
+  const pendingStep = state.gameState?.activeEncounter?.pendingStep;
+  if (pendingStep?.type === "dualMothershipRoll") {
+    return isDualMothershipRollParticipant(pendingStep, playerId)
+      && !hasDualMothershipRollForPlayer(pendingStep, playerId);
+  }
   return Boolean(playerId && getEncounterActionPlayer()?.id === playerId);
 }
 

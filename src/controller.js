@@ -837,9 +837,12 @@ function renderEncounterPanel() {
   const title = document.createElement("strong");
   title.textContent = "Begegnung";
   const isOwner = gameState.encounter.playerId === selectedPlayerId;
+  const pendingStep = gameState.encounter.pendingStep;
+  const isDualRollStep = pendingStep?.type === "dualMothershipRoll";
+  const isDualRollParticipant = isDualRollStep && isControllerDualMothershipRollParticipant(pendingStep);
   panel.append(title);
 
-  if (!isOwner) {
+  if (!isOwner && !isDualRollParticipant) {
     const activeName = gameState.activePlayerName || "Ein anderer Spieler";
     const neutral = document.createElement("p");
     neutral.className = "encounter-prompt";
@@ -867,6 +870,8 @@ function renderEncounterPanel() {
   if (isOwner && gameState.encounter.status === "resolved") {
     const finishAction = findAction("finishEncounter");
     if (finishAction) panel.append(renderActionGrid([finishAction]));
+  } else if (isDualRollParticipant) {
+    panel.append(renderControllerEncounterDualMothershipRoll(pendingStep));
   } else if (isOwner && gameState.encounter.pendingStep?.type === "choiceSelection") {
     panel.append(renderActionGrid((gameState.encounter.pendingStep.choices ?? []).map((choice) => ({
       id: "encounter.submitPending",
@@ -917,8 +922,47 @@ function renderEncounterPanel() {
   return panel;
 }
 
+function isControllerDualMothershipRollParticipant(pendingStep) {
+  return Boolean(
+    selectedPlayerId &&
+    pendingStep?.type === "dualMothershipRoll" &&
+    (pendingStep.activePlayerId === selectedPlayerId || pendingStep.targetPlayerId === selectedPlayerId)
+  );
+}
+
+function hasControllerDualMothershipRoll(pendingStep) {
+  if (!isControllerDualMothershipRollParticipant(pendingStep)) return false;
+  return pendingStep.activePlayerId === selectedPlayerId
+    ? Boolean(pendingStep.activeRolled)
+    : Boolean(pendingStep.targetRolled);
+}
+
+function renderControllerEncounterDualMothershipRoll(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+
+  const prompt = document.createElement("p");
+  prompt.textContent = "Beide beteiligten Spieler würfeln mit dem Mutterschiff.";
+  wrapper.append(prompt);
+
+  if (hasControllerDualMothershipRoll(pendingStep)) {
+    const waiting = document.createElement("p");
+    waiting.textContent = "Du hast gewürfelt. Warte auf den anderen Spieler.";
+    wrapper.append(waiting);
+    return wrapper;
+  }
+
+  wrapper.append(createButton(
+    "Mit Mutterschiff würfeln",
+    () => sendNamedAction("encounter.submitPending"),
+    "small-button"
+  ));
+  return wrapper;
+}
+
 function getEncounterStatusLabel() {
   if (gameState?.encounter?.status === "resolved") return "Begegnung abschließen.";
+  if (gameState?.encounter?.pendingStep?.type === "dualMothershipRoll") return "Würfle mit dem Mutterschiff.";
   if (gameState?.encounter?.pendingStep?.hint) return gameState.encounter.pendingStep.hint;
   if (gameState?.encounter?.pendingType) return "Folge den nächsten Begegnungsschritten.";
   return "Wähle eine Antwort.";

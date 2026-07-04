@@ -2659,6 +2659,18 @@ function normalizeEncounterCombat(combat) {
   };
 }
 
+function normalizeEncounterRollResult(roll) {
+  if (!roll || typeof roll !== "object") return null;
+  const balls = Array.isArray(roll.balls)
+    ? roll.balls.filter((ball) => Object.hasOwn(mothershipBallValues, ball)).slice(0, 2)
+    : [];
+  if (balls.length !== 2 || !Number.isInteger(roll.total)) return null;
+  return {
+    balls,
+    total: roll.total
+  };
+}
+
 function normalizeLocalizedText(text) {
   if (!text || typeof text !== "object") return null;
   return {
@@ -2669,6 +2681,20 @@ function normalizeLocalizedText(text) {
 
 function normalizePendingEncounterStep(pendingStep) {
   if (!pendingStep || typeof pendingStep !== "object") return null;
+
+  if (pendingStep.type === "dualMothershipRoll") {
+    return {
+      type: "dualMothershipRoll",
+      mode: pendingStep.mode === "speed" ? "speed" : "combat",
+      activePlayerId: typeof pendingStep.activePlayerId === "string" ? pendingStep.activePlayerId : null,
+      targetPlayerId: typeof pendingStep.targetPlayerId === "string" ? pendingStep.targetPlayerId : null,
+      activeRoll: normalizeEncounterRollResult(pendingStep.activeRoll),
+      targetRoll: normalizeEncounterRollResult(pendingStep.targetRoll),
+      effect: pendingStep.effect && typeof pendingStep.effect === "object" ? pendingStep.effect : null,
+      contextPayload: normalizeEncounterPendingContext(pendingStep.contextPayload),
+      remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
+    };
+  }
 
   if (pendingStep.type === "choiceSelection") {
     return {
@@ -3389,6 +3415,11 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
       };
     }
     case "comparison": {
+      if (effect.metric === "speed") {
+        const pendingStep = createDualMothershipRollStep(gameState, state, activePlayer, effect, payload, "speed");
+        return pendingStep ? { state, pendingStep } : null;
+      }
+
       const comparison = resolveEncounterComparison(gameState, activePlayer, effect, payload);
       if (!comparison) return null;
       const comparisonLog = createEncounterLog("logEncounterComparison", {
@@ -3434,6 +3465,11 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
       };
     }
     case "combat": {
+      if (!Number.isInteger(effect.enemyStrength)) {
+        const pendingStep = createDualMothershipRollStep(gameState, state, activePlayer, effect, payload, "combat");
+        return pendingStep ? { state, pendingStep } : null;
+      }
+
       const combat = resolveEncounterCombat(gameState, activePlayer, effect, payload);
       if (!combat) return null;
       const combatLog = createEncounterLog(
@@ -3643,6 +3679,10 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
 function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, pendingStep, payload = {}) {
   const state = createEncounterWorkingState(gameState);
   const remainingEffects = pendingStep.remainingEffects ?? [];
+
+  if (pendingStep.type === "dualMothershipRoll") {
+    return resolveDualMothershipRollPending(gameState, state, activePlayer, card, pendingStep, payload);
+  }
 
   if (pendingStep.type === "choiceSelection") {
     const choice = (pendingStep.choices ?? []).find((entry) => entry.id === payload.choiceId);
@@ -4073,6 +4113,203 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
   }
 
   return null;
+}
+
+function createDualMothershipRollStep(gameState, state, activePlayer, effect, payload = {}, mode = "combat") {
+  const targetPlayer = getNeighborPlayer(
+    {
+      ...gameState,
+      players: state.players,
+      board: state.board
+    },
+    activePlayer.id,
+    effect.neighborOffset ?? 1
+  );
+  if (!targetPlayer) return null;
+
+  return {
+    type: "dualMothershipRoll",
+    mode: mode === "speed" ? "speed" : "combat",
+    activePlayerId: activePlayer.id,
+    targetPlayerId: targetPlayer.id,
+    activeRoll: normalizeEncounterRollResult(payload.activeRoll) ?? null,
+    targetRoll: normalizeEncounterRollResult(payload.targetRoll) ?? null,
+    effect,
+    contextPayload: normalizeEncounterPendingContext({
+      lastSelectedResources: payload.lastSelectedResources,
+      lastSelectionMode: payload.lastSelectionMode
+    }),
+    remainingEffects: []
+  };
+}
+
+function resolveDualMothershipRollPending(gameState, state, activePlayer, card, pendingStep, payload = {}) {
+  const activeRollPlayer = state.players.find((player) => player.id === pendingStep.activePlayerId);
+  const targetRollPlayer = state.players.find((player) => player.id === pendingStep.targetPlayerId);
+  if (!activeRollPlayer || !targetRollPlayer || !pendingStep.effect) return null;
+
+  const rollerPlayerId = typeof payload.playerId === "string" ? payload.playerId : activePlayer.id;
+  const isActiveRoller = rollerPlayerId === activeRollPlayer.id;
+  const isTargetRoller = rollerPlayerId === targetRollPlayer.id;
+  if (!isActiveRoller && !isTargetRoller) return null;
+
+  const nextPendingStep = {
+    ...pendingStep,
+    activeRoll: normalizeEncounterRollResult(pendingStep.activeRoll),
+    targetRoll: normalizeEncounterRollResult(pendingStep.targetRoll)
+  };
+  const rollKey = isActiveRoller ? "activeRoll" : "targetRoll";
+  if (!nextPendingStep[rollKey]) {
+    nextPendingStep[rollKey] = createEncounterRoll(payload.forcedRoll);
+  }
+
+  if (!nextPendingStep.activeRoll || !nextPendingStep.targetRoll) {
+    return {
+      players: state.players,
+      board: state.board,
+      pendingGiftedTradeShips: state.pendingGiftedTradeShips,
+      remainingMovementByShipId: state.remainingMovementByShipId,
+      logEntries: [],
+      resultText: null,
+      status: "pending",
+      pendingStep: nextPendingStep
+    };
+  }
+
+  return nextPendingStep.mode === "speed"
+    ? resolveCompletedDualSpeedRoll(gameState, state, activeRollPlayer, targetRollPlayer, card, nextPendingStep, payload)
+    : resolveCompletedDualCombatRoll(gameState, state, activeRollPlayer, targetRollPlayer, card, nextPendingStep, payload);
+}
+
+function resolveCompletedDualSpeedRoll(gameState, state, activePlayer, targetPlayer, card, pendingStep, payload = {}) {
+  const effect = pendingStep.effect;
+  const scoringState = {
+    ...gameState,
+    players: state.players,
+    board: state.board
+  };
+  const ownValue = pendingStep.activeRoll.total + getPlayerFlightBonus(scoringState, activePlayer.id);
+  const otherValue = pendingStep.targetRoll.total + getPlayerFlightBonus(scoringState, targetPlayer.id);
+  const comparison = {
+    metric: "speed",
+    ownValue,
+    otherValue,
+    success: ownValue >= otherValue,
+    targetPlayerId: targetPlayer.id,
+    targetName: targetPlayer.name,
+    ownRollTotal: pendingStep.activeRoll.total,
+    otherRollTotal: pendingStep.targetRoll.total,
+    ownBalls: pendingStep.activeRoll.balls,
+    otherBalls: pendingStep.targetRoll.balls
+  };
+  const comparisonLog = createEncounterLog("logEncounterComparison", {
+    player: activePlayer.name,
+    target: targetPlayer.name,
+    metric: "speed",
+    own: ownValue,
+    other: otherValue,
+    outcome: comparison.success ? "success" : "failure"
+  });
+  const followUp = runEncounterEffectSequence(
+    gameState,
+    state,
+    activePlayer.id,
+    comparison.success ? (effect.onSuccess ?? []) : (effect.onFailure ?? []),
+    card,
+    {
+      ...(pendingStep.contextPayload ?? {}),
+      ...payload,
+      activeRoll: pendingStep.activeRoll,
+      targetRoll: pendingStep.targetRoll
+    },
+    {
+      resultText: comparison.success ? effect.successText : effect.failureText
+    }
+  );
+  if (!followUp) {
+    return {
+      players: state.players,
+      board: state.board,
+      pendingGiftedTradeShips: state.pendingGiftedTradeShips,
+      remainingMovementByShipId: state.remainingMovementByShipId,
+      logEntries: [comparisonLog],
+      resultText: createEncounterComparisonResultText(comparison),
+      status: "resolved",
+      pendingStep: null
+    };
+  }
+  return {
+    ...followUp,
+    logEntries: [comparisonLog, ...(followUp.logEntries ?? [])],
+    resultText: followUp.resultText ?? createEncounterComparisonResultText(comparison)
+  };
+}
+
+function resolveCompletedDualCombatRoll(gameState, state, activePlayer, targetPlayer, card, pendingStep, payload = {}) {
+  const effect = pendingStep.effect;
+  const scoringState = {
+    ...gameState,
+    players: state.players,
+    board: state.board
+  };
+  const strength = pendingStep.activeRoll.total + getPlayerCombatBonus(scoringState, activePlayer.id);
+  const enemyStrength = pendingStep.targetRoll.total + getPlayerCombatBonus(scoringState, targetPlayer.id);
+  const combat = {
+    enemyStrength,
+    rollTotal: pendingStep.activeRoll.total,
+    strength,
+    balls: pendingStep.activeRoll.balls,
+    opponentRollTotal: pendingStep.targetRoll.total,
+    opponentBalls: pendingStep.targetRoll.balls,
+    enemyPlayerId: targetPlayer.id,
+    enemyName: targetPlayer.name,
+    outcome: strength >= enemyStrength ? "win" : "lose"
+  };
+  const combatLog = createEncounterLog(
+    combat.outcome === "win" ? "logEncounterCombatWin" : "logEncounterCombatLoss",
+    {
+      player: activePlayer.name,
+      strength: combat.strength,
+      enemy: combat.enemyStrength,
+      target: combat.enemyName ?? ""
+    }
+  );
+  const followUp = runEncounterEffectSequence(
+    gameState,
+    state,
+    activePlayer.id,
+    combat.outcome === "win" ? (effect.onWin ?? []) : (effect.onLose ?? []),
+    card,
+    {
+      ...(pendingStep.contextPayload ?? {}),
+      ...payload,
+      activeRoll: pendingStep.activeRoll,
+      targetRoll: pendingStep.targetRoll
+    },
+    {
+      combat,
+      resultText: combat.outcome === "win" ? effect.winText : effect.loseText
+    }
+  );
+  if (!followUp) {
+    return {
+      players: state.players,
+      board: state.board,
+      pendingGiftedTradeShips: state.pendingGiftedTradeShips,
+      remainingMovementByShipId: state.remainingMovementByShipId,
+      logEntries: [combatLog],
+      combat,
+      resultText: combat.outcome === "win" ? effect.winText : effect.loseText,
+      status: "resolved",
+      pendingStep: null
+    };
+  }
+  return {
+    ...followUp,
+    logEntries: [combatLog, ...(followUp.logEntries ?? [])],
+    combat: followUp.combat ?? combat,
+    resultText: followUp.resultText ?? (combat.outcome === "win" ? effect.winText : effect.loseText)
+  };
 }
 
 function resolveEncounterComparison(gameState, activePlayer, effect, payload = {}) {

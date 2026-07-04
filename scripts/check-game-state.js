@@ -67,6 +67,19 @@ function revealPendingFlightEncounter(gameState) {
   return nextState;
 }
 
+function submitEncounterMothershipRoll(gameState, playerId, balls) {
+  const previousFlightSpeed = gameState.flightSpeedTotal;
+  const nextState = submitEncounterPending(gameState, {
+    playerId,
+    forcedRoll: { balls }
+  });
+  assert(
+    nextState.flightSpeedTotal === previousFlightSpeed,
+    "Encounter mothership rolls must not overwrite normal flight speed."
+  );
+  return nextState;
+}
+
 function getUsedSiteNodeIds(game) {
   return new Set((game.board?.structures ?? []).map((structure) => structure.locationId));
 }
@@ -958,10 +971,12 @@ merchantPirateGame = updateEncounterResourceSelection(merchantPirateGame, "ore",
 merchantPirateGame = submitEncounterPending(merchantPirateGame);
 assert(merchantPirateGame.activeEncounter?.pendingStep?.type === "choiceSelection", "Merchant pirate cards should ask the attack follow-up after paid resources.");
 merchantPirateGame = submitEncounterPending(merchantPirateGame, {
-  choiceId: "attack",
-  forcedRoll: { balls: ["red", "red"] },
-  forcedOpponentRoll: { balls: ["black", "black"] }
+  choiceId: "attack"
 });
+assert(merchantPirateGame.activeEncounter?.pendingStep?.type === "dualMothershipRoll", "Merchant pirate attacks should wait for both mothership rolls.");
+merchantPirateGame = submitEncounterMothershipRoll(merchantPirateGame, "player-1", ["red", "red"]);
+assert(merchantPirateGame.activeEncounter?.pendingStep?.type === "dualMothershipRoll", "Merchant pirate attacks should not resolve after only the active player rolls.");
+merchantPirateGame = submitEncounterMothershipRoll(merchantPirateGame, "player-2", ["black", "black"]);
 assert(merchantPirateGame.players[0].resources.ore === 2, "Winning against the merchant pirate should return previously given resources.");
 assert(merchantPirateGame.players[0].halfMedals === 2, "Winning against the merchant pirate should grant a half medal.");
 assert(merchantPirateGame.activeEncounter?.status === "resolved", "Merchant pirate follow-up should resolve after the selected branch.");
@@ -1017,7 +1032,7 @@ combatEncounterGame = {
     upgrades: index === 0
       ? { drive: 1, cargo: 0, cannon: 1 }
       : { drive: 0, cargo: 0, cannon: 0 },
-    friendshipCards: [],
+    friendshipCards: index === 0 ? ["wise-speed-combat-1"] : [],
     halfMedals: index === 0 ? 1 : player.halfMedals
   }))
 };
@@ -1027,10 +1042,22 @@ combatEncounterGame = determineFlightSpeed(combatEncounterGame, {
 });
 combatEncounterGame = revealPendingFlightEncounter(combatEncounterGame);
 combatEncounterGame = resolveEncounterChoice(combatEncounterGame, {
-  choiceId: "help",
-  forcedRoll: { balls: ["red", "red"] },
-  forcedOpponentRoll: { balls: ["blue", "blue"] }
+  choiceId: "help"
 });
+assert(combatEncounterGame.activeEncounter?.pendingStep?.type === "dualMothershipRoll", "Combat encounter should wait for both involved players to roll.");
+const savedCombatPending = normalizeGameState(JSON.parse(JSON.stringify(combatEncounterGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(savedCombatPending.activeEncounter?.pendingStep?.type === "dualMothershipRoll", "Two-player encounter roll state should survive save/load normalization.");
+combatEncounterGame = submitEncounterMothershipRoll(combatEncounterGame, "player-1", ["red", "red"]);
+assert(combatEncounterGame.activeEncounter?.pendingStep?.type === "dualMothershipRoll", "Active player rolling alone should not resolve combat.");
+assert(Boolean(combatEncounterGame.activeEncounter?.pendingStep?.activeRoll), "Active combat roll should be stored.");
+assert(!combatEncounterGame.activeEncounter?.pendingStep?.targetRoll, "Passive combat roll should still be missing after active roll.");
+combatEncounterGame = submitEncounterMothershipRoll(combatEncounterGame, "player-2", ["blue", "blue"]);
+assert(combatEncounterGame.activeEncounter?.combat?.strength === 8, "Combat should count ball points plus cannons plus friendship bonuses.");
+assert(combatEncounterGame.activeEncounter?.combat?.enemyStrength === 2, "Passive combat strength should use the passive player's mothership roll and combat bonus.");
 assert(combatEncounterGame.activeEncounter?.pendingStep?.type === "resourceSelection", "Combat encounter rewards should be able to request a resource choice.");
 combatEncounterGame = updateEncounterResourceSelection(combatEncounterGame, "ore", 1);
 combatEncounterGame = updateEncounterResourceSelection(combatEncounterGame, "fuel", 1);
@@ -1100,10 +1127,12 @@ let pirateStepGame = determineFlightSpeed(encounterBaseState, {
 });
 pirateStepGame = revealPendingFlightEncounter(pirateStepGame);
 pirateStepGame = resolveEncounterChoice(pirateStepGame, {
-  choiceId: "fight",
-  forcedRoll: { balls: ["red", "red"] },
-  forcedOpponentRoll: { balls: ["blue", "blue"] }
+  choiceId: "fight"
 });
+assert(pirateStepGame.activeEncounter?.pendingStep?.type === "dualMothershipRoll", "Pirate fight should wait for active and passive mothership rolls.");
+pirateStepGame = submitEncounterMothershipRoll(pirateStepGame, "player-1", ["red", "red"]);
+assert(pirateStepGame.activeEncounter?.pendingStep?.type === "dualMothershipRoll", "Pirate fight should not resolve after one roll.");
+pirateStepGame = submitEncounterMothershipRoll(pirateStepGame, "player-2", ["blue", "blue"]);
 const pirateFightText = pirateStepGame.activeEncounter?.resultText?.de ?? "";
 assert(pirateFightText.includes("Sieg."), "Combat encounters should show the selected combat result text.");
 assert(!pirateFightText.includes("Niederlage."), "Combat encounters should not show unselected failure text.");
@@ -1135,9 +1164,9 @@ distortionEncounterGame = {
   players: distortionEncounterGame.players.map((player, index) => ({
     ...player,
     upgrades: index === 0
-      ? { drive: 3, cargo: 0, cannon: 0 }
-      : { drive: 2, cargo: 0, cannon: 0 },
-    friendshipCards: [],
+      ? { drive: 2, cargo: 0, cannon: 0 }
+      : { drive: 3, cargo: 0, cannon: 0 },
+    friendshipCards: index === 0 ? ["wise-speed-combat-1"] : [],
     resources: { ore: 0, fuel: 0, carbon: 0, food: 0, goods: 0 }
   }))
 };
@@ -1147,10 +1176,12 @@ distortionEncounterGame = determineFlightSpeed(distortionEncounterGame, {
 });
 distortionEncounterGame = revealPendingFlightEncounter(distortionEncounterGame);
 distortionEncounterGame = resolveEncounterChoice(distortionEncounterGame, {
-  choiceId: "attempt",
-  forcedRoll: { balls: ["yellow", "yellow"] },
-  forcedOpponentRoll: { balls: ["yellow", "yellow"] }
+  choiceId: "attempt"
 });
+assert(distortionEncounterGame.activeEncounter?.pendingStep?.type === "dualMothershipRoll", "Space distortion speed checks should wait for both mothership rolls.");
+distortionEncounterGame = submitEncounterMothershipRoll(distortionEncounterGame, "player-1", ["yellow", "yellow"]);
+assert(distortionEncounterGame.activeEncounter?.pendingStep?.type === "dualMothershipRoll", "Space distortion should not continue after only the active speed roll.");
+distortionEncounterGame = submitEncounterMothershipRoll(distortionEncounterGame, "player-2", ["yellow", "yellow"]);
 assert(distortionEncounterGame.activeEncounter?.pendingStep?.type === "shipJumpSelection", "Space distortion encounters should request a ship first.");
 const distortionShipId = distortionEncounterGame.activeEncounter?.pendingStep?.shipIds?.[0];
 assert(Boolean(distortionShipId), "Space distortion encounters should expose at least one ship for jumping.");
