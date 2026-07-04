@@ -1260,7 +1260,8 @@ function renderBuildControls() {
   const wrapper = document.createElement("div");
   wrapper.className = "trade-build-section build-controls";
 
-  for (const actionDefinition of buildActionDefinitions) {
+  const isSupernova = state.gameState?.gameVariant === "supernova";
+  for (const actionDefinition of buildActionDefinitions.filter((definition) => !definition.variant || isSupernova)) {
     const remoteAction = findAction(`build.${actionDefinition.id}`);
     const card = document.createElement("article");
     card.className = "upgrade-card upgrade-card--menu build-action-card";
@@ -1490,6 +1491,7 @@ function renderPlayerOverview(player) {
   const rows = [
     ["Siegpunkte", player?.victoryPoints ?? 0],
     ["Schiffe", counts.ships ?? 0],
+    ...(player?.supernovaMissions?.length ? [["Schlachtschiffe", counts.battleShips ?? 0]] : []),
     ["Kolonien", counts.colonies ?? 0],
     ["Raumhäfen", counts.spaceports ?? 0],
     ["Handelsstationen", counts.tradeStations ?? 0],
@@ -1504,6 +1506,31 @@ function renderPlayerOverview(player) {
     list.append(label, value);
   }
   wrapper.append(title, list);
+  if (player?.supernovaMissions?.length) {
+    const missions = document.createElement("div");
+    missions.className = "friendship-card-list";
+    const missionsTitle = document.createElement("strong");
+    missionsTitle.textContent = "Supernova-Missionen";
+    missions.append(missionsTitle);
+    for (const mission of player.supernovaMissions) {
+      const item = document.createElement("article");
+      item.className = "friendship-card";
+      const heading = document.createElement("strong");
+      heading.textContent = mission.title;
+      const text = document.createElement("p");
+      text.textContent = mission.originalText;
+      const status = document.createElement("small");
+      status.textContent = mission.fulfilled ? "Erfüllt" : "Offen";
+      const action = findAction("supernova.toggleMission");
+      const button = createButton(mission.fulfilled ? "Als offen markieren" : "Als erfüllt markieren", () => {
+        if (action) sendAction({ ...action, payload: { ...(action.payload ?? {}), targetPlayerId: player.id, missionId: mission.id } });
+      }, "small-button");
+      button.disabled = !action;
+      item.append(heading, text, status, button);
+      missions.append(item);
+    }
+    wrapper.append(missions);
+  }
   return wrapper;
 }
 

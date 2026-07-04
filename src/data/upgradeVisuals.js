@@ -8,6 +8,7 @@ export const upgradeMenuAssetPaths = {
   buildBlueprints: {
     colonyShip: "./assets/generated/ui/blueprint-build-colony-ship.png",
     tradeShip: "./assets/generated/ui/blueprint-build-trade-ship.png",
+    battleShip: "./assets/generated/ui/blueprint-build-trade-ship.png",
     spaceport: "./assets/generated/ui/blueprint-build-spaceport.png"
   },
   overlays: {

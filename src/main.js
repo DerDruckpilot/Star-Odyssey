@@ -33,6 +33,7 @@ import {
 } from "./data/playerPieceVisuals.js";
 import { getShipEngineTemplate, getShipVfxAnchors, getTradeShipVfxAnchors } from "./data/shipVfxData.js";
 import { MOTHERSHIP_SPEED_ANIMATION_CONFIG } from "./data/mothershipSpeedAnimationConfig.js";
+import { gameVariants, supernovaFactoryTypes } from "./data/supernova.js";
 import {
   defaultButtonLayout,
   menuButtonDefinitions,
@@ -47,6 +48,7 @@ import {
 import { mothershipUpgradeSlots, upgradeMenuAssetPaths, upgradeMenuOrder } from "./data/upgradeVisuals.js";
 import {
   advanceToFlightPhase,
+  buildSupernovaFactory,
   buildShip,
   buyUpgrade,
   cancelPendingShipPlacement,
@@ -68,12 +70,16 @@ import {
   foundColony,
   foundTradeStation,
   getCargoValueForPlayer,
+  getBuildableSupernovaFactoryOptions,
   getEffectiveUpgradeValue,
   getFriendshipUpgradeBonus,
   getRealUpgradeValue,
   getReachableNodes,
+  getSupernovaMissionsForPlayer,
   getShipDestinationState,
+  getSupplyDrawCount as getGameSupplyDrawCount,
   getTradeRatesForPlayer,
+  isSupernovaGame,
   normalizeGameState,
   moveShip,
   placePendingShip,
@@ -93,6 +99,7 @@ import {
   startPendingSpaceportUpgrade,
   submitSevenDiscard,
   touchGameState,
+  toggleSupernovaMissionFulfilled,
   tradeWithSupply,
   updateSevenDiscardSelection,
   updateEncounterResourceSelection,
@@ -189,6 +196,7 @@ const state = {
   language: initialGame.language,
   view: initialGame.gameState ? "board" : "menu",
   selectedPlayers: initialGame.gameState?.playerCount ?? null,
+  selectedGameVariant: initialGame.gameState?.gameVariant ?? gameVariants.classic,
   playerSetup: [],
   gameState: initialGame.gameState,
   tradeFromResource: "ore",
@@ -746,6 +754,7 @@ function startNewGameSetup() {
   state.controllerMode = false;
   state.controllerLobby = null;
   state.selectedPlayers = null;
+  state.selectedGameVariant = gameVariants.classic;
   state.playerSetup = [];
   setView("players");
 }
@@ -753,15 +762,16 @@ function startNewGameSetup() {
 function enterControllerLobby() {
   if (!state.selectedPlayers) return;
   state.controllerMode = true;
-  state.controllerLobby = createControllerLobby(state.selectedPlayers);
+  state.controllerLobby = createControllerLobby(state.selectedPlayers, state.selectedGameVariant);
   state.playerSetup = [];
   setView("controllers");
   startControllerLobbyAssetPreload();
 }
 
-function createControllerLobby(playerCount) {
+function createControllerLobby(playerCount, gameVariant = gameVariants.classic) {
   return {
     playerCount,
+    gameVariant,
     started: false,
     slots: Array.from({ length: playerCount }, (_, index) => ({
       playerId: `player-${index + 1}`,
@@ -884,6 +894,7 @@ function maybeStartControllerGame() {
     color: slot.color
   }));
   state.selectedPlayers = state.controllerLobby.playerCount;
+  state.selectedGameVariant = state.controllerLobby.gameVariant ?? gameVariants.classic;
   startGameNow({ fromControllerLobby: true, skipAssetPreload: true });
 }
 
@@ -906,7 +917,8 @@ async function startGameNow(options = {}) {
     language: state.language,
     playerCount: state.selectedPlayers,
     boardLayout,
-    playerSetup: getSanitizedPlayerSetup()
+    playerSetup: getSanitizedPlayerSetup(),
+    gameVariant: state.selectedGameVariant
   });
   resetTradeOfferDraft();
   state.selectedPlayers = state.gameState.playerCount;
@@ -1510,6 +1522,14 @@ function buildActivePlayerShip(shipType) {
   render();
 }
 
+function buildActivePlayerSupernovaFactory(factoryType, planetId = null) {
+  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+
+  state.gameState = buildSupernovaFactory(state.gameState, boardLayout, factoryType, planetId);
+  saveCurrentGameState();
+  render();
+}
+
 function placePendingShipAt(nodeId) {
   if (!state.gameState || state.gameState.phase !== "tradeBuild") return false;
   if (!state.gameState.board?.pendingShipPlacement || !isValidPendingShipLaunchNode(nodeId)) return false;
@@ -1892,6 +1912,17 @@ function renderPlayerSelect() {
     options.append(button);
   }
 
+  const variantGroup = document.createElement("div");
+  variantGroup.className = "player-options variant-options";
+  for (const variant of [gameVariants.classic, gameVariants.supernova]) {
+    const button = createButton(t(`gameVariant_${variant}`), () => {
+      state.selectedGameVariant = variant;
+      render();
+    }, "player-button variant-button");
+    button.setAttribute("aria-pressed", String(variant === state.selectedGameVariant));
+    variantGroup.append(button);
+  }
+
   const actions = document.createElement("div");
   actions.className = "setup-actions";
   const continueButton = createButton(t("continue"), enterControllerLobby, "menu-button");
@@ -1901,13 +1932,13 @@ function renderPlayerSelect() {
     continueButton
   );
 
-  screen.append(renderLanguageToggle(), title, options, actions, renderNotice());
+  screen.append(renderLanguageToggle(), title, options, variantGroup, actions, renderNotice());
   return screen;
 }
 
 function renderControllerConnect() {
   if (!state.controllerLobby && state.selectedPlayers) {
-    state.controllerLobby = createControllerLobby(state.selectedPlayers);
+    state.controllerLobby = createControllerLobby(state.selectedPlayers, state.selectedGameVariant);
   }
   updateControllerLobbyConnections();
 
@@ -2662,6 +2693,7 @@ function renderPlayerOverview(player = getActivePlayer()) {
   const rows = [
     [t("victoryPoints"), player ? calculateVictoryPoints(state.gameState, player.id) : 0],
     [t("ships"), ships.length],
+    ...(isSupernovaGame(state.gameState) ? [[t("battleShips"), ships.filter((ship) => ship.type === "battleShip").length]] : []),
     [t("colonies"), structures.filter((structure) => structure.type === "colony").length],
     [t("spaceports"), structures.filter((structure) => structure.type === "spaceport").length],
     [t("tradeStations"), structures.filter((structure) => structure.type === "tradeStation").length],
@@ -2677,6 +2709,41 @@ function renderPlayerOverview(player = getActivePlayer()) {
     list.append(label, value);
   }
 
+  wrapper.append(title, list);
+  if (isSupernovaGame(state.gameState) && player) {
+    wrapper.append(renderSupernovaMissionSummary(player));
+  }
+  return wrapper;
+}
+
+function renderSupernovaMissionSummary(player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "friendship-summary supernova-missions";
+  const title = document.createElement("strong");
+  title.textContent = t("supernovaMissions");
+  const list = document.createElement("div");
+  list.className = "friendship-card-list";
+  for (const mission of getSupernovaMissionsForPlayer(state.gameState, player.id)) {
+    const item = document.createElement("article");
+    item.className = "friendship-card";
+    const heading = document.createElement("strong");
+    heading.textContent = mission.title;
+    const text = document.createElement("p");
+    text.textContent = mission.originalText;
+    const status = document.createElement("small");
+    status.textContent = mission.fulfilled ? t("missionFulfilled") : t("missionOpen");
+    const button = createButton(
+      mission.fulfilled ? t("missionMarkOpen") : t("missionMarkFulfilled"),
+      () => {
+        state.gameState = toggleSupernovaMissionFulfilled(state.gameState, player.id, mission.id);
+        saveCurrentGameState();
+        render();
+      },
+      "small-button"
+    );
+    item.append(heading, text, status, button);
+    list.append(item);
+  }
   wrapper.append(title, list);
   return wrapper;
 }
@@ -3619,7 +3686,7 @@ function renderBuildControls(player = getActivePlayer()) {
     wrapper.append(pending, createButton(t("cancelSpaceportBuild"), cancelActiveSpaceportBuild, "small-button secondary-small-button"));
   }
 
-  for (const action of buildActionDefinitions) {
+  for (const action of buildActionDefinitions.filter((definition) => !definition.variant || isSupernovaGame(state.gameState))) {
     const card = document.createElement("article");
     card.className = "upgrade-card upgrade-card--menu build-action-card";
 
@@ -3662,6 +3729,37 @@ function renderBuildControls(player = getActivePlayer()) {
     body.append(actions);
     card.append(preview, body);
     wrapper.append(card);
+  }
+
+  if (isSupernovaGame(state.gameState)) {
+    const factoryOptions = getBuildableSupernovaFactoryOptions(state.gameState, boardLayout, player?.id);
+    const factoryTitle = document.createElement("strong");
+    factoryTitle.textContent = t("supernovaFactories");
+    wrapper.append(factoryTitle);
+    for (const factoryType of supernovaFactoryTypes) {
+      const option = factoryOptions.find((candidate) => candidate.factoryType === factoryType.id);
+      const card = document.createElement("article");
+      card.className = "upgrade-card upgrade-card--menu build-action-card";
+      const body = document.createElement("div");
+      body.className = "upgrade-card-body";
+      const label = document.createElement("strong");
+      label.className = "upgrade-card-title";
+      label.textContent = factoryType.title;
+      const cost = document.createElement("small");
+      cost.className = "upgrade-card-cost";
+      cost.textContent = `${t("cost")}: ${formatCost(factoryType.cost)}`;
+      const hint = document.createElement("small");
+      hint.className = "upgrade-card-bonus";
+      hint.textContent = option ? t(`resource_${option.resource}`) : t("noFactorySiteAvailable");
+      const button = createButton(t("build"), () => buildActivePlayerSupernovaFactory(factoryType.id, option?.planetId), "small-button");
+      button.disabled = Boolean(pendingShipPlacement) || Boolean(pendingSpaceportUpgrade) || !option?.canBuild;
+      const actions = document.createElement("div");
+      actions.className = "upgrade-card-actions";
+      actions.append(button, cost);
+      body.append(label, hint, actions);
+      card.append(body);
+      wrapper.append(card);
+    }
   }
 
   return wrapper;
@@ -5781,17 +5879,18 @@ function getBuildActionLabel(action) {
 }
 
 function getShipTypeLabel(type) {
+  if (type === "battleShip") return t("battleShip");
   return type === "tradeShip" ? t("tradeShip") : t("colonyShip");
 }
 
 function getShipAssetPath(owner, ship) {
-  return ship.type === "tradeShip"
+  return ship.type === "tradeShip" || ship.type === "battleShip"
     ? getTradeShipAssetPath(owner?.color, ship)
     : getPlayerShipAssetPath(owner?.color, ship);
 }
 
 function getShipVfxAnchorsForRender(owner, ship) {
-  return ship.type === "tradeShip"
+  return ship.type === "tradeShip" || ship.type === "battleShip"
     ? getTradeShipVfxAnchors(owner?.color, ship)
     : getShipVfxAnchors(owner?.color, ship);
 }
@@ -6020,10 +6119,7 @@ function getActiveUpgradeLevel(upgradeId) {
 }
 
 function getSupplyDrawCount(player) {
-  const victoryPoints = player?.victoryPoints ?? 0;
-  if (victoryPoints >= 4 && victoryPoints <= 7) return 2;
-  if (victoryPoints >= 8 && victoryPoints <= 9) return 1;
-  return 0;
+  return getGameSupplyDrawCount(state.gameState, player);
 }
 
 function getSevenStepLabel(step) {
@@ -6211,7 +6307,7 @@ function canPlayerBuild(player, action) {
   if (!player || !canPlayerPay(player, action.cost)) return false;
   if (getBuildUnavailableReason(player, action)) return false;
   if (action.id === "spaceport") return hasUpgradeableColony(player.id);
-  if (["colonyShip", "tradeShip"].includes(action.id)) return Boolean(findFreeLaunchPointForActivePlayer(player.id));
+  if (["colonyShip", "tradeShip", "battleShip"].includes(action.id)) return Boolean(findFreeLaunchPointForActivePlayer(player.id));
   return false;
 }
 
@@ -6227,6 +6323,12 @@ function getBuildUnavailableReason(player, action) {
   if (action.id === "tradeShip") {
     if ((stock.transporter?.available ?? 0) <= 0) return "noTransporterAvailable";
     if ((stock.tradeStation?.available ?? 0) <= 0) return "noTradeStationAvailable";
+  }
+
+  if (action.id === "battleShip") {
+    if (!isSupernovaGame(state.gameState)) return "limitReached";
+    if ((stock.battleShip?.available ?? 0) <= 0) return "limitReached";
+    if ((player.upgrades?.cannon ?? 0) <= 0) return "requiresCannon";
   }
 
   if (action.id === "spaceport" && (stock.spaceport?.available ?? 0) <= 0) {
@@ -7145,7 +7247,8 @@ function saveCurrentGame(name, options = {}) {
     state.gameState = createGameState({
       language: state.language,
       playerCount: state.selectedPlayers || 2,
-      boardLayout
+      boardLayout,
+      gameVariant: state.selectedGameVariant
     });
   }
 
@@ -7198,6 +7301,7 @@ function loadSave(save) {
   state.language = language;
   saveLanguage(language);
   state.selectedPlayers = state.gameState.playerCount;
+  state.selectedGameVariant = state.gameState.gameVariant ?? gameVariants.classic;
   resetTradeOfferDraft();
   state.view = "board";
   state.modal = null;
@@ -7520,11 +7624,13 @@ function getRemotePlayerState(player) {
       ships: ships.length,
       colonyShips: ships.filter((ship) => ship.type === "colonyShip").length,
       tradeShips: ships.filter((ship) => ship.type === "tradeShip").length,
+      battleShips: ships.filter((ship) => ship.type === "battleShip").length,
       colonies: structures.filter((structure) => structure.type === "colony").length,
       spaceports: structures.filter((structure) => structure.type === "spaceport").length,
       tradeStations: structures.filter((structure) => structure.type === "tradeStation").length
     },
-    friendship: getRemoteFriendshipState(player, structures)
+    friendship: getRemoteFriendshipState(player, structures),
+    supernovaMissions: isSupernovaGame(state.gameState) ? getSupernovaMissionsForPlayer(state.gameState, player.id) : []
   };
 }
 
@@ -7566,6 +7672,7 @@ function getControllerLobbyStateForRemote() {
   if (!state.controllerLobby) return null;
   return {
     playerCount: state.controllerLobby.playerCount,
+    gameVariant: state.controllerLobby.gameVariant ?? gameVariants.classic,
     started: state.controllerLobby.started,
     colors: playerPieceColors.map((color) => ({
       id: color,
@@ -7888,6 +7995,17 @@ function getRemoteControllerActions() {
       createRemoteAction("build.tradeShip", t("build_tradeShip"), {}, { requiresActivePlayer: true }),
       createRemoteAction("build.spaceport", t("build_spaceport"), {}, { requiresActivePlayer: true })
     );
+    if (isSupernovaGame(state.gameState)) {
+      actions.push(createRemoteAction("build.battleShip", t("build_battleShip"), {}, { requiresActivePlayer: true }));
+      for (const option of getBuildableSupernovaFactoryOptions(state.gameState, boardLayout, getActivePlayer()?.id)) {
+        actions.push(createRemoteAction(
+          "supernova.factory",
+          `${option.label} ${t("build")}`,
+          { factoryType: option.factoryType, planetId: option.planetId },
+          { requiresActivePlayer: true, disabled: !option.canBuild }
+        ));
+      }
+    }
     for (const upgrade of upgradeDefinitions) {
       actions.push(createRemoteAction("upgrade.buy", `${t("build")} ${getUpgradeLabel(upgrade.id)}`, { upgradeId: upgrade.id }, {
         requiresActivePlayer: true
@@ -7910,6 +8028,10 @@ function getRemoteControllerActions() {
 
   if (state.gameState.players?.[0]) {
     actions.push(createRemoteAction("app.exit", t("exitGame"), {}, { adminOnly: true }));
+  }
+
+  if (isSupernovaGame(state.gameState)) {
+    actions.push(createRemoteAction("supernova.toggleMission", t("supernovaToggleMission"), {}, { requiresActivePlayer: false }));
   }
 
   return actions;
@@ -8098,8 +8220,23 @@ function executeRemoteAction(actionId, payload = {}) {
     case "build.tradeShip":
       if (isRemoteActionPlayerActive(playerId)) buildActivePlayerShip("tradeShip");
       break;
+    case "build.battleShip":
+      if (isRemoteActionPlayerActive(playerId)) buildActivePlayerShip("battleShip");
+      break;
     case "build.spaceport":
       if (isRemoteActionPlayerActive(playerId)) buildActivePlayerSpaceport();
+      break;
+    case "supernova.factory":
+      if (isRemoteActionPlayerActive(playerId) && payload.factoryType) {
+        buildActivePlayerSupernovaFactory(payload.factoryType, payload.planetId ?? null);
+      }
+      break;
+    case "supernova.toggleMission":
+      if (payload.missionId && payload.targetPlayerId === playerId) {
+        state.gameState = toggleSupernovaMissionFulfilled(state.gameState, playerId, payload.missionId);
+        saveCurrentGameState();
+        render();
+      }
       break;
     case "upgrade.buy":
       if (isRemoteActionPlayerActive(playerId) && payload.upgradeId) buyActivePlayerUpgrade(payload.upgradeId);

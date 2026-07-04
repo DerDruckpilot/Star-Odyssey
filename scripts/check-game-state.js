@@ -1,6 +1,7 @@
 import { boardLayout } from "../src/data/boardLayout.js";
 import {
   buyUpgrade,
+  buildSupernovaFactory,
   calculateVictoryPoints,
   buildShip,
   cancelPendingSpaceportUpgrade,
@@ -14,6 +15,7 @@ import {
   endCurrentTurn,
   finishEncounter,
   getEffectiveUpgradeValue,
+  getBuildableSupernovaFactoryOptions,
   getFriendshipUpgradeBonus,
   foundColony,
   getTradeRatesForPlayer,
@@ -34,8 +36,11 @@ import {
   foundTradeStation,
   getShipDestinationState,
   getPlayerInventory,
+  getSupernovaMissionsForPlayer,
+  getSupplyDrawCount,
   getRealUpgradeValue,
   submitEncounterPending,
+  toggleSupernovaMissionFulfilled,
   tradeWithSupply,
   useBoughtFame,
   useRichHelpsPoor,
@@ -48,6 +53,7 @@ import {
 import { getEncounterCardById, getEncounterDeckIds } from "../src/data/encounterCards.js";
 import { isActiveSpecialToken } from "../src/data/numberTokens.js";
 import { shipVfxData } from "../src/data/shipVfxData.js";
+import { gameVariants } from "../src/data/supernova.js";
 
 function getResourceTotal(player) {
   return Object.values(player.resources ?? {}).reduce((sum, value) => sum + value, 0);
@@ -1613,6 +1619,169 @@ assert(noShipsFlightState.hasRolledFlightSpeed, "Players without ships should st
 assert(Object.keys(noShipsFlightState.remainingMovementByShipId ?? {}).length === 0, "Players without ships should not receive movement entries.");
 assert(noShipsFlightState.log.at(-1)?.messageKey === "logNoShipsInSpace", "Flight without ships should log the skipped ship movement.");
 
+const classicVariantGame = createGameState({ language: "de", playerCount: 2, boardLayout });
+assert(classicVariantGame.gameVariant === gameVariants.classic, "Classic should remain the default game variant.");
+assert(classicVariantGame.supernova === null, "Classic games should not initialize Supernova state.");
+
+const supernovaStartGame = createGameState({
+  language: "de",
+  playerCount: 3,
+  boardLayout,
+  gameVariant: gameVariants.supernova
+});
+assert(supernovaStartGame.gameVariant === gameVariants.supernova, "Supernova games should persist the selected variant.");
+assert(Boolean(supernovaStartGame.supernova), "Supernova games should initialize variant state.");
+for (const player of supernovaStartGame.players) {
+  const missions = getSupernovaMissionsForPlayer(supernovaStartGame, player.id);
+  assert(missions.length === 3, "Each Supernova player should receive 3 mission cards.");
+  assert(new Set(missions.map((mission) => mission.category)).size === missions.length, "Initial Supernova missions should use different categories.");
+}
+
+assert(getSupplyDrawCount({
+  ...supernovaStartGame,
+  players: supernovaStartGame.players.map((player, index) => index === 0 ? { ...player, victoryPoints: 4 } : player)
+}, { ...supernovaStartGame.players[0], victoryPoints: 4 }) === 3, "Supernova players with 3-5 victory points should draw 3 supply cards.");
+assert(getSupplyDrawCount({
+  ...supernovaStartGame,
+  players: supernovaStartGame.players.map((player, index) => index === 0 ? { ...player, victoryPoints: 7 } : player)
+}, { ...supernovaStartGame.players[0], victoryPoints: 7 }) === 2, "Supernova players with 6-8 victory points should draw 2 supply cards.");
+assert(getSupplyDrawCount({
+  ...supernovaStartGame,
+  players: supernovaStartGame.players.map((player, index) => index === 0 ? { ...player, victoryPoints: 10 } : player)
+}, { ...supernovaStartGame.players[0], victoryPoints: 10 }) === 1, "Supernova players with 9-11 victory points should draw 1 supply card.");
+
+let supernovaFactoryGame = createGameState({
+  language: "de",
+  playerCount: 2,
+  boardLayout,
+  gameVariant: gameVariants.supernova
+});
+const factoryPlanet = findBuildableFactoryPlanet(supernovaFactoryGame);
+assert(Boolean(factoryPlanet), "Supernova factory smoke test needs a non-start planet with an adjacent site.");
+if (factoryPlanet) {
+  const factorySite = getSiteAdjacentToPlanet(supernovaFactoryGame, factoryPlanet.id);
+  supernovaFactoryGame = normalizeGameState({
+    ...supernovaFactoryGame,
+    phase: "tradeBuild",
+    currentPlayerIndex: 0,
+    board: {
+      ...supernovaFactoryGame.board,
+      exploredSystems: [...new Set([...(supernovaFactoryGame.board.exploredSystems ?? []), factoryPlanet.systemId])],
+      structures: [
+        {
+          id: "supernova-factory-test-colony",
+          ownerPlayerId: "player-1",
+          type: "colony",
+          locationId: factorySite.nodeId,
+          systemId: factorySite.systemId,
+          adjacentPlanetIds: factorySite.adjacentPlanetIds ?? []
+        }
+      ]
+    },
+    players: supernovaFactoryGame.players.map((player, index) => index === 0
+      ? {
+        ...player,
+        resources: { ore: 10, fuel: 10, carbon: 10, food: 10, goods: 10 }
+      }
+      : player)
+  }, {
+    language: "de",
+    playerCount: 2,
+    boardLayout
+  });
+  const factoryOptions = getBuildableSupernovaFactoryOptions(supernovaFactoryGame, boardLayout, "player-1");
+  const matchingFactoryOption = factoryOptions.find((option) => option.planetId === factoryPlanet.id && option.resource === factoryPlanet.resource);
+  assert(Boolean(matchingFactoryOption), "Supernova factories should be buildable on adjacent explored non-start planets.");
+  const resourceBeforeFactory = supernovaFactoryGame.players[0].resources[factoryPlanet.resource] ?? 0;
+  supernovaFactoryGame = buildSupernovaFactory(supernovaFactoryGame, boardLayout, matchingFactoryOption?.factoryType, factoryPlanet.id);
+  assert(supernovaFactoryGame.supernova?.factories?.length === 1, "Building a Supernova factory should persist the factory.");
+  assert(
+    Object.values(supernovaFactoryGame.supernova?.factoryMajorityCards ?? {}).includes("player-1"),
+    "A unique factory majority should award the matching Supernova victory card."
+  );
+  const token = supernovaFactoryGame.board.numberTokens.planetTokensById[factoryPlanet.id];
+  const rollTotal = token?.values?.find((value) => value !== 7) ?? token?.value;
+  supernovaFactoryGame = {
+    ...supernovaFactoryGame,
+    phase: "production",
+    currentPlayerIndex: 0
+  };
+  const afterProduction = rollProduction(supernovaFactoryGame, boardLayout, { dice: diceForTotal(rollTotal) });
+  assert(
+    (afterProduction.players[0].resources[factoryPlanet.resource] ?? 0) === resourceBeforeFactory - (matchingFactoryOption?.cost?.[factoryPlanet.resource] ?? 0) + 2,
+    "A Supernova factory should double production for its owner on the matching planet."
+  );
+}
+
+let supernovaBattleShipGame = createGameState({
+  language: "de",
+  playerCount: 2,
+  boardLayout,
+  gameVariant: gameVariants.supernova
+});
+const battleStartSite = boardLayout.startSites[0];
+supernovaBattleShipGame = normalizeGameState({
+  ...supernovaBattleShipGame,
+  phase: "tradeBuild",
+  currentPlayerIndex: 0,
+  board: {
+    ...supernovaBattleShipGame.board,
+    structures: [{
+      id: "supernova-battle-ship-test-spaceport",
+      ownerPlayerId: "player-1",
+      type: "spaceport",
+      locationId: battleStartSite.nodeId,
+      systemId: battleStartSite.systemId,
+      adjacentPlanetIds: battleStartSite.adjacentPlanetIds ?? []
+    }],
+    ships: []
+  },
+  players: supernovaBattleShipGame.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      resources: { ore: 0, fuel: 2, carbon: 2, food: 0, goods: 0 },
+      upgrades: { ...player.upgrades, cannon: 1 }
+    }
+    : player)
+}, {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+supernovaBattleShipGame = buildShip(supernovaBattleShipGame, boardLayout, "battleShip");
+assert(supernovaBattleShipGame.board.pendingShipPlacement?.shipType === "battleShip", "Supernova battleships should enter pending launch placement after building.");
+const battleShipLaunchPoint = findFreeLaunchPoint(supernovaBattleShipGame, "player-1");
+supernovaBattleShipGame = placePendingShip(supernovaBattleShipGame, boardLayout, battleShipLaunchPoint.id);
+assert(supernovaBattleShipGame.board.ships.some((ship) => ship.type === "battleShip"), "Pending Supernova battleship placement should create a battleship.");
+assert(getPlayerInventory(supernovaBattleShipGame, "player-1").battleShip.inUse === 1, "Battleships should use the separate battleship stock.");
+assert(getPlayerInventory(supernovaBattleShipGame, "player-1").transporter.inUse === 0, "Battleships should not consume the transporter stock.");
+
+let supernovaMissionWinGame = createGameState({
+  language: "de",
+  playerCount: 2,
+  boardLayout,
+  gameVariant: gameVariants.supernova
+});
+supernovaMissionWinGame = normalizeGameState({
+  ...supernovaMissionWinGame,
+  phase: "tradeBuild",
+  currentPlayerIndex: 0,
+  players: supernovaMissionWinGame.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      specialMedals: Array.from({ length: 15 }, (_, medalIndex) => `supernova-test-medal-${medalIndex + 1}`)
+    }
+    : player)
+}, {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(!supernovaMissionWinGame.gameOver, "Supernova should not end at 15 points without a fulfilled mission.");
+const firstMissionId = getSupernovaMissionsForPlayer(supernovaMissionWinGame, "player-1")[0]?.id;
+supernovaMissionWinGame = toggleSupernovaMissionFulfilled(supernovaMissionWinGame, "player-1", firstMissionId);
+assert(supernovaMissionWinGame.gameOver && supernovaMissionWinGame.winnerPlayerId === "player-1", "Supernova should end at 15 points only after a mission is fulfilled.");
+
 if (process.exitCode !== 1) {
   console.log("Game state check passed.");
 }
@@ -1635,11 +1804,30 @@ function findPlanetWithSpecialToken(gameState) {
     .find((planet) => ["pirate", "ice"].includes(gameState.board.numberTokens.planetTokensById[planet.id]?.type));
 }
 
+function findBuildableFactoryPlanet(gameState) {
+  return (gameState.board?.placedSystems ?? [])
+    .flatMap((system) => (system.planets ?? []).map((planet) => ({
+      ...planet,
+      systemId: system.id
+    })))
+    .find((planet) => {
+      const token = gameState.board?.numberTokens?.planetTokensById?.[planet.id];
+      return token?.type === "number" && Boolean(getSiteAdjacentToPlanet(gameState, planet.id));
+    });
+}
+
 function getSiteAdjacentToPlanet(gameState, planetId) {
   return [
     ...(boardLayout.startSites ?? []),
     ...(gameState.board?.placedSystems ?? []).flatMap((system) => system.colonySites ?? [])
   ].find((site) => site.adjacentPlanetIds?.includes(planetId));
+}
+
+function diceForTotal(total) {
+  if (total <= 2) return [1, 1];
+  if (total >= 12) return [6, 6];
+  const firstDie = Math.max(1, Math.min(6, total - 1));
+  return [firstDie, total - firstDie];
 }
 
 function getAllPlanets(gameState) {

@@ -33,6 +33,11 @@ export const buildActionDefinitions = [
     cost: { ore: 1, fuel: 1, goods: 2 }
   },
   {
+    id: "battleShip",
+    cost: { carbon: 2, fuel: 2 },
+    variant: "supernova"
+  },
+  {
     id: "spaceport",
     cost: { carbon: 3, food: 2 }
   }

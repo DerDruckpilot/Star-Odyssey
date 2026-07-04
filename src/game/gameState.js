@@ -3,6 +3,14 @@ import { bankTradeRates, buildActionDefinitions, upgradeDefinitions } from "../d
 import { getEncounterCardById, getEncounterDeckIds } from "../data/encounterCards.js";
 import { getFriendshipCardById } from "../data/friendshipCards.js";
 import {
+  gameVariants,
+  getSupernovaFactoryType,
+  getSupernovaFactoryVictoryCard,
+  supernovaFactoryTypes,
+  supernovaFactoryVictoryCards,
+  supernovaMissionCards
+} from "../data/supernova.js";
+import {
   createNumberTokenState,
   doesTokenProduce,
   getPlanetToken,
@@ -28,7 +36,8 @@ const playerFigureLimits = {
   colony: 9,
   tradeStation: 7,
   transporter: 3,
-  spaceport: 3
+  spaceport: 3,
+  battleShip: 3
 };
 
 export const currentGameStorageKey = "star-odyssey-current-game";
@@ -52,8 +61,11 @@ export function calculateVictoryPoints(gameState, playerId) {
   const friendshipPoints = normalizeFriendshipMarkers(player?.friendshipMarkers).length * 2;
   const specialMedalPoints = normalizeSpecialMedals(player?.specialMedals).length;
   const halfMedalPoints = Math.floor(Math.max(0, player?.halfMedals ?? 0) / 2);
+  const supernovaPoints = isSupernovaGame(gameState)
+    ? countSupernovaFactoryVictoryPoints(gameState, playerId)
+    : 0;
 
-  return structurePoints + friendshipPoints + specialMedalPoints + halfMedalPoints;
+  return structurePoints + friendshipPoints + specialMedalPoints + halfMedalPoints + supernovaPoints;
 }
 
 export function getPlayerInventory(gameState, playerId) {
@@ -81,9 +93,12 @@ export function getPlayerInventory(gameState, playerId) {
   const tradeShipsInUse = ships
     .filter((ship) => ship.type === "tradeShip")
     .length;
+  const battleShipsInUse = ships
+    .filter((ship) => ship.type === "battleShip")
+    .length;
   const coloniesInUse = colonyStructures + colonyShipsInUse;
   const tradeStationsInUse = tradeStationStructures + tradeShipsInUse;
-  const transportersInUse = ships.length;
+  const transportersInUse = colonyShipsInUse + tradeShipsInUse;
 
   return {
     colony: {
@@ -105,6 +120,11 @@ export function getPlayerInventory(gameState, playerId) {
       inUse: spaceportsInUse,
       available: Math.max(0, playerFigureLimits.spaceport - spaceportsInUse),
       limit: playerFigureLimits.spaceport
+    },
+    battleShip: {
+      inUse: battleShipsInUse,
+      available: Math.max(0, playerFigureLimits.battleShip - battleShipsInUse),
+      limit: playerFigureLimits.battleShip
     }
   };
 }
@@ -158,9 +178,10 @@ export function getCannonValueForPlayer(gameState, playerId) {
   return getEffectiveUpgradeValue(gameState, playerId, "cannon");
 }
 
-export function createGameState({ language, playerCount, boardLayout, playerSetup = [] }) {
+export function createGameState({ language, playerCount, boardLayout, playerSetup = [], gameVariant = gameVariants.classic }) {
   const now = new Date().toISOString();
   const safePlayerCount = [2, 3, 4].includes(playerCount) ? playerCount : 2;
+  const normalizedGameVariant = normalizeGameVariant(gameVariant);
   const boardPlacement = createBoardPlacement(boardLayout);
   const numberTokens = createNumberTokenState(boardLayout, boardPlacement);
   const startingStructures = [];
@@ -173,6 +194,7 @@ export function createGameState({ language, playerCount, boardLayout, playerSetu
     updatedAt: now,
     language,
     playerCount: safePlayerCount,
+    gameVariant: normalizedGameVariant,
     players,
     currentPlayerIndex: 0,
     turnNumber: 1,
@@ -202,6 +224,7 @@ export function createGameState({ language, playerCount, boardLayout, playerSetu
     activeTradeOffer: null,
     sevenResolution: null,
     placement: createPlacementState(safePlayerCount),
+    supernova: normalizedGameVariant === gameVariants.supernova ? createInitialSupernovaState(players) : null,
     board: {
       layoutVersion: boardLayout.layoutVersion,
       selectedElement: null,
@@ -566,7 +589,7 @@ export function drawSupply(gameState) {
   if (gameState.phase !== "tradeBuild" || hasSupplyDrawnThisTurn(gameState)) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
-  const drawCount = getSupplyDrawCount(activePlayer);
+  const drawCount = getSupplyDrawCount(gameState, activePlayer);
   if (!activePlayer || drawCount <= 0) return gameState;
 
   const drawnCards = [];
@@ -1081,6 +1104,9 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId, options =
   const remainingMovement = gameState.remainingMovementByShipId?.[shipId] ?? 0;
   const destinationState = getShipDestinationState(gameState, boardLayout, shipId, targetNodeId);
   const pathCost = destinationState?.distance ?? null;
+  const defenderShip = destinationState?.endpointType === "battle"
+    ? getShipAtNode(ships, targetNodeId, shipId)
+    : null;
   if (
     !activePlayer ||
     !ship ||
@@ -1125,7 +1151,116 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId, options =
       },
     }
   });
+  if (defenderShip && ship.type === "battleShip") {
+    return resolveSupernovaShipBattle(movedState, boardLayout, shipId, defenderShip.id);
+  }
   return options.deferExploration ? movedState : completeShipExploration(movedState, boardLayout, shipId);
+}
+
+function resolveSupernovaShipBattle(gameState, boardLayout, attackerShipId, defenderShipId) {
+  if (!isSupernovaGame(gameState)) return gameState;
+  const ships = normalizeShips(gameState.board?.ships);
+  const attackerShip = ships.find((ship) => ship.id === attackerShipId);
+  const defenderShip = ships.find((ship) => ship.id === defenderShipId);
+  const attacker = getPlayerById(gameState, attackerShip?.ownerPlayerId);
+  const defender = getPlayerById(gameState, defenderShip?.ownerPlayerId);
+  if (!attackerShip || !defenderShip || !attacker || !defender) return gameState;
+
+  let attackerRoll = createCombatRoll();
+  let defenderRoll = createCombatRoll();
+  let attackerStrength = attackerRoll.total + getPlayerCombatBonus(gameState, attacker.id);
+  let defenderStrength = defenderRoll.total + getPlayerCombatBonus(gameState, defender.id);
+  let rerolls = 0;
+  while (attackerStrength === defenderStrength && rerolls < 6) {
+    attackerRoll = createCombatRoll();
+    defenderRoll = createCombatRoll();
+    attackerStrength = attackerRoll.total + getPlayerCombatBonus(gameState, attacker.id);
+    defenderStrength = defenderRoll.total + getPlayerCombatBonus(gameState, defender.id);
+    rerolls += 1;
+  }
+  const attackerWins = attackerStrength >= defenderStrength;
+  const winner = attackerWins ? attacker : defender;
+  const loser = attackerWins ? defender : attacker;
+  const loserShip = attackerWins ? defenderShip : attackerShip;
+  const defenderWins = !attackerWins;
+  let nextShips = ships;
+  let nextPlayers = gameState.players;
+  const blockedShipIds = new Set(gameState.supernova?.blockedShipIds ?? []);
+  const remainingMovementByShipId = { ...(gameState.remainingMovementByShipId ?? {}) };
+
+  if (defenderShip.type === "battleShip") {
+    nextShips = nextShips.filter((ship) => ship.id !== loserShip.id);
+    delete remainingMovementByShipId[loserShip.id];
+    nextPlayers = addHalfMedalToPlayer(nextPlayers, winner.id, 1);
+  } else {
+    nextPlayers = removeFirstAvailableUpgrade(nextPlayers, loser.id);
+    if (defenderWins) {
+      nextPlayers = addHalfMedalToPlayer(nextPlayers, defender.id, 1);
+    } else {
+      blockedShipIds.add(defenderShip.id);
+      remainingMovementByShipId[defenderShip.id] = 0;
+    }
+    if (defenderShip.type === "tradeShip") {
+      const transfer = drawRandomResourcesBetweenPlayers(nextPlayers, loser.id, winner.id, 2);
+      nextPlayers = transfer.players;
+    }
+  }
+
+  nextPlayers = syncPlayersWithBoardAssets(nextPlayers, gameState.board?.structures ?? [], nextShips);
+
+  return updateGameState(gameState, {
+    players: nextPlayers,
+    remainingMovementByShipId,
+    supernova: {
+      ...gameState.supernova,
+      blockedShipIds: [...blockedShipIds]
+    },
+    board: {
+      ...gameState.board,
+      selectedElement: { type: "ship", id: attackerWins ? attackerShip.id : defenderShip.id },
+      ships: nextShips
+    },
+    logEntries: [
+      {
+        type: "combat",
+        messageKey: "logSupernovaBattleResolved",
+        messageParams: {
+          attacker: attacker.name,
+          defender: defender.name,
+          winner: winner.name,
+          attack: attackerStrength,
+          defense: defenderStrength
+        }
+      }
+    ]
+  });
+}
+
+function addHalfMedalToPlayer(players, playerId, amount = 1) {
+  return updatePlayerById(players, playerId, (player) => withHalfMedalDelta(player, amount));
+}
+
+function removeFirstAvailableUpgrade(players, playerId) {
+  return updatePlayerById(players, playerId, (player) => {
+    const upgrades = normalizeUpgrades(player.upgrades);
+    const removableUpgrade = ["cannon", "drive", "cargo"].find((upgrade) => (upgrades[upgrade] ?? 0) > 0);
+    if (!removableUpgrade) return player;
+    return withUpgradeDelta(player, removableUpgrade, -1);
+  });
+}
+
+function drawRandomResourcesBetweenPlayers(players, fromPlayerId, toPlayerId, amount = 1) {
+  let nextPlayers = players;
+  const drawnResources = [];
+  for (let index = 0; index < amount; index += 1) {
+    const fromPlayer = nextPlayers.find((player) => player.id === fromPlayerId);
+    const resource = drawRandomResource(fromPlayer?.resources);
+    if (!resource) break;
+    drawnResources.push(resource);
+    nextPlayers = updatePlayerById(nextPlayers, fromPlayerId, (player) => withResourceDelta(player, resource, -1));
+    nextPlayers = updatePlayerById(nextPlayers, toPlayerId, (player) => withResourceDelta(player, resource, 1));
+  }
+  return { players: nextPlayers, drawnResources };
 }
 
 export function completeShipExploration(gameState, boardLayout, shipId) {
@@ -1205,9 +1340,10 @@ function getShipVariant(ship) {
   return 1;
 }
 
-function getNextAvailableShipVariant(ships, playerId) {
+function getNextAvailableShipVariant(ships, playerId, shipType = "transporter") {
+  const useBattleShipVariants = shipType === "battleShip";
   const usedVariants = new Set(normalizeShips(ships)
-    .filter((ship) => ship.ownerPlayerId === playerId)
+    .filter((ship) => ship.ownerPlayerId === playerId && (useBattleShipVariants ? ship.type === "battleShip" : ship.type !== "battleShip"))
     .map((ship) => getShipVariant(ship)));
 
   for (let variant = 1; variant <= playerFigureLimits.transporter; variant += 1) {
@@ -1598,6 +1734,16 @@ export function getShipDestinationState(gameState, boardLayout, shipId, targetNo
   }
 
   if (occupied) {
+    const targetShip = getShipAtNode(ships, targetNodeId, shipId);
+    if (isSupernovaGame(gameState) && ship.type === "battleShip" && targetShip && targetShip.ownerPlayerId !== ship.ownerPlayerId) {
+      return {
+        validDestination: true,
+        passable: true,
+        distance,
+        endpointType: "battle",
+        reason: null
+      };
+    }
     return {
       validDestination: false,
       passable: true,
@@ -2013,19 +2159,24 @@ export function buyUpgrade(gameState, upgradeId) {
 
 export function buildShip(gameState, boardLayout, shipType) {
   if (isGameOverState(gameState)) return gameState;
-  if (gameState.phase !== "tradeBuild" || !["colonyShip", "tradeShip"].includes(shipType)) return gameState;
+  if (gameState.phase !== "tradeBuild" || !["colonyShip", "tradeShip", "battleShip"].includes(shipType)) return gameState;
+  if (shipType === "battleShip" && !isSupernovaGame(gameState)) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const definition = buildActionDefinitions.find((action) => action.id === shipType);
   const inventory = getPlayerInventory(gameState, activePlayer?.id);
   const launchPoint = findFreeLaunchPoint(gameState, boardLayout, activePlayer?.id);
-  const nextShipVariant = getNextAvailableShipVariant(gameState.board?.ships, activePlayer?.id);
+  const nextShipVariant = getNextAvailableShipVariant(gameState.board?.ships, activePlayer?.id, shipType);
   const hasRequiredFigure = shipType === "colonyShip"
     ? (inventory.colony.available > 0 && inventory.transporter.available > 0)
-    : (inventory.tradeStation.available > 0 && inventory.transporter.available > 0);
+    : shipType === "tradeShip"
+      ? (inventory.tradeStation.available > 0 && inventory.transporter.available > 0)
+      : (inventory.battleShip.available > 0);
+  const hasRequiredUpgrade = shipType !== "battleShip" || getRealUpgradeValue(activePlayer, "cannon") > 0;
   if (!activePlayer || !definition || !launchPoint || !nextShipVariant || !hasRequiredFigure || !canPay(activePlayer.resources, definition.cost)) {
     return gameState;
   }
+  if (!hasRequiredUpgrade) return gameState;
 
   return updateGameState(gameState, {
     board: {
@@ -2041,6 +2192,82 @@ export function buildShip(gameState, boardLayout, shipType) {
   });
 }
 
+export function getBuildableSupernovaFactoryOptions(gameState, boardLayout, playerId = null) {
+  if (!isSupernovaGame(gameState) || gameState?.phase !== "tradeBuild") return [];
+  const activePlayer = gameState.players?.[gameState.currentPlayerIndex];
+  const ownerPlayerId = playerId ?? activePlayer?.id;
+  const player = getPlayerById(gameState, ownerPlayerId);
+  if (!player) return [];
+  const startSystemIds = new Set((boardLayout.startSystems ?? []).map((system) => system.id));
+  const factories = gameState.supernova?.factories ?? [];
+  const occupiedPlanetIds = new Set(factories.map((factory) => factory.planetId));
+  const playerStructures = (gameState.board?.structures ?? [])
+    .filter((structure) => structure.ownerPlayerId === ownerPlayerId && ["colony", "spaceport"].includes(structure.type));
+  const adjacentPlanetIds = new Set(playerStructures.flatMap((structure) => structure.adjacentPlanetIds ?? []));
+  const planets = getExploredPlanetSystems(gameState, boardLayout)
+    .filter((system) => !startSystemIds.has(system.id))
+    .flatMap((system) => (system.planets ?? []).map((planet) => ({
+      ...planet,
+      systemId: system.id
+    })))
+    .filter((planet) => adjacentPlanetIds.has(planet.id) && !occupiedPlanetIds.has(planet.id));
+
+  return supernovaFactoryTypes.flatMap((factoryType) => planets
+    .filter((planet) => planet.resource === factoryType.resource)
+    .map((planet) => ({
+      factoryType: factoryType.id,
+      label: factoryType.title,
+      planetId: planet.id,
+      systemId: planet.systemId,
+      resource: planet.resource,
+      cost: factoryType.cost,
+      canBuild: canPay(player.resources, factoryType.cost)
+    })));
+}
+
+export function buildSupernovaFactory(gameState, boardLayout, factoryTypeId, planetId = null) {
+  if (isGameOverState(gameState) || !isSupernovaGame(gameState) || gameState.phase !== "tradeBuild") return gameState;
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const option = getBuildableSupernovaFactoryOptions(gameState, boardLayout, activePlayer?.id)
+    .find((candidate) => candidate.factoryType === factoryTypeId && (!planetId || candidate.planetId === planetId));
+  const factoryType = getSupernovaFactoryType(factoryTypeId);
+  if (!activePlayer || !option || !factoryType || !option.canBuild) return gameState;
+
+  const factory = {
+    id: createId(`factory-${factoryTypeId}`),
+    ownerPlayerId: activePlayer.id,
+    type: factoryType.id,
+    resource: factoryType.resource,
+    planetId: option.planetId,
+    systemId: option.systemId
+  };
+
+  const players = updatePlayerById(gameState.players, activePlayer.id, (player) => ({
+    ...player,
+    resources: payCost(player.resources, factoryType.cost)
+  }));
+
+  return updateGameState(gameState, {
+    players,
+    board: {
+      ...gameState.board,
+      selectedElement: { type: "planet", id: option.planetId }
+    },
+    supernova: {
+      ...gameState.supernova,
+      factories: [...(gameState.supernova?.factories ?? []), factory]
+    },
+    logEntry: {
+      type: "build",
+      messageKey: "logSupernovaFactoryBuilt",
+      messageParams: {
+        player: activePlayer.name,
+        factory: factoryType.title
+      }
+    }
+  });
+}
+
 export function placePendingShip(gameState, boardLayout, targetNodeId) {
   if (isGameOverState(gameState)) return gameState;
   if (gameState.phase !== "tradeBuild") return gameState;
@@ -2049,12 +2276,14 @@ export function placePendingShip(gameState, boardLayout, targetNodeId) {
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const definition = buildActionDefinitions.find((action) => action.id === pending?.shipType);
   const inventory = getPlayerInventory(gameState, activePlayer?.id);
-  const shipVariant = getNextAvailableShipVariant(gameState.board?.ships, activePlayer?.id);
+  const shipVariant = getNextAvailableShipVariant(gameState.board?.ships, activePlayer?.id, pending?.shipType);
   const launchPoint = getAvailableShipLaunchPoints(gameState, boardLayout, activePlayer?.id)
     .find((point) => point.id === targetNodeId);
   const hasRequiredFigure = pending?.shipType === "colonyShip"
     ? (inventory.colony.available > 0 && inventory.transporter.available > 0)
-    : (inventory.tradeStation.available > 0 && inventory.transporter.available > 0);
+    : pending?.shipType === "tradeShip"
+      ? (inventory.tradeStation.available > 0 && inventory.transporter.available > 0)
+      : (inventory.battleShip.available > 0);
   if (
     !pending ||
     !activePlayer ||
@@ -2094,7 +2323,11 @@ export function placePendingShip(gameState, boardLayout, targetNodeId) {
     },
     logEntry: {
       type: "build",
-      messageKey: pending.shipType === "colonyShip" ? "logColonyShipBuilt" : "logTradeShipBuilt",
+      messageKey: pending.shipType === "colonyShip"
+        ? "logColonyShipBuilt"
+        : pending.shipType === "tradeShip"
+          ? "logTradeShipBuilt"
+          : "logBattleShipBuilt",
       messageParams: {
         player: activePlayer.name
       }
@@ -2225,8 +2458,19 @@ export function cancelPendingSpaceportUpgrade(gameState) {
 export function endCurrentTurn(gameState) {
   if (isGameOverState(gameState)) return gameState;
   if (gameState.board?.pendingFriendshipCardSelection) return gameState;
+  const endingPlayer = gameState.players?.[gameState.currentPlayerIndex];
   const nextPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.playerCount;
   const nextTurnNumber = nextPlayerIndex === 0 ? gameState.turnNumber + 1 : gameState.turnNumber;
+  const endingPlayerShipIds = new Set(normalizeShips(gameState.board?.ships)
+    .filter((ship) => ship.ownerPlayerId === endingPlayer?.id)
+    .map((ship) => ship.id));
+  const supernova = isSupernovaGame(gameState)
+    ? {
+      ...gameState.supernova,
+      blockedShipIds: (gameState.supernova?.blockedShipIds ?? [])
+        .filter((shipId) => !endingPlayerShipIds.has(shipId))
+    }
+    : null;
 
   return updateGameState(gameState, {
     currentPlayerIndex: nextPlayerIndex,
@@ -2247,6 +2491,7 @@ export function endCurrentTurn(gameState) {
     friendshipTurnState: createFriendshipTurnState(`${nextTurnNumber}:${gameState.players[nextPlayerIndex]?.id ?? "unknown"}`),
     activeTradeOffer: null,
     sevenResolution: null,
+    supernova,
     board: {
       ...gameState.board,
       selectedElement: null,
@@ -2275,12 +2520,14 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
   const fallback = createGameState({
     language: gameState.language || language,
     playerCount: gameState.playerCount || playerCount,
-    boardLayout
+    boardLayout,
+    gameVariant: normalizeGameVariant(gameState.gameVariant)
   });
 
   const normalizedPlayerCount = [2, 3, 4].includes(gameState.playerCount)
     ? gameState.playerCount
     : fallback.playerCount;
+  const normalizedGameVariant = normalizeGameVariant(gameState.gameVariant);
   const normalizedPhase = normalizePhase(gameState.phase);
   const fallbackPlayers = createPlayers(normalizedPlayerCount, gameState.language || language);
   const normalizedStructures = normalizeStructures(gameState.board?.structures, normalizedPlayerCount, boardLayout, {
@@ -2319,6 +2566,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     ...gameState,
     language: gameState.language || language,
     playerCount: normalizedPlayerCount,
+    gameVariant: normalizedGameVariant,
     players: normalizedPlayers,
     currentPlayerIndex: normalizedCurrentPlayerIndex,
     turnNumber: Number.isInteger(gameState.turnNumber) ? gameState.turnNumber : 1,
@@ -2350,6 +2598,9 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     activeTradeOffer: normalizeActiveTradeOffer(gameState.activeTradeOffer, normalizedPlayers),
     sevenResolution: normalizeSevenResolution(gameState.sevenResolution, normalizedPlayers),
     placement: normalizePlacementState(gameState.placement, normalizedPlayerCount),
+    supernova: normalizedGameVariant === gameVariants.supernova
+      ? normalizeSupernovaState(gameState.supernova, normalizedPlayers)
+      : null,
     board: {
       ...fallback.board,
       ...(gameState.board || {}),
@@ -2512,8 +2763,197 @@ function createPlayerInventory() {
     colony: { inUse: 0, available: playerFigureLimits.colony, limit: playerFigureLimits.colony },
     tradeStation: { inUse: 0, available: playerFigureLimits.tradeStation, limit: playerFigureLimits.tradeStation },
     transporter: { inUse: 0, available: playerFigureLimits.transporter, limit: playerFigureLimits.transporter },
-    spaceport: { inUse: 0, available: playerFigureLimits.spaceport, limit: playerFigureLimits.spaceport }
+    spaceport: { inUse: 0, available: playerFigureLimits.spaceport, limit: playerFigureLimits.spaceport },
+    battleShip: { inUse: 0, available: playerFigureLimits.battleShip, limit: playerFigureLimits.battleShip }
   };
+}
+
+function normalizeGameVariant(gameVariant) {
+  return gameVariant === gameVariants.supernova ? gameVariants.supernova : gameVariants.classic;
+}
+
+export function isSupernovaGame(gameState) {
+  return normalizeGameVariant(gameState?.gameVariant) === gameVariants.supernova;
+}
+
+function createInitialSupernovaState(players) {
+  return {
+    missionsByPlayerId: Object.fromEntries(players.map((player, index) => [
+      player.id,
+      drawInitialSupernovaMissions(index).map((mission) => mission.id)
+    ])),
+    fulfilledMissionIdsByPlayerId: Object.fromEntries(players.map((player) => [player.id, []])),
+    factories: [],
+    factoryMajorityCards: Object.fromEntries(supernovaFactoryVictoryCards.map((card) => [card.id, null])),
+    pendingFactoryPlacement: null,
+    blockedShipIds: []
+  };
+}
+
+function drawInitialSupernovaMissions(playerIndex = 0) {
+  const shuffled = shuffle(supernovaMissionCards);
+  const selected = [];
+  const usedCategories = new Set();
+
+  for (const mission of shuffled.slice(playerIndex).concat(shuffled.slice(0, playerIndex))) {
+    if (usedCategories.has(mission.category)) continue;
+    selected.push(mission);
+    usedCategories.add(mission.category);
+    if (selected.length === 3) return selected;
+  }
+
+  for (const mission of shuffled) {
+    if (selected.some((candidate) => candidate.id === mission.id)) continue;
+    selected.push(mission);
+    if (selected.length === 3) break;
+  }
+
+  return selected;
+}
+
+function normalizeSupernovaState(supernova, players = []) {
+  const fallback = createInitialSupernovaState(players);
+  if (!supernova || typeof supernova !== "object") return fallback;
+  const playerIds = new Set(players.map((player) => player.id));
+  const validMissionIds = new Set(supernovaMissionCards.map((mission) => mission.id));
+  const validFactoryTypes = new Set(supernovaFactoryTypes.map((factoryType) => factoryType.id));
+  const validFactoryCardIds = new Set(supernovaFactoryVictoryCards.map((card) => card.id));
+  const normalizeMissionMap = (map, fallbackMap) => Object.fromEntries(players.map((player) => [
+    player.id,
+    Array.isArray(map?.[player.id])
+      ? map[player.id].filter((missionId) => validMissionIds.has(missionId))
+      : fallbackMap[player.id]
+  ]));
+
+  return {
+    missionsByPlayerId: normalizeMissionMap(supernova.missionsByPlayerId, fallback.missionsByPlayerId),
+    fulfilledMissionIdsByPlayerId: normalizeMissionMap(supernova.fulfilledMissionIdsByPlayerId, fallback.fulfilledMissionIdsByPlayerId),
+    factories: Array.isArray(supernova.factories)
+      ? supernova.factories
+        .filter((factory) => factory && validFactoryTypes.has(factory.type) && playerIds.has(factory.ownerPlayerId) && typeof factory.planetId === "string")
+        .map((factory, index) => ({
+          id: typeof factory.id === "string" ? factory.id : `factory-${index + 1}`,
+          ownerPlayerId: factory.ownerPlayerId,
+          type: factory.type,
+          resource: getSupernovaFactoryType(factory.type)?.resource ?? factory.resource,
+          planetId: factory.planetId,
+          systemId: typeof factory.systemId === "string" ? factory.systemId : null
+        }))
+      : [],
+    factoryMajorityCards: Object.fromEntries(supernovaFactoryVictoryCards.map((card) => {
+      const ownerPlayerId = supernova.factoryMajorityCards?.[card.id];
+      return [card.id, playerIds.has(ownerPlayerId) ? ownerPlayerId : null];
+    })),
+    pendingFactoryPlacement: normalizePendingFactoryPlacement(supernova.pendingFactoryPlacement, playerIds, validFactoryTypes),
+    blockedShipIds: Array.isArray(supernova.blockedShipIds)
+      ? supernova.blockedShipIds.filter((shipId) => typeof shipId === "string")
+      : []
+  };
+}
+
+function normalizePendingFactoryPlacement(pendingFactoryPlacement, playerIds, validFactoryTypes) {
+  if (!pendingFactoryPlacement || typeof pendingFactoryPlacement !== "object") return null;
+  if (!playerIds.has(pendingFactoryPlacement.ownerPlayerId) || !validFactoryTypes.has(pendingFactoryPlacement.factoryType)) return null;
+  return {
+    ownerPlayerId: pendingFactoryPlacement.ownerPlayerId,
+    factoryType: pendingFactoryPlacement.factoryType
+  };
+}
+
+function recalculateSupernovaState(gameState) {
+  if (!isSupernovaGame(gameState)) return null;
+  const supernova = normalizeSupernovaState(gameState.supernova, gameState.players ?? []);
+  return {
+    ...supernova,
+    factoryMajorityCards: calculateFactoryMajorityCards(supernova.factories, gameState.players ?? [])
+  };
+}
+
+function calculateFactoryMajorityCards(factories, players) {
+  return Object.fromEntries(supernovaFactoryVictoryCards.map((card) => {
+    const counts = players.map((player) => ({
+      playerId: player.id,
+      count: factories.filter((factory) => factory.ownerPlayerId === player.id && factory.type === card.type).length
+    }));
+    const max = Math.max(0, ...counts.map((entry) => entry.count));
+    const leaders = counts.filter((entry) => entry.count === max && entry.count > 0);
+    return [card.id, leaders.length === 1 ? leaders[0].playerId : null];
+  }));
+}
+
+function countSupernovaFactoryVictoryPoints(gameState, playerId) {
+  const cardIds = Object.entries(gameState.supernova?.factoryMajorityCards ?? {})
+    .filter(([, ownerPlayerId]) => ownerPlayerId === playerId)
+    .map(([cardId]) => cardId);
+  return cardIds.reduce((sum, cardId) => sum + (getSupernovaFactoryVictoryCard(cardId)?.victoryPoints ?? 0), 0);
+}
+
+export function getSupernovaMissionsForPlayer(gameState, playerId) {
+  const missionIds = gameState?.supernova?.missionsByPlayerId?.[playerId] ?? [];
+  const fulfilledIds = new Set(gameState?.supernova?.fulfilledMissionIdsByPlayerId?.[playerId] ?? []);
+  return missionIds
+    .map((missionId) => supernovaMissionCards.find((mission) => mission.id === missionId))
+    .filter(Boolean)
+    .map((mission) => ({
+      ...mission,
+      fulfilled: fulfilledIds.has(mission.id) || isSupernovaMissionAutomaticallyFulfilled(gameState, playerId, mission)
+    }));
+}
+
+function hasFulfilledSupernovaMission(gameState, playerId) {
+  return getSupernovaMissionsForPlayer(gameState, playerId).some((mission) => mission.fulfilled);
+}
+
+function isSupernovaMissionAutomaticallyFulfilled(gameState, playerId, mission) {
+  const player = getPlayerById(gameState, playerId);
+  if (!player || !mission?.conditionKey) return false;
+  if (mission.conditionKey === "allCargo") return getRealUpgradeValue(player, "cargo") >= 5;
+  if (mission.conditionKey === "allCannons") return getRealUpgradeValue(player, "cannon") >= 6;
+  if (mission.conditionKey === "allDrives") return getRealUpgradeValue(player, "drive") >= 6;
+  if (mission.conditionKey === "halfMedals:7") return (player.halfMedals ?? 0) >= 7;
+  if (mission.conditionKey === "spaceports:3") {
+    return (gameState.board?.structures ?? [])
+      .filter((structure) => structure.ownerPlayerId === playerId && structure.type === "spaceport")
+      .length >= 3;
+  }
+  if (mission.conditionKey === "factories:3") {
+    return (gameState.supernova?.factories ?? [])
+      .filter((factory) => factory.ownerPlayerId === playerId)
+      .length >= 3;
+  }
+  if (mission.conditionKey === "battleShips:3") {
+    return normalizeShips(gameState.board?.ships)
+      .filter((ship) => ship.ownerPlayerId === playerId && ship.type === "battleShip")
+      .length >= 3;
+  }
+  if (mission.conditionKey.startsWith("factoryCard:")) {
+    const type = mission.conditionKey.split(":")[1];
+    const card = supernovaFactoryVictoryCards.find((candidate) => candidate.type === type);
+    return Boolean(card && gameState.supernova?.factoryMajorityCards?.[card.id] === playerId);
+  }
+  return false;
+}
+
+export function toggleSupernovaMissionFulfilled(gameState, playerId, missionId) {
+  if (isGameOverState(gameState) || !isSupernovaGame(gameState)) return gameState;
+  const missionIds = gameState.supernova?.missionsByPlayerId?.[playerId] ?? [];
+  if (!missionIds.includes(missionId)) return gameState;
+  const fulfilledIds = new Set(gameState.supernova?.fulfilledMissionIdsByPlayerId?.[playerId] ?? []);
+  if (fulfilledIds.has(missionId)) {
+    fulfilledIds.delete(missionId);
+  } else {
+    fulfilledIds.add(missionId);
+  }
+
+  return updateGameState(gameState, {
+    supernova: {
+      ...gameState.supernova,
+      fulfilledMissionIdsByPlayerId: {
+        ...(gameState.supernova?.fulfilledMissionIdsByPlayerId ?? {}),
+        [playerId]: [...fulfilledIds]
+      }
+    }
+  });
 }
 
 function createEmptyResources() {
@@ -2571,8 +3011,16 @@ function normalizeEncounterDeck(encounterDeck, options = {}) {
   return allowEmpty ? [] : createEncounterDeck();
 }
 
-function getSupplyDrawCount(player) {
-  const victoryPoints = player?.victoryPoints ?? 0;
+export function getSupplyDrawCount(gameState, player = null) {
+  const effectivePlayer = player ?? gameState?.players?.[gameState?.currentPlayerIndex ?? 0];
+  if (isSupernovaGame(gameState)) {
+    const victoryPoints = effectivePlayer?.victoryPoints ?? 0;
+    if (victoryPoints >= 3 && victoryPoints <= 5) return 3;
+    if (victoryPoints >= 6 && victoryPoints <= 8) return 2;
+    if (victoryPoints >= 9 && victoryPoints <= 11) return 1;
+    return 0;
+  }
+  const victoryPoints = effectivePlayer?.victoryPoints ?? 0;
   if (victoryPoints >= 4 && victoryPoints <= 7) return 2;
   if (victoryPoints >= 8 && victoryPoints <= 9) return 1;
   return 0;
@@ -5031,13 +5479,14 @@ function getPlayerFlightBonus(gameState, playerId) {
 function createRemainingMovementForActiveShips(gameState, totalSpeed, movementOverrides = null) {
   const activePlayer = gameState.players?.[gameState.currentPlayerIndex];
   if (!activePlayer || !Number.isFinite(totalSpeed)) return {};
+  const blockedShipIds = new Set(gameState.supernova?.blockedShipIds ?? []);
 
   return Object.fromEntries(
     normalizeShips(gameState.board?.ships)
       .filter((ship) => ship.ownerPlayerId === activePlayer.id)
       .map((ship) => [
         ship.id,
-        movementOverrides?.[ship.id] === 0 ? 0 : totalSpeed
+        blockedShipIds.has(ship.id) || movementOverrides?.[ship.id] === 0 ? 0 : totalSpeed
       ])
   );
 }
@@ -5061,7 +5510,12 @@ function createPostEncounterFlightSpeedUpdate(gameState) {
 }
 
 function getPlayerCombatBonus(gameState, playerId) {
-  return getEffectiveUpgradeValue(gameState, playerId, "cannon");
+  const battleShipBonus = isSupernovaGame(gameState)
+    ? normalizeShips(gameState.board?.ships)
+      .filter((ship) => ship.ownerPlayerId === playerId && ship.type === "battleShip")
+      .length
+    : 0;
+  return getEffectiveUpgradeValue(gameState, playerId, "cannon") + battleShipBonus;
 }
 
 function createDefaultUpgrades() {
@@ -5095,14 +5549,27 @@ function updateGameState(gameState, { logEntry, logEntries, ...updates }) {
 }
 
 function finalizeDerivedState(gameState) {
-  const players = syncCalculatedVictoryPoints(gameState);
+  const stateWithSupernova = isSupernovaGame(gameState)
+    ? {
+      ...gameState,
+      supernova: recalculateSupernovaState(gameState)
+    }
+    : {
+      ...gameState,
+      gameVariant: gameVariants.classic,
+      supernova: null
+    };
+  const players = syncCalculatedVictoryPoints(stateWithSupernova);
   const finalizedState = {
-    ...gameState,
+    ...stateWithSupernova,
     players
   };
   const activePlayer = players[finalizedState.currentPlayerIndex];
+  const activePlayerWins = isSupernovaGame(finalizedState)
+    ? activePlayer && activePlayer.victoryPoints >= 15 && hasFulfilledSupernovaMission(finalizedState, activePlayer.id)
+    : activePlayer && activePlayer.victoryPoints >= 15;
 
-  if (finalizedState.phase !== "gameOver" && activePlayer && activePlayer.victoryPoints >= 15) {
+  if (finalizedState.phase !== "gameOver" && activePlayerWins) {
     return {
       ...finalizedState,
       phase: "gameOver",
@@ -5360,11 +5827,12 @@ function normalizeShips(ships = []) {
         return {
           id: ship.id,
           ownerPlayerId: ship.ownerPlayerId,
-          type: ship.type === "tradeShip" ? "tradeShip" : "colonyShip",
+          type: ["tradeShip", "battleShip"].includes(ship.type) ? ship.type : "colonyShip",
           shipVariant,
           coilCount: shipVariant,
           locationId: ship.locationId,
-          status: ship.status === "active" ? "active" : "docked"
+          status: ship.status === "active" ? "active" : "docked",
+          blockedNextFlight: Boolean(ship.blockedNextFlight)
         };
       })
     : [];
@@ -5404,7 +5872,7 @@ function normalizeRemainingMovement(remainingMovementByShipId = {}) {
 
 function normalizePendingShipPlacement(pendingShipPlacement, players = []) {
   if (!pendingShipPlacement || typeof pendingShipPlacement !== "object") return null;
-  if (!["colonyShip", "tradeShip"].includes(pendingShipPlacement.shipType)) return null;
+  if (!["colonyShip", "tradeShip", "battleShip"].includes(pendingShipPlacement.shipType)) return null;
   const playerIds = new Set((players ?? []).map((player) => player.id));
   if (!playerIds.has(pendingShipPlacement.ownerPlayerId)) return null;
 
@@ -5987,6 +6455,11 @@ function isNodeOccupied(ships, structures, targetNodeId, ignoredShipId) {
     .some((ship) => ship.id !== ignoredShipId && ship.locationId === targetNodeId);
 }
 
+function getShipAtNode(ships, targetNodeId, ignoredShipId = null) {
+  return normalizeShips(ships)
+    .find((ship) => ship.id !== ignoredShipId && ship.locationId === targetNodeId) ?? null;
+}
+
 function distributeProduction(gameState, boardLayout, rollTotal) {
   const structures = gameState.board?.structures ?? [];
   const producingPlanets = getPlacedProductionPlanets(gameState, boardLayout)
@@ -6015,23 +6488,24 @@ function distributeProduction(gameState, boardLayout, rollTotal) {
       const player = playersById.get(structure.ownerPlayerId);
       if (!player) continue;
 
-      player.resources[planet.resource] = (player.resources[planet.resource] ?? 0) + 1;
-      producedResourcesByPlayerId.get(player.id)[planet.resource] += 1;
+      const amount = getSupernovaProductionAmount(gameState, player.id, planet);
+      player.resources[planet.resource] = (player.resources[planet.resource] ?? 0) + amount;
+      producedResourcesByPlayerId.get(player.id)[planet.resource] += amount;
       productionEvent.recipients.push({
         playerId: player.id,
         structureId: structure.id,
         resource: planet.resource,
-        amount: 1
+        amount
       });
       resourceFlashes.push({
         playerId: player.id,
         resource: planet.resource,
-        amount: 1
+        amount
       });
       gains.push({
         player: player.name,
         resource: planet.resource,
-        amount: 1
+        amount
       });
     }
 
@@ -6085,6 +6559,17 @@ function distributeProduction(gameState, boardLayout, rollTotal) {
         }
       ]
   };
+}
+
+function getSupernovaProductionAmount(gameState, playerId, planet) {
+  if (!isSupernovaGame(gameState) || !planet?.id) return 1;
+  const hasMatchingFactory = (gameState.supernova?.factories ?? [])
+    .some((factory) => (
+      factory.ownerPlayerId === playerId &&
+      factory.planetId === planet.id &&
+      factory.resource === planet.resource
+    ));
+  return hasMatchingFactory ? 2 : 1;
 }
 
 function normalizeResources(resources = {}) {
