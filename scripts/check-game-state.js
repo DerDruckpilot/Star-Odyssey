@@ -1143,11 +1143,34 @@ let pirateFleeGame = determineFlightSpeed(encounterBaseState, {
   encounterCardId: "spreadsheet-18"
 });
 pirateFleeGame = revealPendingFlightEncounter(pirateFleeGame);
+pirateFleeGame = {
+  ...pirateFleeGame,
+  players: pirateFleeGame.players.map((player, index) => ({
+    ...player,
+    upgrades: {
+      ...player.upgrades,
+      drive: index === 0 ? 1 : 3
+    },
+    friendshipCards: index === 0 ? ["wise-drive-boost"] : []
+  }))
+};
 pirateFleeGame = resolveEncounterChoice(pirateFleeGame, {
-  choiceId: "flee",
-  forcedRoll: { balls: ["red", "red"] },
-  forcedOpponentRoll: { balls: ["blue", "blue"] }
+  choiceId: "flee"
 });
+assert(pirateFleeGame.activeEncounter?.pendingStep?.type === "driveComparisonPreview", "Pure drive flee checks should show a comparison preview before resolving.");
+assert(pirateFleeGame.activeEncounter.pendingStep.active.physicalDrives === 1, "Drive comparison preview should store the active player's physical drives.");
+assert(pirateFleeGame.activeEncounter.pendingStep.active.friendshipBonus === 2, "Drive comparison preview should store friendship drive bonuses separately.");
+assert(pirateFleeGame.activeEncounter.pendingStep.active.effectiveDrives === 3, "Drive comparison preview should add physical drives and friendship bonuses.");
+assert(pirateFleeGame.activeEncounter.pendingStep.target.effectiveDrives === 3, "Drive comparison preview should store the comparison player's effective drives.");
+assert(pirateFleeGame.activeEncounter.pendingStep.outcome === "equal", "Equal effective drives should be shown as an equal comparison.");
+assert(pirateFleeGame.activeEncounter.pendingStep.success === true, "Equal effective drives should keep the flee success branch.");
+const savedPirateFleeGame = normalizeGameState(JSON.parse(JSON.stringify(pirateFleeGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(savedPirateFleeGame.activeEncounter?.pendingStep?.type === "driveComparisonPreview", "Drive comparison previews should survive save/load normalization.");
+pirateFleeGame = submitEncounterPending(pirateFleeGame);
 const pirateFleeText = pirateFleeGame.activeEncounter?.resultText?.de ?? "";
 assert(pirateFleeText === "Deine Flucht gelingt.", "Successful flee checks should show only the flee success text.");
 assert(!pirateFleeText.includes("Sieg.") && !pirateFleeText.includes("Niederlage."), "Successful flee checks should not show combat branches.");

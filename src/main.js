@@ -183,6 +183,7 @@ let focusedMainMenuButtonIndex = 0;
 const initialLanguage = loadLanguage();
 const startupAutosaveReset = consumeAutosaveResetUrlParam();
 const initialGame = loadInitialGameState(initialLanguage);
+const DRIVE_COMPARISON_PREVIEW_MS = 2000;
 
 const state = {
   language: initialGame.language,
@@ -207,7 +208,9 @@ const state = {
   controllerLobby: initialGame.fromAutosave && initialGame.controllerMode && initialGame.gameState
     ? createControllerReconnectLobby(initialGame.gameState)
     : null,
-  loadingProgress: 0
+  loadingProgress: 0,
+  driveComparisonPreviewKey: null,
+  driveComparisonPreviewStartedAt: 0
 };
 
 const remoteHost = {
@@ -2401,6 +2404,8 @@ function getEncounterActionPlayer() {
     pendingOwnerPlayerId = encounter.pendingStep.currentTargetPlayerId;
   } else if (encounter?.pendingStep?.type === "dualMothershipRoll") {
     pendingOwnerPlayerId = getDualMothershipRollActionPlayerId(encounter.pendingStep) ?? pendingOwnerPlayerId;
+  } else if (encounter?.pendingStep?.type === "driveComparisonPreview") {
+    pendingOwnerPlayerId = encounter.pendingStep.activePlayerId ?? pendingOwnerPlayerId;
   }
 
   return state.gameState?.players?.find((player) => player.id === pendingOwnerPlayerId)
@@ -2427,6 +2432,14 @@ function hasDualMothershipRollForPlayer(pendingStep, playerId) {
   return pendingStep.activePlayerId === playerId
     ? Boolean(pendingStep.activeRoll)
     : Boolean(pendingStep.targetRoll);
+}
+
+function isDriveComparisonParticipant(pendingStep, playerId) {
+  return Boolean(
+    pendingStep?.type === "driveComparisonPreview" &&
+    playerId &&
+    (pendingStep.activePlayerId === playerId || pendingStep.targetPlayerId === playerId)
+  );
 }
 
 function renderPlayerHudTabs() {
@@ -3155,6 +3168,11 @@ function renderEncounterActions(player) {
     return wrapper;
   }
 
+  if (encounter.pendingStep?.type === "driveComparisonPreview") {
+    wrapper.append(renderEncounterDriveComparisonPreview(encounter.pendingStep, player));
+    return wrapper;
+  }
+
   const pendingOwnerPlayerId = encounter.pendingStep?.type === "opponentResourceGiftSelection"
     ? encounter.pendingStep.currentGiverPlayerId
     : encounter.pendingStep?.type === "globalUpgradeLossSelection"
@@ -3250,6 +3268,88 @@ function renderEncounterDualMothershipRoll(pendingStep, player) {
     "small-button"
   ));
   return wrapper;
+}
+
+function renderEncounterDriveComparisonPreview(pendingStep, player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-drive-preview";
+  const previewReady = isDriveComparisonPreviewReady(pendingStep);
+  const title = document.createElement("strong");
+  title.textContent = t("encounterDriveComparisonTitle");
+  wrapper.append(title);
+
+  const activePlayer = state.gameState?.players?.find((candidate) => candidate.id === pendingStep.activePlayerId);
+  const targetPlayer = state.gameState?.players?.find((candidate) => candidate.id === pendingStep.targetPlayerId);
+  const grid = document.createElement("div");
+  grid.className = "encounter-drive-preview-grid";
+  grid.append(
+    renderEncounterDriveComparisonPlayer(activePlayer, pendingStep.active),
+    renderEncounterDriveComparisonPlayer(targetPlayer, pendingStep.target)
+  );
+  wrapper.append(grid);
+
+  const hint = document.createElement("p");
+  hint.className = "encounter-step-result";
+  hint.textContent = previewReady
+    ? getLocalizedEncounterText(state.gameState?.activeEncounter?.resultText) || ""
+    : t("encounterDriveComparisonActiveWait");
+  wrapper.append(hint);
+
+  if (player?.id === pendingStep.activePlayerId) {
+    const continueButton = createButton(t("continue"), () => submitEncounterPendingAction(), "small-button");
+    continueButton.disabled = !previewReady;
+    wrapper.append(continueButton);
+  } else {
+    const waiting = document.createElement("p");
+    waiting.textContent = isDriveComparisonParticipant(pendingStep, player?.id)
+      ? t("encounterDriveComparisonPassiveWait").replace("{player}", pendingStep.active?.playerName ?? "")
+      : t("notYourTurn");
+    wrapper.append(waiting);
+  }
+  return wrapper;
+}
+
+function isDriveComparisonPreviewReady(pendingStep) {
+  const key = [
+    pendingStep?.activePlayerId ?? "",
+    pendingStep?.targetPlayerId ?? "",
+    pendingStep?.outcome ?? "",
+    pendingStep?.active?.effectiveDrives ?? 0,
+    pendingStep?.target?.effectiveDrives ?? 0
+  ].join(":");
+  const now = Date.now();
+  if (state.driveComparisonPreviewKey !== key) {
+    state.driveComparisonPreviewKey = key;
+    state.driveComparisonPreviewStartedAt = now;
+    window.setTimeout(render, DRIVE_COMPARISON_PREVIEW_MS);
+    return false;
+  }
+  return now - state.driveComparisonPreviewStartedAt >= DRIVE_COMPARISON_PREVIEW_MS;
+}
+
+function renderEncounterDriveComparisonPlayer(player, entry) {
+  const card = document.createElement("div");
+  card.className = "encounter-drive-preview-card";
+  const name = document.createElement("strong");
+  name.textContent = entry?.playerName || player?.name || "";
+  card.append(name);
+  if (player) card.append(renderMothershipUpgradeVisual(player));
+
+  const value = document.createElement("p");
+  value.className = "encounter-drive-preview-value";
+  value.textContent = formatDriveComparisonValue(entry);
+  card.append(value);
+  return card;
+}
+
+function formatDriveComparisonValue(entry) {
+  const physicalDrives = entry?.physicalDrives ?? 0;
+  const friendshipBonus = entry?.friendshipBonus ?? 0;
+  const effectiveDrives = entry?.effectiveDrives ?? physicalDrives + friendshipBonus;
+  if (friendshipBonus > 0) {
+    return `Antriebe: ${physicalDrives} + ${friendshipBonus} Bonus = ${effectiveDrives}`;
+  }
+  return `Antriebe: ${physicalDrives}`;
 }
 
 function renderEncounterChoiceSelection(pendingStep) {
@@ -7518,6 +7618,17 @@ function getRemoteEncounterPendingStep(pendingStep) {
       targetPlayerId: pendingStep.targetPlayerId,
       activeRolled: Boolean(pendingStep.activeRoll),
       targetRolled: Boolean(pendingStep.targetRoll)
+    };
+  }
+  if (pendingStep.type === "driveComparisonPreview") {
+    return {
+      type: "driveComparisonPreview",
+      activePlayerId: pendingStep.activePlayerId,
+      targetPlayerId: pendingStep.targetPlayerId,
+      active: pendingStep.active,
+      target: pendingStep.target,
+      outcome: pendingStep.outcome,
+      success: Boolean(pendingStep.success)
     };
   }
   if (pendingStep.type === "choiceSelection") {

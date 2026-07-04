@@ -2671,6 +2671,22 @@ function normalizeEncounterRollResult(roll) {
   };
 }
 
+function normalizeDriveComparisonPlayer(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const physicalDrives = Number.isInteger(entry.physicalDrives) ? Math.max(0, entry.physicalDrives) : 0;
+  const friendshipBonus = Number.isInteger(entry.friendshipBonus) ? Math.max(0, entry.friendshipBonus) : 0;
+  const effectiveDrives = Number.isInteger(entry.effectiveDrives)
+    ? Math.max(0, entry.effectiveDrives)
+    : physicalDrives + friendshipBonus;
+  return {
+    playerId: typeof entry.playerId === "string" ? entry.playerId : null,
+    playerName: typeof entry.playerName === "string" ? entry.playerName : "",
+    physicalDrives,
+    friendshipBonus,
+    effectiveDrives
+  };
+}
+
 function normalizeLocalizedText(text) {
   if (!text || typeof text !== "object") return null;
   return {
@@ -2690,6 +2706,21 @@ function normalizePendingEncounterStep(pendingStep) {
       targetPlayerId: typeof pendingStep.targetPlayerId === "string" ? pendingStep.targetPlayerId : null,
       activeRoll: normalizeEncounterRollResult(pendingStep.activeRoll),
       targetRoll: normalizeEncounterRollResult(pendingStep.targetRoll),
+      effect: pendingStep.effect && typeof pendingStep.effect === "object" ? pendingStep.effect : null,
+      contextPayload: normalizeEncounterPendingContext(pendingStep.contextPayload),
+      remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
+    };
+  }
+
+  if (pendingStep.type === "driveComparisonPreview") {
+    return {
+      type: "driveComparisonPreview",
+      activePlayerId: typeof pendingStep.activePlayerId === "string" ? pendingStep.activePlayerId : null,
+      targetPlayerId: typeof pendingStep.targetPlayerId === "string" ? pendingStep.targetPlayerId : null,
+      active: normalizeDriveComparisonPlayer(pendingStep.active),
+      target: normalizeDriveComparisonPlayer(pendingStep.target),
+      outcome: ["more", "equal", "less"].includes(pendingStep.outcome) ? pendingStep.outcome : "less",
+      success: Boolean(pendingStep.success),
       effect: pendingStep.effect && typeof pendingStep.effect === "object" ? pendingStep.effect : null,
       contextPayload: normalizeEncounterPendingContext(pendingStep.contextPayload),
       remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
@@ -3420,49 +3451,10 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         return pendingStep ? { state, pendingStep } : null;
       }
 
-      const comparison = resolveEncounterComparison(gameState, activePlayer, effect, payload);
-      if (!comparison) return null;
-      const comparisonLog = createEncounterLog("logEncounterComparison", {
-        player: activePlayer.name,
-        target: comparison.targetName,
-        metric: comparison.metric === "speed" ? "speed" : "drive",
-        own: comparison.ownValue,
-        other: comparison.otherValue,
-        outcome: comparison.success ? "success" : "failure"
-      });
-      const followUp = runEncounterEffectSequence(
-        gameState,
-        state,
-        activePlayerId,
-        comparison.success ? (effect.onSuccess ?? []) : (effect.onFailure ?? []),
-        card,
-        payload,
-        {
-          resultText: comparison.success
-            ? effect.successText
-            : effect.failureText
-        }
-      );
-      if (!followUp) {
-        return {
-          state,
-          logEntries: [comparisonLog]
-        };
-      }
-      const comparisonResultText = createEncounterComparisonResultText(comparison);
-      return {
-        state: {
-          players: followUp.players,
-          board: followUp.board,
-          pendingGiftedTradeShips: followUp.pendingGiftedTradeShips,
-          remainingMovementByShipId: followUp.remainingMovementByShipId
-        },
-        logEntries: [comparisonLog, ...(followUp.logEntries ?? [])],
-        combat: followUp.combat ?? null,
-        resultText: followUp.resultText ?? comparisonResultText,
-        pendingStep: followUp.pendingStep ?? null,
-        nextEncounter: followUp.nextEncounter ?? null
-      };
+      const pendingStep = createDriveComparisonPreviewStep(gameState, state, activePlayer, effect, payload);
+      return pendingStep
+        ? { state, pendingStep, resultText: createDriveComparisonPreviewText(pendingStep) }
+        : null;
     }
     case "combat": {
       if (!Number.isInteger(effect.enemyStrength)) {
@@ -3682,6 +3674,10 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
 
   if (pendingStep.type === "dualMothershipRoll") {
     return resolveDualMothershipRollPending(gameState, state, activePlayer, card, pendingStep, payload);
+  }
+
+  if (pendingStep.type === "driveComparisonPreview") {
+    return resolveDriveComparisonPreviewPending(gameState, state, activePlayer, card, pendingStep, payload);
   }
 
   if (pendingStep.type === "choiceSelection") {
@@ -4143,6 +4139,52 @@ function createDualMothershipRollStep(gameState, state, activePlayer, effect, pa
   };
 }
 
+function createDriveComparisonPreviewStep(gameState, state, activePlayer, effect, payload = {}) {
+  const scoringState = {
+    ...gameState,
+    players: state.players,
+    board: state.board
+  };
+  const targetPlayer = getNeighborPlayer(scoringState, activePlayer.id, effect.neighborOffset ?? 1);
+  if (!targetPlayer) return null;
+
+  const active = createDriveComparisonPlayerEntry(scoringState, activePlayer);
+  const target = createDriveComparisonPlayerEntry(scoringState, targetPlayer);
+  const outcome = active.effectiveDrives > target.effectiveDrives
+    ? "more"
+    : active.effectiveDrives === target.effectiveDrives
+      ? "equal"
+      : "less";
+
+  return {
+    type: "driveComparisonPreview",
+    activePlayerId: activePlayer.id,
+    targetPlayerId: targetPlayer.id,
+    active,
+    target,
+    outcome,
+    success: outcome !== "less",
+    effect,
+    contextPayload: normalizeEncounterPendingContext({
+      lastSelectedResources: payload.lastSelectedResources,
+      lastSelectionMode: payload.lastSelectionMode
+    }),
+    remainingEffects: []
+  };
+}
+
+function createDriveComparisonPlayerEntry(gameState, player) {
+  const physicalDrives = getRealUpgradeValue(player, "drive");
+  const friendshipBonus = getFriendshipUpgradeBonus(gameState, player.id, "drive");
+  return {
+    playerId: player.id,
+    playerName: player.name,
+    physicalDrives,
+    friendshipBonus,
+    effectiveDrives: physicalDrives + friendshipBonus
+  };
+}
+
 function resolveDualMothershipRollPending(gameState, state, activePlayer, card, pendingStep, payload = {}) {
   const activeRollPlayer = state.players.find((player) => player.id === pendingStep.activePlayerId);
   const targetRollPlayer = state.players.find((player) => player.id === pendingStep.targetPlayerId);
@@ -4181,6 +4223,61 @@ function resolveDualMothershipRollPending(gameState, state, activePlayer, card, 
     : resolveCompletedDualCombatRoll(gameState, state, activeRollPlayer, targetRollPlayer, card, nextPendingStep, payload);
 }
 
+function resolveDriveComparisonPreviewPending(gameState, state, activePlayer, card, pendingStep, payload = {}) {
+  if (!pendingStep.effect || !pendingStep.active || !pendingStep.target) return null;
+  const effect = pendingStep.effect;
+  const comparison = {
+    metric: "drive",
+    ownValue: pendingStep.active.effectiveDrives,
+    otherValue: pendingStep.target.effectiveDrives,
+    success: Boolean(pendingStep.success),
+    targetPlayerId: pendingStep.targetPlayerId,
+    targetName: pendingStep.target.playerName
+  };
+  const comparisonLog = createEncounterLog("logEncounterComparison", {
+    player: pendingStep.active.playerName,
+    target: pendingStep.target.playerName,
+    metric: "drive",
+    own: comparison.ownValue,
+    other: comparison.otherValue,
+    outcome: comparison.success ? "success" : "failure"
+  });
+  const followUp = runEncounterEffectSequence(
+    gameState,
+    state,
+    activePlayer.id,
+    [
+      ...(comparison.success ? (effect.onSuccess ?? []) : (effect.onFailure ?? [])),
+      ...(pendingStep.remainingEffects ?? [])
+    ],
+    card,
+    {
+      ...(pendingStep.contextPayload ?? {}),
+      ...payload
+    },
+    {
+      resultText: comparison.success ? effect.successText : effect.failureText
+    }
+  );
+  if (!followUp) {
+    return {
+      players: state.players,
+      board: state.board,
+      pendingGiftedTradeShips: state.pendingGiftedTradeShips,
+      remainingMovementByShipId: state.remainingMovementByShipId,
+      logEntries: [comparisonLog],
+      resultText: createEncounterComparisonResultText(comparison),
+      status: "resolved",
+      pendingStep: null
+    };
+  }
+  return {
+    ...followUp,
+    logEntries: [comparisonLog, ...(followUp.logEntries ?? [])],
+    resultText: followUp.resultText ?? createEncounterComparisonResultText(comparison)
+  };
+}
+
 function resolveCompletedDualSpeedRoll(gameState, state, activePlayer, targetPlayer, card, pendingStep, payload = {}) {
   const effect = pendingStep.effect;
   const scoringState = {
@@ -4214,7 +4311,10 @@ function resolveCompletedDualSpeedRoll(gameState, state, activePlayer, targetPla
     gameState,
     state,
     activePlayer.id,
-    comparison.success ? (effect.onSuccess ?? []) : (effect.onFailure ?? []),
+    [
+      ...(comparison.success ? (effect.onSuccess ?? []) : (effect.onFailure ?? [])),
+      ...(pendingStep.remainingEffects ?? [])
+    ],
     card,
     {
       ...(pendingStep.contextPayload ?? {}),
@@ -4278,7 +4378,10 @@ function resolveCompletedDualCombatRoll(gameState, state, activePlayer, targetPl
     gameState,
     state,
     activePlayer.id,
-    combat.outcome === "win" ? (effect.onWin ?? []) : (effect.onLose ?? []),
+    [
+      ...(combat.outcome === "win" ? (effect.onWin ?? []) : (effect.onLose ?? [])),
+      ...(pendingStep.remainingEffects ?? [])
+    ],
     card,
     {
       ...(pendingStep.contextPayload ?? {}),
@@ -4711,6 +4814,27 @@ function createEncounterComparisonResultText(comparison) {
   return {
     de: `Prüfung: ${comparison.metric === "speed" ? "Geschwindigkeit" : "Antrieb"} gegen ${comparison.targetName}: ${comparison.ownValue} zu ${comparison.otherValue} (${outcomeDe}).`,
     en: `Check: ${comparison.metric === "speed" ? "speed" : "drive"} against ${comparison.targetName}: ${comparison.ownValue} to ${comparison.otherValue} (${outcomeEn}).`
+  };
+}
+
+function createDriveComparisonPreviewText(pendingStep) {
+  const activeName = pendingStep.active?.playerName ?? "";
+  const targetName = pendingStep.target?.playerName ?? "";
+  if (pendingStep.outcome === "more") {
+    return {
+      de: `${activeName} hat mehr Antriebe als ${targetName}.`,
+      en: `${activeName} has more drives than ${targetName}.`
+    };
+  }
+  if (pendingStep.outcome === "equal") {
+    return {
+      de: `${activeName} hat gleich viele Antriebe wie ${targetName}.`,
+      en: `${activeName} has the same number of drives as ${targetName}.`
+    };
+  }
+  return {
+    de: `${activeName} hat weniger Antriebe als ${targetName}.`,
+    en: `${activeName} has fewer drives than ${targetName}.`
   };
 }
 

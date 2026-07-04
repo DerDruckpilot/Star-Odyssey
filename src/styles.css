@@ -936,6 +936,37 @@ h1 {
   align-items: center;
 }
 
+.encounter-drive-preview {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.encounter-drive-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.encounter-drive-preview-card {
+  display: grid;
+  gap: 0.45rem;
+  justify-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.54);
+  padding: 0.65rem;
+}
+
+.encounter-drive-preview-card .mothership-visual {
+  width: min(100%, 13rem);
+}
+
+.encounter-drive-preview-value {
+  margin: 0;
+  color: #dbeafe;
+  font-weight: 700;
+  text-align: center;
+}
+
 .flight-controls {
   display: grid;
   gap: 0.3rem;

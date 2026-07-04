@@ -840,9 +840,11 @@ function renderEncounterPanel() {
   const pendingStep = gameState.encounter.pendingStep;
   const isDualRollStep = pendingStep?.type === "dualMothershipRoll";
   const isDualRollParticipant = isDualRollStep && isControllerDualMothershipRollParticipant(pendingStep);
+  const isDriveComparisonStep = pendingStep?.type === "driveComparisonPreview";
+  const isDriveComparisonParticipant = isDriveComparisonStep && isControllerDriveComparisonParticipant(pendingStep);
   panel.append(title);
 
-  if (!isOwner && !isDualRollParticipant) {
+  if (!isOwner && !isDualRollParticipant && !isDriveComparisonParticipant) {
     const activeName = gameState.activePlayerName || "Ein anderer Spieler";
     const neutral = document.createElement("p");
     neutral.className = "encounter-prompt";
@@ -872,6 +874,8 @@ function renderEncounterPanel() {
     if (finishAction) panel.append(renderActionGrid([finishAction]));
   } else if (isDualRollParticipant) {
     panel.append(renderControllerEncounterDualMothershipRoll(pendingStep));
+  } else if (isDriveComparisonParticipant) {
+    panel.append(renderControllerEncounterDriveComparisonPreview(pendingStep));
   } else if (isOwner && gameState.encounter.pendingStep?.type === "choiceSelection") {
     panel.append(renderActionGrid((gameState.encounter.pendingStep.choices ?? []).map((choice) => ({
       id: "encounter.submitPending",
@@ -930,11 +934,44 @@ function isControllerDualMothershipRollParticipant(pendingStep) {
   );
 }
 
+function isControllerDriveComparisonParticipant(pendingStep) {
+  return Boolean(
+    selectedPlayerId &&
+    pendingStep?.type === "driveComparisonPreview" &&
+    (pendingStep.activePlayerId === selectedPlayerId || pendingStep.targetPlayerId === selectedPlayerId)
+  );
+}
+
 function hasControllerDualMothershipRoll(pendingStep) {
   if (!isControllerDualMothershipRollParticipant(pendingStep)) return false;
   return pendingStep.activePlayerId === selectedPlayerId
     ? Boolean(pendingStep.activeRolled)
     : Boolean(pendingStep.targetRolled);
+}
+
+function renderControllerEncounterDriveComparisonPreview(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  const message = document.createElement("p");
+  message.textContent = pendingStep.activePlayerId === selectedPlayerId
+    ? "Antriebsvergleich wird angezeigt."
+    : `${pendingStep.active?.playerName ?? "Der aktive Spieler"} vergleicht die Antriebe mit deinem Mutterschiff.`;
+  wrapper.append(message);
+
+  const activeSummary = document.createElement("p");
+  activeSummary.textContent = formatControllerDriveComparisonValue(pendingStep.active);
+  const targetSummary = document.createElement("p");
+  targetSummary.textContent = formatControllerDriveComparisonValue(pendingStep.target);
+  wrapper.append(activeSummary, targetSummary);
+  return wrapper;
+}
+
+function formatControllerDriveComparisonValue(entry) {
+  if (!entry) return "";
+  const bonusText = entry.friendshipBonus > 0
+    ? ` + ${entry.friendshipBonus} Bonus = ${entry.effectiveDrives}`
+    : "";
+  return `${entry.playerName}: Antriebe ${entry.physicalDrives}${bonusText}`;
 }
 
 function renderControllerEncounterDualMothershipRoll(pendingStep) {
@@ -963,6 +1000,7 @@ function renderControllerEncounterDualMothershipRoll(pendingStep) {
 function getEncounterStatusLabel() {
   if (gameState?.encounter?.status === "resolved") return "Begegnung abschließen.";
   if (gameState?.encounter?.pendingStep?.type === "dualMothershipRoll") return "Würfle mit dem Mutterschiff.";
+  if (gameState?.encounter?.pendingStep?.type === "driveComparisonPreview") return "Antriebsvergleich wird angezeigt.";
   if (gameState?.encounter?.pendingStep?.hint) return gameState.encounter.pendingStep.hint;
   if (gameState?.encounter?.pendingType) return "Folge den nächsten Begegnungsschritten.";
   return "Wähle eine Antwort.";
