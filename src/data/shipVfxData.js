@@ -1,4 +1,5 @@
 import { normalizePlayerPieceColor } from "./playerPieceVisuals.js";
+import { battleShipVfxData } from "./battleShipVfxData.js";
 import { tradeShipVfxData } from "./tradeShipVfxData.js";
 
 const engineTemplates = [
@@ -35,6 +36,7 @@ export const shipVfxData = {
   version: 3,
   engineTemplates: mergeEngineTemplates(engineTemplates, tradeShipVfxData.engineTemplates),
   colonyShipVfxAnchors,
+  battleShipVfxAnchors: battleShipVfxData.battleShipVfxAnchors,
   tradeShipVfxAnchors: tradeShipVfxData.tradeShipVfxAnchors,
   shipVfxAnchors: colonyShipVfxAnchors
 };
@@ -49,6 +51,12 @@ export function getTradeShipVfxAnchors(playerColor, shipRef) {
   const color = normalizePlayerPieceColor(playerColor);
   const variant = getShipVariantIndex(shipRef, 3) + 1;
   return shipVfxData.tradeShipVfxAnchors[`${color}-trade-ship-${variant}`] ?? null;
+}
+
+export function getBattleShipVfxAnchors(playerColor, shipRef) {
+  const color = normalizePlayerPieceColor(playerColor);
+  const variant = getShipVariantIndex(shipRef, 3) + 1;
+  return shipVfxData.battleShipVfxAnchors[`${color}-battle-ship-${variant}`] ?? null;
 }
 
 export function getShipEngineTemplate(templateId) {

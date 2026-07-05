@@ -48,6 +48,29 @@ export const tradeShipAssetPaths = {
   ]
 };
 
+export const battleShipAssetPaths = {
+  red: [
+    "./assets/generated/battle-ships/battle-ship-red-variant-01.png",
+    "./assets/generated/battle-ships/battle-ship-red-variant-02.png",
+    "./assets/generated/battle-ships/battle-ship-red-variant-03.png"
+  ],
+  blue: [
+    "./assets/generated/battle-ships/battle-ship-blue-variant-01.png",
+    "./assets/generated/battle-ships/battle-ship-blue-variant-02.png",
+    "./assets/generated/battle-ships/battle-ship-blue-variant-03.png"
+  ],
+  yellow: [
+    "./assets/generated/battle-ships/battle-ship-yellow-variant-01.png",
+    "./assets/generated/battle-ships/battle-ship-yellow-variant-02.png",
+    "./assets/generated/battle-ships/battle-ship-yellow-variant-03.png"
+  ],
+  green: [
+    "./assets/generated/battle-ships/battle-ship-green-variant-01.png",
+    "./assets/generated/battle-ships/battle-ship-green-variant-02.png",
+    "./assets/generated/battle-ships/battle-ship-green-variant-03.png"
+  ]
+};
+
 export const playerColonyAssetPaths = {
   red: "./assets/generated/player-colonies/player-colony-red.png",
   blue: "./assets/generated/player-colonies/player-colony-blue.png",
@@ -67,6 +90,11 @@ export const playerPieceVisualDefaults = {
     width: 58,
     height: 34,
     hitRadius: 22
+  },
+  battleShip: {
+    width: 76,
+    height: 38,
+    hitRadius: 28
   },
   colony: {
     width: 52,
@@ -96,6 +124,11 @@ export function getColonyShipAssetPath(playerColor, shipRef = "") {
 
 export function getTradeShipAssetPath(playerColor, shipRef = "") {
   const assets = tradeShipAssetPaths[normalizePlayerPieceColor(playerColor)] ?? tradeShipAssetPaths.red;
+  return assets[getShipVariantIndex(shipRef, assets.length)] ?? assets[0];
+}
+
+export function getBattleShipAssetPath(playerColor, shipRef = "") {
+  const assets = battleShipAssetPaths[normalizePlayerPieceColor(playerColor)] ?? battleShipAssetPaths.red;
   return assets[getShipVariantIndex(shipRef, assets.length)] ?? assets[0];
 }
 

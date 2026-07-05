@@ -1,10 +1,13 @@
-import { colonyShipAssetPaths, playerPieceColors, tradeShipAssetPaths } from "./data/playerPieceVisuals.js";
+import { battleShipAssetPaths, colonyShipAssetPaths, playerPieceColors, tradeShipAssetPaths } from "./data/playerPieceVisuals.js";
 
 const storageKey = "star-odyssey-ship-vfx-anchors";
 const legacyMisnamedTradeShipStorageKey = "star-odyssey-colony-ship-vfx-anchors";
 const tradeShipStorageKey = "star-odyssey-trade-ship-vfx-anchors";
+const battleShipStorageKey = "star-odyssey-battle-ship-vfx-anchors";
 const tradeShipPreviewScale = 0.43;
 const tradeShipVfxReferenceScale = 1 / tradeShipPreviewScale;
+const battleShipPreviewScale = 0.43;
+const battleShipVfxReferenceScale = 1 / battleShipPreviewScale;
 const canvas = document.querySelector("#ship-vfx-canvas");
 const context = canvas.getContext("2d");
 const engineLayerCanvas = document.createElement("canvas");
@@ -82,6 +85,7 @@ const shipOptions = playerPieceColors.flatMap((color) =>
     id: `${color}-ship-${index + 1}`,
     color,
     variant: index + 1,
+    shipType: "colony",
     assetPath
   }))
 );
@@ -90,6 +94,16 @@ const tradeShipOptions = playerPieceColors.flatMap((color) =>
     id: `${color}-trade-ship-${index + 1}`,
     color,
     variant: index + 1,
+    shipType: "trade",
+    assetPath
+  }))
+);
+const battleShipOptions = playerPieceColors.flatMap((color) =>
+  battleShipAssetPaths[color].map((assetPath, index) => ({
+    id: `${color}-battle-ship-${index + 1}`,
+    color,
+    variant: index + 1,
+    shipType: "battle",
     assetPath
   }))
 );
@@ -97,8 +111,10 @@ const tradeShipOptions = playerPieceColors.flatMap((color) =>
 const imageCache = new Map();
 let debugData = loadDebugData();
 let tradeShipDebugData = loadTradeShipDebugData(debugData.engineTemplates);
+let battleShipDebugData = loadBattleShipDebugData(debugData.engineTemplates);
 let selectedShipId = shipOptions[0].id;
 let selectedTradeShipId = tradeShipOptions[0].id;
+let selectedBattleShipId = battleShipOptions[0].id;
 let selectedAnchor = { type: "coil", index: 0 };
 let selectedTemplateId = debugData.engineTemplates[0]?.id ?? "template-plasma";
 let selectedEmitterIndex = 0;
@@ -126,6 +142,15 @@ function loadTradeShipDebugData(engineTemplates) {
   }
 }
 
+function loadBattleShipDebugData(engineTemplates) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(battleShipStorageKey) ?? "null");
+    return normalizeBattleShipDebugData(parsed, engineTemplates);
+  } catch {
+    return normalizeBattleShipDebugData(null, engineTemplates);
+  }
+}
+
 function normalizeDebugData(value) {
   const anchorsSource = value?.colonyShipVfxAnchors ?? value?.shipVfxAnchors ?? value;
   const engineTemplates = normalizeEngineTemplates(value?.engineTemplates);
@@ -146,6 +171,14 @@ function normalizeTradeShipDebugData(value, engineTemplates = debugData?.engineT
   };
 }
 
+function normalizeBattleShipDebugData(value, engineTemplates = debugData?.engineTemplates ?? []) {
+  const anchorsSource = value?.battleShipVfxAnchors ?? value;
+  return {
+    version: 2,
+    battleShipVfxAnchors: normalizeShipVfxAnchors(anchorsSource, engineTemplates, battleShipOptions)
+  };
+}
+
 function normalizeShipVfxAnchors(value, engineTemplates, options = shipOptions, sourceAliases = []) {
   const anchors = {};
   for (const option of options) {
@@ -158,7 +191,7 @@ function normalizeShipVfxAnchors(value, engineTemplates, options = shipOptions, 
 }
 
 function normalizeShipAnchors(value, option, engineTemplates = debugData?.engineTemplates ?? []) {
-  const defaultAnchors = createDefaultShipAnchors(option.variant, option.color, engineTemplates);
+  const defaultAnchors = createDefaultShipAnchors(option.variant, option.color, engineTemplates, option);
   return {
     color: option.color,
     variant: option.variant,
@@ -170,7 +203,10 @@ function normalizeShipAnchors(value, option, engineTemplates = debugData?.engine
     })),
     engines: Array.isArray(value?.engines) && value.engines.length > 0
       ? value.engines.map((engine, index) => normalizeEngine(engine, index, option.color))
-      : defaultAnchors.engines
+      : defaultAnchors.engines,
+    shots: Array.isArray(value?.shots) && value.shots.length > 0
+      ? value.shots.map((shot, index) => normalizeShot(shot, index, option.color))
+      : defaultAnchors.shots
   };
 }
 
@@ -205,7 +241,10 @@ function createDefaultEngineTemplates() {
   ];
 }
 
-function createDefaultShipAnchors(variant, color, engineTemplates = debugData?.engineTemplates ?? []) {
+function createDefaultShipAnchors(variant, color, engineTemplates = debugData?.engineTemplates ?? [], option = null) {
+  if (option?.shipType === "battle") {
+    return createDefaultBattleShipAnchors(variant, color, engineTemplates);
+  }
   const coilDefaults = {
     1: [{ x: 555, y: 505 }],
     2: [{ x: 505, y: 500 }, { x: 680, y: 500 }],
@@ -213,7 +252,21 @@ function createDefaultShipAnchors(variant, color, engineTemplates = debugData?.e
   };
   return {
     coils: coilDefaults[variant].map((point, index) => ({ id: `coil-${index + 1}`, ...point })),
-    engines: [normalizeEngine({ x: 112, y: 510, direction: 180, templateId: engineTemplates[0]?.id ?? "" }, 0, color)]
+    engines: [normalizeEngine({ x: 112, y: 510, direction: 180, templateId: engineTemplates[0]?.id ?? "" }, 0, color)],
+    shots: []
+  };
+}
+
+function createDefaultBattleShipAnchors(variant, color, engineTemplates = debugData?.engineTemplates ?? []) {
+  const coilDefaults = {
+    1: [{ x: 520, y: 264 }],
+    2: [{ x: 480, y: 264 }, { x: 610, y: 264 }],
+    3: [{ x: 455, y: 264 }, { x: 560, y: 264 }, { x: 665, y: 264 }]
+  };
+  return {
+    coils: coilDefaults[variant].map((point, index) => ({ id: `coil-${index + 1}`, ...point })),
+    engines: [normalizeEngine({ x: 34, y: 264, direction: 180, size: 12, length: 92, templateId: engineTemplates[0]?.id ?? "" }, 0, color)],
+    shots: [normalizeShot({ x: 1174, y: 264, direction: 0, size: 10, length: 96, templateId: engineTemplates[0]?.id ?? "" }, 0, color)]
   };
 }
 
@@ -228,6 +281,20 @@ function normalizeEngine(engine, index, color = getSelectedOption().color) {
     color: normalizeHexColor(engine.color, glowColors[color] ?? glowColors.red),
     layer: normalizeEngineLayer(engine.layer),
     templateId: String(engine.templateId ?? "")
+  };
+}
+
+function normalizeShot(shot, index, color = getSelectedOption().color) {
+  return {
+    id: `shot-${index + 1}`,
+    x: Number(shot.x ?? 1174),
+    y: Number(shot.y ?? 264),
+    direction: Number(shot.direction ?? 0),
+    size: Number(shot.size ?? 10),
+    length: Number(shot.length ?? 96),
+    color: normalizeHexColor(shot.color, glowColors[color] ?? glowColors.red),
+    layer: normalizeEngineLayer(shot.layer ?? "front"),
+    templateId: String(shot.templateId ?? "")
   };
 }
 
@@ -266,7 +333,7 @@ function populateShipSelect() {
     shipSelect.append(element);
   }
   shipSelect.value = getSelectedAssetId();
-  assetPanelTitle.textContent = activeTab === "trade" ? "Handelsschiff VFX Setup" : "Kolonieschiff VFX Setup";
+  assetPanelTitle.textContent = `${getActiveAssetLabel()} VFX Setup`;
 }
 
 function populateTemplateSelects() {
@@ -298,47 +365,69 @@ function getSelectedOption() {
 }
 
 function getSelectedAnchors() {
-  return activeTab === "trade"
-    ? tradeShipDebugData.tradeShipVfxAnchors[selectedTradeShipId]
-    : debugData.shipVfxAnchors[selectedShipId];
+  if (activeTab === "trade") return tradeShipDebugData.tradeShipVfxAnchors[selectedTradeShipId];
+  if (activeTab === "battle") return battleShipDebugData.battleShipVfxAnchors[selectedBattleShipId];
+  return debugData.shipVfxAnchors[selectedShipId];
 }
 
 function getActiveAssetOptions() {
-  return activeTab === "trade" ? tradeShipOptions : shipOptions;
+  if (activeTab === "trade") return tradeShipOptions;
+  if (activeTab === "battle") return battleShipOptions;
+  return shipOptions;
 }
 
 function getActiveAssetLabel() {
-  return activeTab === "trade" ? "Handelsschiff" : "Kolonieschiff";
+  if (activeTab === "trade") return "Handelsschiff";
+  if (activeTab === "battle") return "Schlachtschiff";
+  return "Kolonieschiff";
 }
 
 function getSelectedAssetId() {
-  return activeTab === "trade" ? selectedTradeShipId : selectedShipId;
+  if (activeTab === "trade") return selectedTradeShipId;
+  if (activeTab === "battle") return selectedBattleShipId;
+  return selectedShipId;
 }
 
 function getAssetPreviewScale() {
-  return activeTab === "trade" ? tradeShipPreviewScale : 1;
+  if (activeTab === "trade") return tradeShipPreviewScale;
+  if (activeTab === "battle") return battleShipPreviewScale;
+  return 1;
 }
 
 function getAssetVfxReferenceScale() {
-  return activeTab === "trade" ? tradeShipVfxReferenceScale : 1;
+  if (activeTab === "trade") return tradeShipVfxReferenceScale;
+  if (activeTab === "battle") return battleShipVfxReferenceScale;
+  return 1;
 }
 
 function setSelectedAssetId(value) {
   if (activeTab === "trade") {
     selectedTradeShipId = value;
+  } else if (activeTab === "battle") {
+    selectedBattleShipId = value;
   } else {
     selectedShipId = value;
   }
 }
 
 function getSelectedAnchorList() {
-  return selectedAnchor.type === "engine"
-    ? getSelectedAnchors().engines
-    : getSelectedAnchors().coils;
+  if (selectedAnchor.type === "engine") return getSelectedAnchors().engines;
+  if (selectedAnchor.type === "shot") return getSelectedAnchors().shots ?? [];
+  return getSelectedAnchors().coils;
 }
 
 function getSelectedAnchor() {
   return getSelectedAnchorList()[selectedAnchor.index] ?? null;
+}
+
+function getAnchorKindLabel(type = selectedAnchor.type) {
+  if (type === "engine") return "Triebwerk";
+  if (type === "shot") return "Schussanker";
+  return "Energiespule";
+}
+
+function isEffectAnchorType(type = selectedAnchor.type) {
+  return type === "engine" || type === "shot";
 }
 
 function getTemplateById(templateId) {
@@ -447,6 +536,7 @@ function renderShipTab(width, height) {
   drawEngineEmitters(getShipEngineEmitters("inline"), transform, motionModeSelect.value === "moving", context);
   drawCoilPreview(transform, option);
   drawEngineEmitters(getShipEngineEmitters("front"), transform, motionModeSelect.value === "moving", context);
+  drawShotPreview(transform, option);
   drawAnchorHandles(transform);
 }
 
@@ -702,6 +792,46 @@ function drawAnchorHandles(transform) {
   const anchors = getSelectedAnchors();
   drawHandles(anchors.coils, transform, "coil", "#facc15");
   drawHandles(anchors.engines, transform, "engine", "#38bdf8");
+  drawHandles(anchors.shots ?? [], transform, "shot", "#fb7185");
+}
+
+function drawShotPreview(transform, option) {
+  const shots = getSelectedAnchors().shots ?? [];
+  if (!shots.length) return;
+  const active = motionModeSelect.value === "moving";
+  const vfxScale = finiteNumber(transform.vfxScale, transform.scale);
+  for (const shot of shots) {
+    const point = assetToCanvasPoint(shot, transform);
+    const color = normalizeHexColor(shot.color, glowColors[option.color] ?? glowColors.red);
+    const direction = (finiteNumber(shot.direction, 0) * Math.PI) / 180;
+    const length = finiteNumber(shot.length, 96) * vfxScale * (active ? 0.72 : 0.38);
+    const radius = finiteNumber(shot.size, 10) * vfxScale * (active ? 1.1 : 0.7);
+    const end = {
+      x: point.x + Math.cos(direction) * length,
+      y: point.y + Math.sin(direction) * length
+    };
+    const gradient = context.createLinearGradient(point.x, point.y, end.x, end.y);
+    gradient.addColorStop(0, hexToRgba("#ffffff", active ? 0.95 : 0.36));
+    gradient.addColorStop(0.45, hexToRgba(color, active ? 0.72 : 0.28));
+    gradient.addColorStop(1, hexToRgba(color, 0));
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    context.strokeStyle = gradient;
+    context.lineWidth = Math.max(1.2, radius * 0.34);
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    context.lineTo(end.x, end.y);
+    context.stroke();
+    const glow = context.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius * 2.8);
+    glow.addColorStop(0, "#ffffff");
+    glow.addColorStop(0.34, hexToRgba(color, active ? 0.72 : 0.28));
+    glow.addColorStop(1, hexToRgba(color, 0));
+    context.fillStyle = glow;
+    context.beginPath();
+    context.arc(point.x, point.y, radius * 2.8, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+  }
 }
 
 function drawEmitterHandles(transform) {
@@ -773,7 +903,8 @@ function pickAnchor(clientX, clientY) {
   };
   const candidates = [
     ...getSelectedAnchors().coils.map((anchor, index) => ({ type: "coil", index, point: assetToCanvasPoint(anchor, transform) })),
-    ...getSelectedAnchors().engines.map((anchor, index) => ({ type: "engine", index, point: assetToCanvasPoint(anchor, transform) }))
+    ...getSelectedAnchors().engines.map((anchor, index) => ({ type: "engine", index, point: assetToCanvasPoint(anchor, transform) })),
+    ...(getSelectedAnchors().shots ?? []).map((anchor, index) => ({ type: "shot", index, point: assetToCanvasPoint(anchor, transform) }))
   ];
   return pickClosest(candidates, pointer);
 }
@@ -829,14 +960,14 @@ function moveSelectedEmitter(clientX, clientY) {
 function syncAnchorInputs() {
   populateTemplateSelects();
   const anchor = getSelectedAnchor();
-  const engineSelected = selectedAnchor.type === "engine" && Boolean(anchor);
+  const effectSelected = isEffectAnchorType(selectedAnchor.type) && Boolean(anchor);
   selectedAnchorTitle.textContent = anchor
-    ? `${selectedAnchor.type === "engine" ? "Triebwerk" : "Energiespule"} ${selectedAnchor.index + 1}`
+    ? `${getAnchorKindLabel()} ${selectedAnchor.index + 1}`
     : "Kein Anker ausgewählt";
   anchorInputs.x.value = anchor?.x ?? "";
   anchorInputs.y.value = anchor?.y ?? "";
   anchorInputs.direction.value = anchor?.direction ?? 180;
-  anchorInputs.direction.disabled = !engineSelected;
+  anchorInputs.direction.disabled = !effectSelected;
   const size = anchor?.size ?? 9;
   const length = anchor?.length ?? 58;
   engineInputs.sizeRange.value = size;
@@ -847,8 +978,14 @@ function syncAnchorInputs() {
   engineInputs.layer.value = normalizeEngineLayer(anchor?.layer);
   engineInputs.templateId.value = anchor?.templateId ?? "";
   for (const input of Object.values(engineInputs)) {
-    input.disabled = !engineSelected;
+    input.disabled = !effectSelected;
   }
+  document.querySelector("#add-engine-anchor").textContent = selectedAnchor.type === "shot"
+    ? "Schussanker hinzufügen"
+    : "Triebwerk hinzufügen";
+  document.querySelector("#remove-engine-anchor").textContent = selectedAnchor.type === "shot"
+    ? "Schussanker entfernen"
+    : "Triebwerk entfernen";
 }
 
 function syncTemplateInputs() {
@@ -895,7 +1032,7 @@ function updateAnchorFromInputs() {
   if (!anchor) return;
   anchor.x = Number(anchorInputs.x.value);
   anchor.y = Number(anchorInputs.y.value);
-  if (selectedAnchor.type === "engine") anchor.direction = Number(anchorInputs.direction.value);
+  if (isEffectAnchorType(selectedAnchor.type)) anchor.direction = Number(anchorInputs.direction.value);
   saveDebugData();
   updateExport();
   render();
@@ -903,7 +1040,7 @@ function updateAnchorFromInputs() {
 
 function updateEngineFromInputs(source) {
   const anchor = getSelectedAnchor();
-  if (!anchor || selectedAnchor.type !== "engine") return;
+  if (!anchor || !isEffectAnchorType(selectedAnchor.type)) return;
   if (source === engineInputs.sizeRange) engineInputs.sizeValue.value = engineInputs.sizeRange.value;
   if (source === engineInputs.sizeValue) engineInputs.sizeRange.value = engineInputs.sizeValue.value;
   if (source === engineInputs.lengthRange) engineInputs.lengthValue.value = engineInputs.lengthRange.value;
@@ -966,20 +1103,37 @@ function updateEmitterFromInputs(source) {
 }
 
 function addEngineAnchor() {
-  const engines = getSelectedAnchors().engines;
-  const last = engines.at(-1) ?? { x: 112, y: 510, direction: 180 };
-  engines.push(normalizeEngine({ ...last, y: last.y + 28 }, engines.length, getSelectedOption().color));
-  setSelectedAnchor("engine", engines.length - 1);
+  const type = selectedAnchor.type === "shot" || editModeSelect.value === "shot" ? "shot" : "engine";
+  const option = getSelectedOption();
+  if (type === "shot") {
+    const shots = getSelectedAnchors().shots ?? [];
+    const last = shots.at(-1) ?? { x: 1174, y: 264, direction: 0, size: 10, length: 96 };
+    shots.push(normalizeShot({ ...last, y: last.y + 22 }, shots.length, option.color));
+    getSelectedAnchors().shots = shots;
+    setSelectedAnchor("shot", shots.length - 1);
+  } else {
+    const engines = getSelectedAnchors().engines;
+    const last = engines.at(-1) ?? { x: 112, y: 510, direction: 180 };
+    engines.push(normalizeEngine({ ...last, y: last.y + 28 }, engines.length, option.color));
+    setSelectedAnchor("engine", engines.length - 1);
+  }
   saveDebugData();
   updateExport();
 }
 
 function removeEngineAnchor() {
-  const engines = getSelectedAnchors().engines;
-  if (selectedAnchor.type !== "engine" || engines.length <= 1) return;
-  engines.splice(selectedAnchor.index, 1);
-  getSelectedAnchors().engines = engines.map((engine, index) => normalizeEngine(engine, index, getSelectedOption().color));
-  setSelectedAnchor("engine", Math.max(0, selectedAnchor.index - 1));
+  if (!isEffectAnchorType(selectedAnchor.type)) return;
+  const option = getSelectedOption();
+  const anchors = getSelectedAnchors();
+  const list = getSelectedAnchorList();
+  if (list.length <= 1) return;
+  list.splice(selectedAnchor.index, 1);
+  if (selectedAnchor.type === "shot") {
+    anchors.shots = list.map((shot, index) => normalizeShot(shot, index, option.color));
+  } else {
+    anchors.engines = list.map((engine, index) => normalizeEngine(engine, index, option.color));
+  }
+  setSelectedAnchor(selectedAnchor.type, Math.max(0, selectedAnchor.index - 1));
   saveDebugData();
   updateExport();
 }
@@ -1004,16 +1158,9 @@ function deleteTemplate() {
   if (debugData.engineTemplates.length <= 1) return;
   const deleteId = selectedTemplateId;
   debugData.engineTemplates = debugData.engineTemplates.filter((template) => template.id !== deleteId);
-  for (const anchors of Object.values(debugData.shipVfxAnchors)) {
-    for (const engine of anchors.engines) {
-      if (engine.templateId === deleteId) engine.templateId = "";
-    }
-  }
-  for (const anchors of Object.values(tradeShipDebugData.tradeShipVfxAnchors)) {
-    for (const engine of anchors.engines) {
-      if (engine.templateId === deleteId) engine.templateId = "";
-    }
-  }
+  clearDeletedTemplateReferences(debugData.shipVfxAnchors, deleteId);
+  clearDeletedTemplateReferences(tradeShipDebugData.tradeShipVfxAnchors, deleteId);
+  clearDeletedTemplateReferences(battleShipDebugData.battleShipVfxAnchors, deleteId);
   selectedTemplateId = debugData.engineTemplates[0].id;
   selectedEmitterIndex = 0;
   syncTemplateInputs();
@@ -1021,6 +1168,17 @@ function deleteTemplate() {
   saveDebugData();
   updateExport();
   render();
+}
+
+function clearDeletedTemplateReferences(anchorsById, deleteId) {
+  for (const anchors of Object.values(anchorsById)) {
+    for (const engine of anchors.engines ?? []) {
+      if (engine.templateId === deleteId) engine.templateId = "";
+    }
+    for (const shot of anchors.shots ?? []) {
+      if (shot.templateId === deleteId) shot.templateId = "";
+    }
+  }
 }
 
 function addEmitter() {
@@ -1083,6 +1241,8 @@ function resetSelectedShipAnchors() {
 function layoutCurrentShip() {
   if (activeTab === "trade") {
     tradeShipDebugData.tradeShipVfxAnchors[selectedTradeShipId] = normalizeShipAnchors(null, getSelectedOption(), debugData.engineTemplates);
+  } else if (activeTab === "battle") {
+    battleShipDebugData.battleShipVfxAnchors[selectedBattleShipId] = normalizeShipAnchors(null, getSelectedOption(), debugData.engineTemplates);
   } else {
     debugData.shipVfxAnchors[selectedShipId] = normalizeShipAnchors(null, getSelectedOption(), debugData.engineTemplates);
   }
@@ -1092,8 +1252,10 @@ function resetAllStorage() {
   localStorage.removeItem(storageKey);
   localStorage.removeItem(legacyMisnamedTradeShipStorageKey);
   localStorage.removeItem(tradeShipStorageKey);
+  localStorage.removeItem(battleShipStorageKey);
   debugData = normalizeDebugData(null);
   tradeShipDebugData = normalizeTradeShipDebugData(null, debugData.engineTemplates);
+  battleShipDebugData = normalizeBattleShipDebugData(null, debugData.engineTemplates);
   selectedTemplateId = debugData.engineTemplates[0].id;
   selectedEmitterIndex = 0;
   setSelectedAnchor(editModeSelect.value, 0);
@@ -1106,6 +1268,7 @@ function resetAllStorage() {
 function saveDebugData() {
   localStorage.setItem(storageKey, JSON.stringify(createExportData()));
   localStorage.setItem(tradeShipStorageKey, JSON.stringify(createTradeShipExportData()));
+  localStorage.setItem(battleShipStorageKey, JSON.stringify(createBattleShipExportData()));
 }
 
 function createExportData() {
@@ -1154,6 +1317,17 @@ function serializeAnchorGroup(options, anchorsById) {
         color,
         layer,
         templateId
+      })),
+      shots: (anchors.shots ?? []).map(({ id, x, y, direction, size, length, color, layer, templateId }) => ({
+        id,
+        x,
+        y,
+        direction,
+        size,
+        length,
+        color,
+        layer,
+        templateId
       }))
     };
   }
@@ -1176,18 +1350,29 @@ function createTradeShipExportData() {
   };
 }
 
+function createBattleShipExportData() {
+  return {
+    version: 2,
+    engineTemplates: serializeEngineTemplates(),
+    battleShipVfxAnchors: serializeAnchorGroup(battleShipOptions, battleShipDebugData.battleShipVfxAnchors)
+  };
+}
+
 function createCombinedExportData() {
   return {
     version: 2,
     engineTemplates: serializeEngineTemplates(),
     colonyShipVfxAnchors: createColonyShipExportData().colonyShipVfxAnchors,
-    tradeShipVfxAnchors: createTradeShipExportData().tradeShipVfxAnchors
+    tradeShipVfxAnchors: createTradeShipExportData().tradeShipVfxAnchors,
+    battleShipVfxAnchors: createBattleShipExportData().battleShipVfxAnchors
   };
 }
 
 function updateExport() {
   if (activeTab === "trade") {
     exportOutput.value = `export const TRADE_SHIP_VFX_DATA = ${JSON.stringify(createTradeShipExportData(), null, 2)};\n`;
+  } else if (activeTab === "battle") {
+    exportOutput.value = `export const BATTLE_SHIP_VFX_DATA = ${JSON.stringify(createBattleShipExportData(), null, 2)};\n`;
   } else if (activeTab === "template") {
     exportOutput.value = `export const ALL_SHIP_VFX_DATA = ${JSON.stringify(createCombinedExportData(), null, 2)};\n`;
   } else {
@@ -1229,6 +1414,16 @@ function downloadTradeShipExport() {
   URL.revokeObjectURL(url);
 }
 
+function downloadBattleShipExport() {
+  const blob = new Blob([JSON.stringify(createBattleShipExportData(), null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "battle-ship-vfx-data.json";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function importExport(file) {
   if (!file) return;
   const reader = new FileReader();
@@ -1248,6 +1443,11 @@ function importExport(file) {
       }
       if (parsed?.tradeShipVfxAnchors || hasMisnamedTradeAnchors) {
         tradeShipDebugData = normalizeTradeShipDebugData(parsed, debugData.engineTemplates);
+      }
+      if (parsed?.battleShipVfxAnchors) {
+        battleShipDebugData = normalizeBattleShipDebugData(parsed, debugData.engineTemplates);
+      } else if (parsed?.engineTemplates) {
+        battleShipDebugData = normalizeBattleShipDebugData(battleShipDebugData, debugData.engineTemplates);
       }
       selectedTemplateId = debugData.engineTemplates[0]?.id ?? "";
       selectedEmitterIndex = 0;
@@ -1269,7 +1469,7 @@ function hasMisnamedTradeShipAnchors(value) {
 }
 
 function preloadImages() {
-  return Promise.all([...shipOptions, ...tradeShipOptions].map((option) => new Promise((resolve) => {
+  return Promise.all([...shipOptions, ...tradeShipOptions, ...battleShipOptions].map((option) => new Promise((resolve) => {
     const image = getShipImage(option);
     if (image.complete && image.naturalWidth > 0) {
       resolve({ id: option.id, loaded: true });
@@ -1300,7 +1500,7 @@ function setActiveTab(tab) {
     button.classList.toggle("is-active", selected);
     button.setAttribute("aria-selected", String(selected));
   }
-  const panelKey = tab === "trade" ? "ship" : tab;
+  const panelKey = tab === "trade" || tab === "battle" ? "ship" : tab;
   for (const panel of panelTabs) {
     panel.classList.toggle("is-active", panel.dataset.panel === panelKey);
   }
@@ -1417,6 +1617,7 @@ document.querySelector("#export-all-vfx").addEventListener("click", updateCombin
 document.querySelector("#download-all-vfx").addEventListener("click", downloadExport);
 document.querySelector("#download-colony-ship-vfx").addEventListener("click", downloadColonyShipExport);
 document.querySelector("#download-trade-ship-vfx").addEventListener("click", downloadTradeShipExport);
+document.querySelector("#download-battle-ship-vfx").addEventListener("click", downloadBattleShipExport);
 document.querySelector("#reset-vfx-storage").addEventListener("click", resetAllStorage);
 importInput.addEventListener("change", (event) => importExport(event.target.files?.[0]));
 

@@ -34,6 +34,7 @@
         <div class="debug-tabs" role="tablist" aria-label="Schiff VFX Bereiche">
           <button class="debug-tab is-active" id="colony-ship-vfx-tab" type="button" data-tab="ship" role="tab" aria-selected="true">Kolonieschiffe</button>
           <button class="debug-tab" id="trade-ship-vfx-tab" type="button" data-tab="trade" role="tab" aria-selected="false">Handelsschiffe</button>
+          <button class="debug-tab" id="battle-ship-vfx-tab" type="button" data-tab="battle" role="tab" aria-selected="false">Schlachtschiffe</button>
           <button class="debug-tab" id="engine-template-tab" type="button" data-tab="template" role="tab" aria-selected="false">Triebwerks-Template</button>
         </div>
         <canvas id="ship-vfx-canvas" width="960" height="620" aria-label="Schiff VFX Canvas"></canvas>
@@ -63,6 +64,7 @@
             <select id="edit-mode">
               <option value="coil">Energiespulen</option>
               <option value="engine">Triebwerke</option>
+              <option value="shot">Schuss / Mündung</option>
             </select>
           </label>
           <label>
@@ -215,6 +217,7 @@
           <button id="download-all-vfx" type="button">Alle VFX-Daten</button>
           <button id="download-colony-ship-vfx" type="button">colony-ship-vfx-data.json</button>
           <button id="download-trade-ship-vfx" type="button">trade-ship-vfx-data.json</button>
+          <button id="download-battle-ship-vfx" type="button">battle-ship-vfx-data.json</button>
           <button id="reset-vfx-storage" type="button">Arbeitsstand löschen</button>
         </div>
         <label class="import-control">

@@ -125,6 +125,16 @@ for (const color of ["red", "blue", "yellow", "green"]) {
     assert(Number.isFinite(anchors?.assetWidth) && Number.isFinite(anchors?.assetHeight), `Missing trade ship asset size for ${color} variant ${variant}.`);
   }
 }
+assert(Object.keys(shipVfxData.battleShipVfxAnchors ?? {}).length === 12, "Battle ship VFX data should cover all 12 battle ship variants.");
+for (const color of ["red", "blue", "yellow", "green"]) {
+  for (const variant of [1, 2, 3]) {
+    const anchors = shipVfxData.battleShipVfxAnchors?.[`${color}-battle-ship-${variant}`];
+    assert(anchors?.coils?.length > 0, `Missing battle ship coil VFX anchors for ${color} variant ${variant}.`);
+    assert(anchors?.engines?.length > 0, `Missing battle ship engine VFX anchors for ${color} variant ${variant}.`);
+    assert(anchors?.shots?.length > 0, `Missing battle ship shot VFX anchors for ${color} variant ${variant}.`);
+    assert(Number.isFinite(anchors?.assetWidth) && Number.isFinite(anchors?.assetHeight), `Missing battle ship asset size for ${color} variant ${variant}.`);
+  }
+}
 assert(game.board.placedQuadrants.length === 15, "New games should place 15 hidden space quadrants.");
 assert(Boolean(game.board.unusedQuadrant), "New games should leave exactly one space quadrant unused.");
 assert(game.board.placedQuadrants.filter((quadrant) => quadrant.type === "planetSystem").length === game.board.placedSystems.length, "Placed planet systems should stay aligned with quadrant records.");

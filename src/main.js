@@ -23,7 +23,9 @@ import {
   getPlayerColonyAssetPath,
   getPlayerShipAssetPath,
   getPlayerSpaceportAssetPath,
+  getBattleShipAssetPath,
   getTradeShipAssetPath,
+  battleShipAssetPaths,
   colonyShipAssetPaths,
   tradeShipAssetPaths,
   playerColonyAssetPaths,
@@ -31,7 +33,7 @@ import {
   playerPieceColors,
   playerPieceVisualDefaults
 } from "./data/playerPieceVisuals.js";
-import { getShipEngineTemplate, getShipVfxAnchors, getTradeShipVfxAnchors } from "./data/shipVfxData.js";
+import { getBattleShipVfxAnchors, getShipEngineTemplate, getShipVfxAnchors, getTradeShipVfxAnchors } from "./data/shipVfxData.js";
 import { MOTHERSHIP_SPEED_ANIMATION_CONFIG } from "./data/mothershipSpeedAnimationConfig.js";
 import { gameVariants, supernovaFactoryTypes } from "./data/supernova.js";
 import {
@@ -523,6 +525,7 @@ function getGameAssetUrls() {
     tradeStationAssetPaths,
     colonyShipAssetPaths,
     tradeShipAssetPaths,
+    battleShipAssetPaths,
     playerColonyAssetPaths,
     playerSpaceportAssetPaths,
     upgradeMenuAssetPaths
@@ -5504,7 +5507,7 @@ function updateShipFlightAnimationDom() {
 }
 
 function updateShipElementPose(group, ship, pose) {
-  const visual = playerPieceVisualDefaults.ship;
+  const visual = getShipVisualDefaults(ship);
   const pop = getPlacementAssetPop("ship", ship.id);
   const transform = [
     createPlacementTransform(pose.x, pose.y, 0, pop),
@@ -5652,7 +5655,7 @@ function shouldRunShipVfxLoop() {
 }
 
 function drawShipEngineVfx(targetContext, ship, owner, anchors, pose, layerName, time, options = {}) {
-  const visual = playerPieceVisualDefaults.ship;
+  const visual = getShipVisualDefaults(ship);
   for (const engine of anchors.engines ?? []) {
     const template = engine.templateId ? getShipEngineTemplate(engine.templateId) : null;
     const emitters = template?.emitters?.length ? template.emitters : [engine];
@@ -5884,15 +5887,23 @@ function getShipTypeLabel(type) {
 }
 
 function getShipAssetPath(owner, ship) {
-  return ship.type === "tradeShip" || ship.type === "battleShip"
+  if (ship.type === "battleShip") return getBattleShipAssetPath(owner?.color, ship);
+  return ship.type === "tradeShip"
     ? getTradeShipAssetPath(owner?.color, ship)
     : getPlayerShipAssetPath(owner?.color, ship);
 }
 
 function getShipVfxAnchorsForRender(owner, ship) {
-  return ship.type === "tradeShip" || ship.type === "battleShip"
+  if (ship.type === "battleShip") return getBattleShipVfxAnchors(owner?.color, ship);
+  return ship.type === "tradeShip"
     ? getTradeShipVfxAnchors(owner?.color, ship)
     : getShipVfxAnchors(owner?.color, ship);
+}
+
+function getShipVisualDefaults(ship) {
+  return ship?.type === "battleShip"
+    ? playerPieceVisualDefaults.battleShip
+    : playerPieceVisualDefaults.ship;
 }
 
 function getShipStatusLabel(status) {
@@ -6915,7 +6926,7 @@ function renderShipCoilVfx(owner, ship, anchors, pose, pop) {
     "aria-hidden": "true"
   });
   const color = getShipVfxColor(owner?.color);
-  const visual = playerPieceVisualDefaults.ship;
+  const visual = getShipVisualDefaults(ship);
   const time = getShipVfxTime();
   const coilIntensityScale = 1 / Math.sqrt(Math.max(1, anchors.coils.length));
 
@@ -6999,7 +7010,7 @@ function renderShipsLayer() {
 
     const ownerIndex = Number.parseInt(ship.ownerPlayerId.replace("player-", ""), 10);
     const owner = state.gameState?.players?.find((player) => player.id === ship.ownerPlayerId);
-    const visual = playerPieceVisualDefaults.ship;
+    const visual = getShipVisualDefaults(ship);
     const pop = getPlacementAssetPop("ship", ship.id);
     const pose = getShipRenderPose(ship, point);
     const anchors = getShipVfxAnchorsForRender(owner, ship);
