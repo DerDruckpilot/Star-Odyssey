@@ -19,6 +19,7 @@ const backgroundModeSelect = document.querySelector("#background-mode");
 const zoomControl = document.querySelector("#zoom-control");
 const editModeSelect = document.querySelector("#edit-mode");
 const motionModeSelect = document.querySelector("#motion-mode");
+const shotPreviewActiveInput = document.querySelector("#shot-preview-active");
 const coilPreviewModeSelect = document.querySelector("#coil-preview-mode");
 const selectedAnchorTitle = document.querySelector("#selected-anchor-title");
 const shipTemplateSelect = document.querySelector("#engine-template-select");
@@ -168,7 +169,12 @@ function loadBattleShipDebugData(engineTemplates) {
 }
 
 function normalizeDebugData(value) {
-  const anchorsSource = value?.colonyShipVfxAnchors ?? value?.shipVfxAnchors ?? value;
+  const anchorsSource = getFirstAnchorSource(value, [
+    "colonyShipVfxAnchors",
+    "shipVfxAnchors",
+    "colonyShips",
+    "colony"
+  ]);
   const engineTemplates = normalizeEngineTemplates(value?.engineTemplates);
   return {
     version: 2,
@@ -184,17 +190,28 @@ function normalizeDebugData(value) {
 }
 
 function normalizeTradeShipDebugData(value, engineTemplates = debugData?.engineTemplates ?? []) {
-  const anchorsSource = value?.tradeShipVfxAnchors ?? value?.colonyShipVfxAnchors ?? value;
+  const anchorsSource = getFirstAnchorSource(value, [
+    "tradeShipVfxAnchors",
+    "tradeShips",
+    "trade",
+    "colonyShipVfxAnchors"
+  ]);
   return {
     version: 2,
     tradeShipVfxAnchors: normalizeShipVfxAnchors(anchorsSource, engineTemplates, tradeShipOptions, [
-      (option) => option.id.replace("-trade-ship-", "-colony-ship-")
+      (option) => option.id.replace("-trade-ship-", "-colony-ship-"),
+      (option) => option.id.replace("-trade-ship-", "-ship-")
     ], shipVfxData.tradeShipVfxAnchors)
   };
 }
 
 function normalizeBattleShipDebugData(value, engineTemplates = debugData?.engineTemplates ?? []) {
-  const anchorsSource = value?.battleShipVfxAnchors ?? value;
+  const anchorsSource = getFirstAnchorSource(value, [
+    "battleShipVfxAnchors",
+    "battleships",
+    "battleShips",
+    "battle"
+  ]);
   return {
     version: 2,
     battleShipVfxAnchors: normalizeShipVfxAnchors(
@@ -205,6 +222,20 @@ function normalizeBattleShipDebugData(value, engineTemplates = debugData?.engine
       shipVfxData.battleShipVfxAnchors
     )
   };
+}
+
+function getFirstAnchorSource(value, keys) {
+  if (!value || typeof value !== "object") return value;
+  for (const key of keys) {
+    if (value[key] && typeof value[key] === "object") return value[key];
+  }
+  const ships = value.ships;
+  if (ships && typeof ships === "object") {
+    for (const key of keys) {
+      if (ships[key] && typeof ships[key] === "object") return ships[key];
+    }
+  }
+  return value;
 }
 
 function normalizeShipVfxAnchors(value, engineTemplates, options = shipOptions, sourceAliases = [], defaultAnchorsById = {}) {
@@ -221,6 +252,18 @@ function normalizeShipVfxAnchors(value, engineTemplates, options = shipOptions, 
 function normalizeShipAnchors(value, option, engineTemplates = debugData?.engineTemplates ?? [], defaultSource = null) {
   const fallbackAnchors = createDefaultShipAnchors(option.variant, option.color, engineTemplates, option);
   const defaultAnchors = normalizeDefaultShipAnchors(defaultSource, fallbackAnchors, option, engineTemplates);
+  const storedCoils = Array.isArray(value?.coils) && value.coils.length > 0
+    && !isGeneratedFallbackAnchorList(value.coils, fallbackAnchors.coils, "coil")
+    ? value.coils
+    : null;
+  const storedEngines = Array.isArray(value?.engines) && value.engines.length > 0
+    && !isGeneratedFallbackAnchorList(value.engines, fallbackAnchors.engines, "engine")
+    ? value.engines
+    : null;
+  const storedShots = Array.isArray(value?.shots) && value.shots.length > 0
+    && !isGeneratedFallbackAnchorList(value.shots, fallbackAnchors.shots, "shot")
+    ? value.shots
+    : null;
   return {
     color: option.color,
     variant: option.variant,
@@ -229,16 +272,54 @@ function normalizeShipAnchors(value, option, engineTemplates = debugData?.engine
     assetHeight: Number(value?.assetHeight ?? defaultAnchors.assetHeight ?? 0),
     coils: defaultAnchors.coils.map((coil, index) => ({
       ...coil,
-      ...(value?.coils?.[index] ?? {}),
+      ...(storedCoils?.[index] ?? {}),
       id: `coil-${index + 1}`
     })),
-    engines: Array.isArray(value?.engines) && value.engines.length > 0
-      ? value.engines.map((engine, index) => normalizeEngine(engine, index, option.color))
+    engines: storedEngines
+      ? storedEngines.map((engine, index) => normalizeEngine(engine, index, option.color))
       : defaultAnchors.engines,
-    shots: Array.isArray(value?.shots) && value.shots.length > 0
-      ? value.shots.map((shot, index) => normalizeShot(shot, index, option.color))
+    shots: storedShots
+      ? storedShots.map((shot, index) => normalizeShot(shot, index, option.color))
       : defaultAnchors.shots
   };
+}
+
+function isGeneratedFallbackAnchorList(valueList, fallbackList, type) {
+  if (!Array.isArray(valueList) || !Array.isArray(fallbackList) || valueList.length === 0) return false;
+  if (valueList.length !== fallbackList.length) return false;
+  return valueList.every((value, index) => anchorsMatch(value, fallbackList[index], type));
+}
+
+function anchorsMatch(value, fallback, type) {
+  if (!value || !fallback) return false;
+  if (!numbersMatch(value.x, fallback.x) || !numbersMatch(value.y, fallback.y)) return false;
+  if (type === "coil") return true;
+  if (!numbersMatch(value.direction, fallback.direction)) return false;
+  if (type === "engine") {
+    return numbersMatch(value.size, fallback.size)
+      && numbersMatch(value.length, fallback.length)
+      && stringsMatch(value.color, fallback.color)
+      && stringsMatch(value.layer, fallback.layer)
+      && stringsMatch(value.templateId, fallback.templateId);
+  }
+  return stringsMatch(value.weaponType, fallback.weaponType)
+    && numbersMatch(value.speed, fallback.speed)
+    && numbersMatch(value.duration, fallback.duration)
+    && numbersMatch(value.fireRate, fallback.fireRate)
+    && numbersMatch(value.spread, fallback.spread)
+    && numbersMatch(value.salvoCount, fallback.salvoCount)
+    && numbersMatch(value.intensity, fallback.intensity)
+    && numbersMatch(value.size, fallback.size)
+    && numbersMatch(value.length, fallback.length)
+    && stringsMatch(value.color, fallback.color);
+}
+
+function numbersMatch(value, fallback) {
+  return Math.abs(Number(value ?? 0) - Number(fallback ?? 0)) < 0.001;
+}
+
+function stringsMatch(value, fallback) {
+  return String(value ?? "") === String(fallback ?? "");
 }
 
 function normalizeDefaultShipAnchors(source, fallback, option, engineTemplates) {
@@ -260,8 +341,27 @@ function normalizeDefaultShipAnchors(source, fallback, option, engineTemplates) 
 }
 
 function normalizeEngineTemplates(value) {
-  const templates = Array.isArray(value) && value.length > 0 ? value : createDefaultEngineTemplates();
-  return templates.map((template, index) => normalizeTemplate(template, index));
+  const templatesById = new Map();
+  for (const [index, template] of createDefaultEngineTemplates().entries()) {
+    const normalized = normalizeTemplate(template, index);
+    templatesById.set(normalized.id, normalized);
+  }
+  if (Array.isArray(value)) {
+    for (const [index, template] of value.entries()) {
+      const normalized = normalizeTemplate(template, index);
+      if (isLegacyGeneratedEngineTemplate(template) && templatesById.has(normalized.id)) continue;
+      templatesById.set(normalized.id, normalized);
+    }
+  }
+  return [...templatesById.values()];
+}
+
+function isLegacyGeneratedEngineTemplate(template) {
+  if (template?.id !== "template-plasma" || template?.name !== "Plasma Kern") return false;
+  const emitterIds = new Set((template.emitters ?? []).map((emitter) => emitter?.id));
+  return emitterIds.has("emitter-core-glow")
+    || emitterIds.has("emitter-plasma-trail")
+    || emitterIds.has("emitter-front-sparks");
 }
 
 function normalizeTemplate(template, index) {
@@ -862,7 +962,7 @@ function drawAnchorHandles(transform) {
 function drawShotPreview(transform, option) {
   const shots = getSelectedAnchors().shots ?? [];
   if (!shots.length) return;
-  const active = motionModeSelect.value === "shooting";
+  const active = motionModeSelect.value === "shooting" || Boolean(shotPreviewActiveInput?.checked);
   const vfxScale = finiteNumber(transform.vfxScale, transform.scale);
   for (const shot of shots) {
     const point = assetToCanvasPoint(shot, transform);
@@ -1445,13 +1545,21 @@ function resetSelectedShipAnchors() {
 }
 
 function layoutCurrentShip() {
+  const option = getSelectedOption();
+  const defaultAnchors = getDefaultAnchorsForOption(option);
   if (activeTab === "trade") {
-    tradeShipDebugData.tradeShipVfxAnchors[selectedTradeShipId] = normalizeShipAnchors(null, getSelectedOption(), debugData.engineTemplates);
+    tradeShipDebugData.tradeShipVfxAnchors[selectedTradeShipId] = normalizeShipAnchors(null, option, debugData.engineTemplates, defaultAnchors);
   } else if (activeTab === "battle") {
-    battleShipDebugData.battleShipVfxAnchors[selectedBattleShipId] = normalizeShipAnchors(null, getSelectedOption(), debugData.engineTemplates);
+    battleShipDebugData.battleShipVfxAnchors[selectedBattleShipId] = normalizeShipAnchors(null, option, debugData.engineTemplates, defaultAnchors);
   } else {
-    debugData.shipVfxAnchors[selectedShipId] = normalizeShipAnchors(null, getSelectedOption(), debugData.engineTemplates);
+    debugData.shipVfxAnchors[selectedShipId] = normalizeShipAnchors(null, option, debugData.engineTemplates, defaultAnchors);
   }
+}
+
+function getDefaultAnchorsForOption(option) {
+  if (option.shipType === "trade") return shipVfxData.tradeShipVfxAnchors?.[option.id] ?? null;
+  if (option.shipType === "battle") return shipVfxData.battleShipVfxAnchors?.[option.id] ?? null;
+  return shipVfxData.colonyShipVfxAnchors?.[option.id] ?? shipVfxData.shipVfxAnchors?.[option.id] ?? null;
 }
 
 function resetAllStorage() {
@@ -1697,7 +1805,9 @@ function importExport(file) {
 }
 
 function hasMisnamedTradeShipAnchors(value) {
-  return Boolean(value && typeof value === "object" && Object.keys(value).some((key) => key.includes("-colony-ship-")));
+  return Boolean(value && typeof value === "object" && Object.keys(value).some((key) =>
+    key.includes("-colony-ship-") || key.includes("-trade-ship-")
+  ));
 }
 
 function preloadImages() {
@@ -1722,6 +1832,11 @@ function requestRenderLoop() {
 
 function getMotionModeForActiveTab() {
   return activeTab === "template" ? templateMotionModeSelect.value : motionModeSelect.value;
+}
+
+function syncShotPreviewToggle() {
+  if (!shotPreviewActiveInput) return;
+  shotPreviewActiveInput.checked = motionModeSelect.value === "shooting";
 }
 
 function setActiveTab(tab) {
@@ -1796,6 +1911,7 @@ populateShipSelect();
 populateTemplateSelects();
 syncAnchorInputs();
 syncTemplateInputs();
+syncShotPreviewToggle();
 updateExport();
 preloadImages().then((results) => {
   window.shipVfxDebugLoadedAssets = results;
@@ -1807,9 +1923,17 @@ shipSelect.addEventListener("change", (event) => {
   setSelectedAnchor(editModeSelect.value, 0);
   render();
 });
-for (const element of [backgroundModeSelect, zoomControl, motionModeSelect, coilPreviewModeSelect]) {
+for (const element of [backgroundModeSelect, zoomControl, coilPreviewModeSelect]) {
   element.addEventListener("input", render);
 }
+motionModeSelect.addEventListener("input", () => {
+  syncShotPreviewToggle();
+  render();
+});
+shotPreviewActiveInput?.addEventListener("input", () => {
+  motionModeSelect.value = shotPreviewActiveInput.checked ? "shooting" : "idle";
+  render();
+});
 for (const element of [templateBackgroundModeSelect, templateMotionModeSelect, templatePreviewModeSelect, templateZoomControl]) {
   element.addEventListener("input", render);
 }

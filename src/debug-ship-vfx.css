@@ -59,6 +59,16 @@
   padding: 0;
 }
 
+.inline-toggle {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+}
+
+.inline-toggle input {
+  width: auto;
+}
+
 #anchor-direction:disabled,
 .selection-box input:disabled,
 .selection-box select:disabled {
