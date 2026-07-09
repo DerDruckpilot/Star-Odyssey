@@ -1,4 +1,5 @@
 import { battleShipAssetPaths, colonyShipAssetPaths, playerPieceColors, tradeShipAssetPaths } from "./data/playerPieceVisuals.js";
+import { shipVfxData } from "./data/shipVfxData.js";
 
 const storageKey = "star-odyssey-ship-vfx-anchors";
 const legacyMisnamedTradeShipStorageKey = "star-odyssey-colony-ship-vfx-anchors";
@@ -46,6 +47,15 @@ const engineInputs = {
   layer: document.querySelector("#engine-layer"),
   templateId: shipTemplateSelect
 };
+const shotInputs = {
+  weaponType: document.querySelector("#shot-weapon-type"),
+  speed: document.querySelector("#shot-speed"),
+  duration: document.querySelector("#shot-duration"),
+  fireRate: document.querySelector("#shot-fire-rate"),
+  spread: document.querySelector("#shot-spread"),
+  salvoCount: document.querySelector("#shot-salvo-count"),
+  intensity: document.querySelector("#shot-intensity")
+};
 const emitterInputs = {
   type: document.querySelector("#emitter-type"),
   x: document.querySelector("#emitter-x"),
@@ -80,6 +90,12 @@ const emitterPresets = {
 };
 const engineLayers = ["behind", "inline", "front"];
 const emitterTypes = Object.keys(emitterPresets);
+const weaponTypes = ["laser", "plasmaMachineGun", "rocket"];
+const weaponTypeDefaults = {
+  laser: { speed: 1.6, duration: 420, fireRate: 1, spread: 0, salvoCount: 1, intensity: 1, size: 8, length: 150 },
+  plasmaMachineGun: { speed: 3.2, duration: 900, fireRate: 12, spread: 14, salvoCount: 6, intensity: 0.9, size: 7, length: 190 },
+  rocket: { speed: 1.05, duration: 1400, fireRate: 3, spread: 8, salvoCount: 3, intensity: 0.95, size: 11, length: 210 }
+};
 const shipOptions = playerPieceColors.flatMap((color) =>
   colonyShipAssetPaths[color].map((assetPath, index) => ({
     id: `${color}-ship-${index + 1}`,
@@ -157,7 +173,13 @@ function normalizeDebugData(value) {
   return {
     version: 2,
     engineTemplates,
-    shipVfxAnchors: normalizeShipVfxAnchors(anchorsSource, engineTemplates)
+    shipVfxAnchors: normalizeShipVfxAnchors(
+      anchorsSource,
+      engineTemplates,
+      shipOptions,
+      [],
+      shipVfxData.colonyShipVfxAnchors ?? shipVfxData.shipVfxAnchors
+    )
   };
 }
 
@@ -167,7 +189,7 @@ function normalizeTradeShipDebugData(value, engineTemplates = debugData?.engineT
     version: 2,
     tradeShipVfxAnchors: normalizeShipVfxAnchors(anchorsSource, engineTemplates, tradeShipOptions, [
       (option) => option.id.replace("-trade-ship-", "-colony-ship-")
-    ])
+    ], shipVfxData.tradeShipVfxAnchors)
   };
 }
 
@@ -175,27 +197,36 @@ function normalizeBattleShipDebugData(value, engineTemplates = debugData?.engine
   const anchorsSource = value?.battleShipVfxAnchors ?? value;
   return {
     version: 2,
-    battleShipVfxAnchors: normalizeShipVfxAnchors(anchorsSource, engineTemplates, battleShipOptions)
+    battleShipVfxAnchors: normalizeShipVfxAnchors(
+      anchorsSource,
+      engineTemplates,
+      battleShipOptions,
+      [],
+      shipVfxData.battleShipVfxAnchors
+    )
   };
 }
 
-function normalizeShipVfxAnchors(value, engineTemplates, options = shipOptions, sourceAliases = []) {
+function normalizeShipVfxAnchors(value, engineTemplates, options = shipOptions, sourceAliases = [], defaultAnchorsById = {}) {
   const anchors = {};
   for (const option of options) {
     const source = [option.id, ...sourceAliases.map((getAlias) => getAlias(option))]
       .map((key) => value?.[key])
       .find(Boolean);
-    anchors[option.id] = normalizeShipAnchors(source, option, engineTemplates);
+    anchors[option.id] = normalizeShipAnchors(source, option, engineTemplates, defaultAnchorsById?.[option.id]);
   }
   return anchors;
 }
 
-function normalizeShipAnchors(value, option, engineTemplates = debugData?.engineTemplates ?? []) {
-  const defaultAnchors = createDefaultShipAnchors(option.variant, option.color, engineTemplates, option);
+function normalizeShipAnchors(value, option, engineTemplates = debugData?.engineTemplates ?? [], defaultSource = null) {
+  const fallbackAnchors = createDefaultShipAnchors(option.variant, option.color, engineTemplates, option);
+  const defaultAnchors = normalizeDefaultShipAnchors(defaultSource, fallbackAnchors, option, engineTemplates);
   return {
     color: option.color,
     variant: option.variant,
     asset: option.assetPath,
+    assetWidth: Number(value?.assetWidth ?? defaultAnchors.assetWidth ?? 0),
+    assetHeight: Number(value?.assetHeight ?? defaultAnchors.assetHeight ?? 0),
     coils: defaultAnchors.coils.map((coil, index) => ({
       ...coil,
       ...(value?.coils?.[index] ?? {}),
@@ -207,6 +238,24 @@ function normalizeShipAnchors(value, option, engineTemplates = debugData?.engine
     shots: Array.isArray(value?.shots) && value.shots.length > 0
       ? value.shots.map((shot, index) => normalizeShot(shot, index, option.color))
       : defaultAnchors.shots
+  };
+}
+
+function normalizeDefaultShipAnchors(source, fallback, option, engineTemplates) {
+  if (!source) return fallback;
+  return {
+    ...fallback,
+    assetWidth: Number(source.assetWidth ?? fallback.assetWidth ?? 0),
+    assetHeight: Number(source.assetHeight ?? fallback.assetHeight ?? 0),
+    coils: Array.isArray(source.coils) && source.coils.length > 0
+      ? source.coils.map((coil, index) => ({ ...coil, id: `coil-${index + 1}` }))
+      : fallback.coils,
+    engines: Array.isArray(source.engines) && source.engines.length > 0
+      ? source.engines.map((engine, index) => normalizeEngine(engine, index, option.color))
+      : fallback.engines,
+    shots: Array.isArray(source.shots) && source.shots.length > 0
+      ? source.shots.map((shot, index) => normalizeShot(shot, index, option.color))
+      : fallback.shots
   };
 }
 
@@ -228,6 +277,12 @@ function normalizeTemplate(template, index) {
 }
 
 function createDefaultEngineTemplates() {
+  if (Array.isArray(shipVfxData.engineTemplates) && shipVfxData.engineTemplates.length > 0) {
+    return shipVfxData.engineTemplates.map((template) => ({
+      ...template,
+      emitters: (template.emitters ?? []).map((emitter) => ({ ...emitter }))
+    }));
+  }
   return [
     {
       id: "template-plasma",
@@ -266,7 +321,7 @@ function createDefaultBattleShipAnchors(variant, color, engineTemplates = debugD
   return {
     coils: coilDefaults[variant].map((point, index) => ({ id: `coil-${index + 1}`, ...point })),
     engines: [normalizeEngine({ x: 34, y: 264, direction: 180, size: 12, length: 92, templateId: engineTemplates[0]?.id ?? "" }, 0, color)],
-    shots: [normalizeShot({ x: 1174, y: 264, direction: 0, size: 10, length: 96, templateId: engineTemplates[0]?.id ?? "" }, 0, color)]
+    shots: [normalizeShot({ x: 1174, y: 264, direction: 0, weaponType: "laser", size: 10, length: 150, templateId: engineTemplates[0]?.id ?? "" }, 0, color)]
   };
 }
 
@@ -285,13 +340,22 @@ function normalizeEngine(engine, index, color = getSelectedOption().color) {
 }
 
 function normalizeShot(shot, index, color = getSelectedOption().color) {
+  const weaponType = normalizeWeaponType(shot.weaponType);
+  const defaults = weaponTypeDefaults[weaponType];
   return {
     id: `shot-${index + 1}`,
     x: Number(shot.x ?? 1174),
     y: Number(shot.y ?? 264),
     direction: Number(shot.direction ?? 0),
-    size: Number(shot.size ?? 10),
-    length: Number(shot.length ?? 96),
+    weaponType,
+    size: clamp(finiteNumber(shot.size, defaults.size), 2, 32),
+    length: clamp(finiteNumber(shot.length, defaults.length), 24, 320),
+    speed: clamp(finiteNumber(shot.speed, defaults.speed), 0.1, 8),
+    duration: clamp(finiteNumber(shot.duration, defaults.duration), 80, 3000),
+    fireRate: clamp(Math.round(finiteNumber(shot.fireRate, defaults.fireRate)), 1, 30),
+    spread: clamp(finiteNumber(shot.spread, defaults.spread), 0, 80),
+    salvoCount: clamp(Math.round(finiteNumber(shot.salvoCount, defaults.salvoCount)), 1, 12),
+    intensity: clamp(finiteNumber(shot.intensity, defaults.intensity), 0, 2),
     color: normalizeHexColor(shot.color, glowColors[color] ?? glowColors.red),
     layer: normalizeEngineLayer(shot.layer ?? "front"),
     templateId: String(shot.templateId ?? "")
@@ -798,40 +862,143 @@ function drawAnchorHandles(transform) {
 function drawShotPreview(transform, option) {
   const shots = getSelectedAnchors().shots ?? [];
   if (!shots.length) return;
-  const active = motionModeSelect.value === "moving";
+  const active = motionModeSelect.value === "shooting";
   const vfxScale = finiteNumber(transform.vfxScale, transform.scale);
   for (const shot of shots) {
     const point = assetToCanvasPoint(shot, transform);
     const color = normalizeHexColor(shot.color, glowColors[option.color] ?? glowColors.red);
     const direction = (finiteNumber(shot.direction, 0) * Math.PI) / 180;
-    const length = finiteNumber(shot.length, 96) * vfxScale * (active ? 0.72 : 0.38);
-    const radius = finiteNumber(shot.size, 10) * vfxScale * (active ? 1.1 : 0.7);
-    const end = {
-      x: point.x + Math.cos(direction) * length,
-      y: point.y + Math.sin(direction) * length
-    };
-    const gradient = context.createLinearGradient(point.x, point.y, end.x, end.y);
-    gradient.addColorStop(0, hexToRgba("#ffffff", active ? 0.95 : 0.36));
-    gradient.addColorStop(0.45, hexToRgba(color, active ? 0.72 : 0.28));
-    gradient.addColorStop(1, hexToRgba(color, 0));
-    context.save();
-    context.globalCompositeOperation = "lighter";
-    context.strokeStyle = gradient;
-    context.lineWidth = Math.max(1.2, radius * 0.34);
-    context.beginPath();
-    context.moveTo(point.x, point.y);
-    context.lineTo(end.x, end.y);
-    context.stroke();
-    const glow = context.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius * 2.8);
+    drawMuzzleGlow(point, shot, color, vfxScale, active);
+    if (!active) {
+      drawInactiveShotDirection(point, direction, shot, color, vfxScale);
+      continue;
+    }
+    if (shot.weaponType === "plasmaMachineGun") {
+      drawPlasmaMachineGunPreview(point, direction, shot, color, vfxScale);
+    } else if (shot.weaponType === "rocket") {
+      drawRocketPreview(point, direction, shot, color, vfxScale);
+    } else {
+      drawLaserPreview(point, direction, shot, color, vfxScale);
+    }
+  }
+}
+
+function drawMuzzleGlow(point, shot, color, scale, active) {
+  const radius = finiteNumber(shot.size, 10) * scale * (active ? 1.25 : 0.72);
+  const intensity = finiteNumber(shot.intensity, 1) * (active ? 1 : 0.34);
+  const glow = context.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius * 2.8);
+  glow.addColorStop(0, "#ffffff");
+  glow.addColorStop(0.34, hexToRgba(color, 0.72 * intensity));
+  glow.addColorStop(1, hexToRgba(color, 0));
+  context.save();
+  context.globalCompositeOperation = "lighter";
+  context.fillStyle = glow;
+  context.beginPath();
+  context.arc(point.x, point.y, radius * 2.8, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function drawInactiveShotDirection(point, direction, shot, color, scale) {
+  const length = Math.min(70, finiteNumber(shot.length, 96) * 0.32) * scale;
+  const end = {
+    x: point.x + Math.cos(direction) * length,
+    y: point.y + Math.sin(direction) * length
+  };
+  context.save();
+  context.globalAlpha = 0.35;
+  context.strokeStyle = color;
+  context.lineWidth = Math.max(1.2, finiteNumber(shot.size, 10) * scale * 0.22);
+  context.beginPath();
+  context.moveTo(point.x, point.y);
+  context.lineTo(end.x, end.y);
+  context.stroke();
+  context.restore();
+}
+
+function drawLaserPreview(point, direction, shot, color, scale) {
+  const length = finiteNumber(shot.length, 150) * scale;
+  const pulse = 0.72 + Math.sin(lastFrameTime / 90) * 0.18;
+  const end = {
+    x: point.x + Math.cos(direction) * length,
+    y: point.y + Math.sin(direction) * length
+  };
+  const gradient = context.createLinearGradient(point.x, point.y, end.x, end.y);
+  gradient.addColorStop(0, hexToRgba("#ffffff", 0.95));
+  gradient.addColorStop(0.42, hexToRgba(color, pulse * finiteNumber(shot.intensity, 1)));
+  gradient.addColorStop(1, hexToRgba(color, 0));
+  context.save();
+  context.globalCompositeOperation = "lighter";
+  context.strokeStyle = gradient;
+  context.lineCap = "round";
+  context.lineWidth = Math.max(1.5, finiteNumber(shot.size, 8) * scale * 0.42);
+  context.beginPath();
+  context.moveTo(point.x, point.y);
+  context.lineTo(end.x, end.y);
+  context.stroke();
+  context.restore();
+}
+
+function drawPlasmaMachineGunPreview(point, direction, shot, color, scale) {
+  const count = Math.max(1, Math.round(finiteNumber(shot.salvoCount, 6)));
+  const length = finiteNumber(shot.length, 190) * scale;
+  const speed = finiteNumber(shot.speed, 3.2);
+  const fireRate = finiteNumber(shot.fireRate, 12);
+  const spread = finiteNumber(shot.spread, 14) * scale;
+  const side = direction + Math.PI / 2;
+  context.save();
+  context.globalCompositeOperation = "lighter";
+  for (let index = 0; index < count; index += 1) {
+    const phase = ((lastFrameTime / (680 / speed)) + index / Math.max(1, fireRate * 0.55)) % 1;
+    const drift = phase * length;
+    const sideOffset = Math.sin(index * 1.7 + lastFrameTime / 120) * spread * 0.45;
+    const x = point.x + Math.cos(direction) * drift + Math.cos(side) * sideOffset;
+    const y = point.y + Math.sin(direction) * drift + Math.sin(side) * sideOffset;
+    const alpha = (1 - phase) * finiteNumber(shot.intensity, 0.9);
+    const radius = Math.max(1.4, finiteNumber(shot.size, 7) * scale * (0.55 + (1 - phase) * 0.35));
+    const glow = context.createRadialGradient(x, y, 0, x, y, radius * 3);
     glow.addColorStop(0, "#ffffff");
-    glow.addColorStop(0.34, hexToRgba(color, active ? 0.72 : 0.28));
+    glow.addColorStop(0.4, hexToRgba(color, alpha));
     glow.addColorStop(1, hexToRgba(color, 0));
     context.fillStyle = glow;
     context.beginPath();
-    context.arc(point.x, point.y, radius * 2.8, 0, Math.PI * 2);
+    context.arc(x, y, radius * 3, 0, Math.PI * 2);
     context.fill();
-    context.restore();
   }
+  context.restore();
+}
+
+function drawRocketPreview(point, direction, shot, color, scale) {
+  const count = Math.max(1, Math.round(finiteNumber(shot.salvoCount, 3)));
+  const length = finiteNumber(shot.length, 210) * scale;
+  const speed = finiteNumber(shot.speed, 1.05);
+  const spread = finiteNumber(shot.spread, 8) * scale;
+  const side = direction + Math.PI / 2;
+  context.save();
+  context.globalCompositeOperation = "lighter";
+  for (let index = 0; index < count; index += 1) {
+    const phase = ((lastFrameTime / (1450 / speed)) + index / count) % 1;
+    const drift = phase * length;
+    const sideOffset = (index - (count - 1) / 2) * spread;
+    const x = point.x + Math.cos(direction) * drift + Math.cos(side) * sideOffset;
+    const y = point.y + Math.sin(direction) * drift + Math.sin(side) * sideOffset;
+    const radius = Math.max(2, finiteNumber(shot.size, 11) * scale * 0.42);
+    context.fillStyle = "#fef3c7";
+    context.beginPath();
+    context.arc(x, y, radius, 0, Math.PI * 2);
+    context.fill();
+    const trailLength = radius * 5;
+    const trail = context.createLinearGradient(x, y, x - Math.cos(direction) * trailLength, y - Math.sin(direction) * trailLength);
+    trail.addColorStop(0, hexToRgba(color, finiteNumber(shot.intensity, 0.95)));
+    trail.addColorStop(1, hexToRgba(color, 0));
+    context.strokeStyle = trail;
+    context.lineWidth = Math.max(1, radius * 0.7);
+    context.beginPath();
+    context.moveTo(x, y);
+    context.lineTo(x - Math.cos(direction) * trailLength, y - Math.sin(direction) * trailLength);
+    context.stroke();
+  }
+  context.restore();
 }
 
 function drawEmitterHandles(transform) {
@@ -980,6 +1147,17 @@ function syncAnchorInputs() {
   for (const input of Object.values(engineInputs)) {
     input.disabled = !effectSelected;
   }
+  const shotSelected = selectedAnchor.type === "shot" && Boolean(anchor);
+  shotInputs.weaponType.value = normalizeWeaponType(anchor?.weaponType);
+  shotInputs.speed.value = finiteNumber(anchor?.speed, weaponTypeDefaults[shotInputs.weaponType.value].speed);
+  shotInputs.duration.value = finiteNumber(anchor?.duration, weaponTypeDefaults[shotInputs.weaponType.value].duration);
+  shotInputs.fireRate.value = finiteNumber(anchor?.fireRate, weaponTypeDefaults[shotInputs.weaponType.value].fireRate);
+  shotInputs.spread.value = finiteNumber(anchor?.spread, weaponTypeDefaults[shotInputs.weaponType.value].spread);
+  shotInputs.salvoCount.value = finiteNumber(anchor?.salvoCount, weaponTypeDefaults[shotInputs.weaponType.value].salvoCount);
+  shotInputs.intensity.value = finiteNumber(anchor?.intensity, weaponTypeDefaults[shotInputs.weaponType.value].intensity);
+  for (const input of Object.values(shotInputs)) {
+    input.disabled = !shotSelected;
+  }
   document.querySelector("#add-engine-anchor").textContent = selectedAnchor.type === "shot"
     ? "Schussanker hinzufügen"
     : "Triebwerk hinzufügen";
@@ -1041,10 +1219,38 @@ function updateAnchorFromInputs() {
 function updateEngineFromInputs(source) {
   const anchor = getSelectedAnchor();
   if (!anchor || !isEffectAnchorType(selectedAnchor.type)) return;
+  const previousWeaponType = anchor.weaponType;
   if (source === engineInputs.sizeRange) engineInputs.sizeValue.value = engineInputs.sizeRange.value;
   if (source === engineInputs.sizeValue) engineInputs.sizeRange.value = engineInputs.sizeValue.value;
   if (source === engineInputs.lengthRange) engineInputs.lengthValue.value = engineInputs.lengthRange.value;
   if (source === engineInputs.lengthValue) engineInputs.lengthRange.value = engineInputs.lengthValue.value;
+  if (selectedAnchor.type === "shot") {
+    anchor.weaponType = normalizeWeaponType(shotInputs.weaponType.value);
+    const defaults = weaponTypeDefaults[anchor.weaponType];
+    if (source === shotInputs.weaponType && anchor.weaponType !== previousWeaponType) {
+      anchor.speed = defaults.speed;
+      anchor.duration = defaults.duration;
+      anchor.fireRate = defaults.fireRate;
+      anchor.spread = defaults.spread;
+      anchor.salvoCount = defaults.salvoCount;
+      anchor.intensity = defaults.intensity;
+      anchor.size = defaults.size;
+      anchor.length = defaults.length;
+    } else {
+      anchor.speed = clamp(finiteNumber(shotInputs.speed.value, defaults.speed), 0.1, 8);
+      anchor.duration = clamp(finiteNumber(shotInputs.duration.value, defaults.duration), 80, 3000);
+      anchor.fireRate = clamp(Math.round(finiteNumber(shotInputs.fireRate.value, defaults.fireRate)), 1, 30);
+      anchor.spread = clamp(finiteNumber(shotInputs.spread.value, defaults.spread), 0, 80);
+      anchor.salvoCount = clamp(Math.round(finiteNumber(shotInputs.salvoCount.value, defaults.salvoCount)), 1, 12);
+      anchor.intensity = clamp(finiteNumber(shotInputs.intensity.value, defaults.intensity), 0, 2);
+    }
+    if (source === shotInputs.weaponType && anchor.weaponType !== previousWeaponType) {
+      engineInputs.sizeRange.value = anchor.size;
+      engineInputs.sizeValue.value = anchor.size;
+      engineInputs.lengthRange.value = anchor.length;
+      engineInputs.lengthValue.value = anchor.length;
+    }
+  }
   anchor.size = clamp(Number(engineInputs.sizeValue.value), 3, 28);
   anchor.length = clamp(Number(engineInputs.lengthValue.value), 12, 140);
   anchor.color = normalizeHexColor(engineInputs.color.value, glowColors[getSelectedOption().color] ?? glowColors.red);
@@ -1306,6 +1512,8 @@ function serializeAnchorGroup(options, anchorsById) {
       color: anchors.color,
       variant: anchors.variant,
       asset: anchors.asset,
+      assetWidth: anchors.assetWidth,
+      assetHeight: anchors.assetHeight,
       coils: anchors.coils.map(({ id, x, y }) => ({ id, x, y })),
       engines: anchors.engines.map(({ id, x, y, direction, size, length, color, layer, templateId }) => ({
         id,
@@ -1318,13 +1526,37 @@ function serializeAnchorGroup(options, anchorsById) {
         layer,
         templateId
       })),
-      shots: (anchors.shots ?? []).map(({ id, x, y, direction, size, length, color, layer, templateId }) => ({
+      shots: (anchors.shots ?? []).map(({
         id,
         x,
         y,
         direction,
+        weaponType,
         size,
         length,
+        speed,
+        duration,
+        fireRate,
+        spread,
+        salvoCount,
+        intensity,
+        color,
+        layer,
+        templateId
+      }) => ({
+        id,
+        x,
+        y,
+        direction,
+        weaponType,
+        size,
+        length,
+        speed,
+        duration,
+        fireRate,
+        spread,
+        salvoCount,
+        intensity,
         color,
         layer,
         templateId
@@ -1546,6 +1778,10 @@ function normalizeEmitterType(value) {
   return emitterTypes.includes(value) ? value : "plasma";
 }
 
+function normalizeWeaponType(value) {
+  return weaponTypes.includes(value) ? value : "laser";
+}
+
 function normalizeId(value, fallback) {
   const text = String(value ?? "").trim();
   return text.length > 0 ? text : fallback;
@@ -1597,6 +1833,9 @@ for (const input of Object.values(anchorInputs)) {
   input.addEventListener("input", updateAnchorFromInputs);
 }
 for (const input of Object.values(engineInputs)) {
+  input.addEventListener("input", () => updateEngineFromInputs(input));
+}
+for (const input of Object.values(shotInputs)) {
   input.addEventListener("input", () => updateEngineFromInputs(input));
 }
 for (const input of Object.values(emitterInputs)) {
