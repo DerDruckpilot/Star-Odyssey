@@ -50,6 +50,8 @@ const engineInputs = {
 };
 const shotInputs = {
   weaponType: document.querySelector("#shot-weapon-type"),
+  lengthRange: document.querySelector("#shot-length-range"),
+  lengthValue: document.querySelector("#shot-length-value"),
   speed: document.querySelector("#shot-speed"),
   duration: document.querySelector("#shot-duration"),
   fireRate: document.querySelector("#shot-fire-rate"),
@@ -92,6 +94,9 @@ const emitterPresets = {
 const engineLayers = ["behind", "inline", "front"];
 const emitterTypes = Object.keys(emitterPresets);
 const weaponTypes = ["laser", "plasmaMachineGun", "rocket"];
+const shotLengthMin = 24;
+const shotLengthMax = 2000;
+const shotDurationMax = 8000;
 const weaponTypeDefaults = {
   laser: { speed: 1.6, duration: 420, fireRate: 1, spread: 0, salvoCount: 1, intensity: 1, size: 8, length: 150 },
   plasmaMachineGun: { speed: 3.2, duration: 900, fireRate: 12, spread: 14, salvoCount: 6, intensity: 0.9, size: 7, length: 190 },
@@ -449,9 +454,9 @@ function normalizeShot(shot, index, color = getSelectedOption().color) {
     direction: Number(shot.direction ?? 0),
     weaponType,
     size: clamp(finiteNumber(shot.size, defaults.size), 2, 32),
-    length: clamp(finiteNumber(shot.length, defaults.length), 24, 320),
+    length: clamp(finiteNumber(shot.length, defaults.length), shotLengthMin, shotLengthMax),
     speed: clamp(finiteNumber(shot.speed, defaults.speed), 0.1, 8),
-    duration: clamp(finiteNumber(shot.duration, defaults.duration), 80, 3000),
+    duration: clamp(finiteNumber(shot.duration, defaults.duration), 80, shotDurationMax),
     fireRate: clamp(Math.round(finiteNumber(shot.fireRate, defaults.fireRate)), 1, 30),
     spread: clamp(finiteNumber(shot.spread, defaults.spread), 0, 80),
     salvoCount: clamp(Math.round(finiteNumber(shot.salvoCount, defaults.salvoCount)), 1, 12),
@@ -1043,13 +1048,14 @@ function drawPlasmaMachineGunPreview(point, direction, shot, color, scale) {
   const count = Math.max(1, Math.round(finiteNumber(shot.salvoCount, 6)));
   const length = finiteNumber(shot.length, 190) * scale;
   const speed = finiteNumber(shot.speed, 3.2);
+  const duration = Math.max(80, finiteNumber(shot.duration, weaponTypeDefaults.plasmaMachineGun.duration));
   const fireRate = finiteNumber(shot.fireRate, 12);
   const spread = finiteNumber(shot.spread, 14) * scale;
   const side = direction + Math.PI / 2;
   context.save();
   context.globalCompositeOperation = "lighter";
   for (let index = 0; index < count; index += 1) {
-    const phase = ((lastFrameTime / (680 / speed)) + index / Math.max(1, fireRate * 0.55)) % 1;
+    const phase = ((lastFrameTime / (duration / speed)) + index / Math.max(1, fireRate * 0.55)) % 1;
     const drift = phase * length;
     const sideOffset = Math.sin(index * 1.7 + lastFrameTime / 120) * spread * 0.45;
     const x = point.x + Math.cos(direction) * drift + Math.cos(side) * sideOffset;
@@ -1072,12 +1078,13 @@ function drawRocketPreview(point, direction, shot, color, scale) {
   const count = Math.max(1, Math.round(finiteNumber(shot.salvoCount, 3)));
   const length = finiteNumber(shot.length, 210) * scale;
   const speed = finiteNumber(shot.speed, 1.05);
+  const duration = Math.max(80, finiteNumber(shot.duration, weaponTypeDefaults.rocket.duration));
   const spread = finiteNumber(shot.spread, 8) * scale;
   const side = direction + Math.PI / 2;
   context.save();
   context.globalCompositeOperation = "lighter";
   for (let index = 0; index < count; index += 1) {
-    const phase = ((lastFrameTime / (1450 / speed)) + index / count) % 1;
+    const phase = ((lastFrameTime / (duration / speed)) + index / count) % 1;
     const drift = phase * length;
     const sideOffset = (index - (count - 1) / 2) * spread;
     const x = point.x + Math.cos(direction) * drift + Math.cos(side) * sideOffset;
@@ -1249,6 +1256,8 @@ function syncAnchorInputs() {
   }
   const shotSelected = selectedAnchor.type === "shot" && Boolean(anchor);
   shotInputs.weaponType.value = normalizeWeaponType(anchor?.weaponType);
+  shotInputs.lengthRange.value = shotSelected ? finiteNumber(anchor?.length, weaponTypeDefaults[shotInputs.weaponType.value].length) : "";
+  shotInputs.lengthValue.value = shotSelected ? finiteNumber(anchor?.length, weaponTypeDefaults[shotInputs.weaponType.value].length) : "";
   shotInputs.speed.value = finiteNumber(anchor?.speed, weaponTypeDefaults[shotInputs.weaponType.value].speed);
   shotInputs.duration.value = finiteNumber(anchor?.duration, weaponTypeDefaults[shotInputs.weaponType.value].duration);
   shotInputs.fireRate.value = finiteNumber(anchor?.fireRate, weaponTypeDefaults[shotInputs.weaponType.value].fireRate);
@@ -1324,6 +1333,8 @@ function updateEngineFromInputs(source) {
   if (source === engineInputs.sizeValue) engineInputs.sizeRange.value = engineInputs.sizeValue.value;
   if (source === engineInputs.lengthRange) engineInputs.lengthValue.value = engineInputs.lengthRange.value;
   if (source === engineInputs.lengthValue) engineInputs.lengthRange.value = engineInputs.lengthValue.value;
+  if (source === shotInputs.lengthRange) shotInputs.lengthValue.value = shotInputs.lengthRange.value;
+  if (source === shotInputs.lengthValue) shotInputs.lengthRange.value = shotInputs.lengthValue.value;
   if (selectedAnchor.type === "shot") {
     anchor.weaponType = normalizeWeaponType(shotInputs.weaponType.value);
     const defaults = weaponTypeDefaults[anchor.weaponType];
@@ -1337,8 +1348,9 @@ function updateEngineFromInputs(source) {
       anchor.size = defaults.size;
       anchor.length = defaults.length;
     } else {
+      anchor.length = clamp(finiteNumber(shotInputs.lengthValue.value, defaults.length), shotLengthMin, shotLengthMax);
       anchor.speed = clamp(finiteNumber(shotInputs.speed.value, defaults.speed), 0.1, 8);
-      anchor.duration = clamp(finiteNumber(shotInputs.duration.value, defaults.duration), 80, 3000);
+      anchor.duration = clamp(finiteNumber(shotInputs.duration.value, defaults.duration), 80, shotDurationMax);
       anchor.fireRate = clamp(Math.round(finiteNumber(shotInputs.fireRate.value, defaults.fireRate)), 1, 30);
       anchor.spread = clamp(finiteNumber(shotInputs.spread.value, defaults.spread), 0, 80);
       anchor.salvoCount = clamp(Math.round(finiteNumber(shotInputs.salvoCount.value, defaults.salvoCount)), 1, 12);
@@ -1349,10 +1361,15 @@ function updateEngineFromInputs(source) {
       engineInputs.sizeValue.value = anchor.size;
       engineInputs.lengthRange.value = anchor.length;
       engineInputs.lengthValue.value = anchor.length;
+      shotInputs.lengthRange.value = anchor.length;
+      shotInputs.lengthValue.value = anchor.length;
     }
+    anchor.size = clamp(Number(engineInputs.sizeValue.value), 3, 28);
+    anchor.length = clamp(finiteNumber(shotInputs.lengthValue.value, anchor.length), shotLengthMin, shotLengthMax);
+  } else {
+    anchor.size = clamp(Number(engineInputs.sizeValue.value), 3, 28);
+    anchor.length = clamp(Number(engineInputs.lengthValue.value), 12, 140);
   }
-  anchor.size = clamp(Number(engineInputs.sizeValue.value), 3, 28);
-  anchor.length = clamp(Number(engineInputs.lengthValue.value), 12, 140);
   anchor.color = normalizeHexColor(engineInputs.color.value, glowColors[getSelectedOption().color] ?? glowColors.red);
   anchor.layer = normalizeEngineLayer(engineInputs.layer.value);
   anchor.templateId = engineInputs.templateId.value;
