@@ -217,16 +217,57 @@ function normalizeBattleShipDebugData(value, engineTemplates = debugData?.engine
     "battleShips",
     "battle"
   ]);
+  const battleShipVfxAnchors = normalizeShipVfxAnchors(
+    anchorsSource,
+    engineTemplates,
+    battleShipOptions,
+    [],
+    shipVfxData.battleShipVfxAnchors
+  );
+  migrateLegacyBattleShipDefaults(battleShipVfxAnchors);
   return {
     version: 2,
-    battleShipVfxAnchors: normalizeShipVfxAnchors(
-      anchorsSource,
-      engineTemplates,
-      battleShipOptions,
-      [],
-      shipVfxData.battleShipVfxAnchors
-    )
+    battleShipVfxAnchors
   };
+}
+
+function migrateLegacyBattleShipDefaults(anchorsById) {
+  for (const option of battleShipOptions) {
+    const anchors = anchorsById?.[option.id];
+    const defaults = shipVfxData.battleShipVfxAnchors?.[option.id];
+    if (!anchors || !defaults) continue;
+    if (isLegacyBattleShipEngineDefault(anchors.engines?.[0])) {
+      anchors.engines = defaults.engines.map((engine, index) => normalizeEngine(engine, index, option.color));
+    }
+    if (isLegacyBattleShipShotDefault(anchors.shots?.[0])) {
+      anchors.shots = defaults.shots.map((shot, index) => normalizeShot(shot, index, option.color));
+    }
+  }
+}
+
+function isLegacyBattleShipEngineDefault(engine) {
+  if (!engine) return false;
+  return numbersMatch(engine.direction, 180)
+    && numbersMatch(engine.size, 12)
+    && numbersMatch(engine.length, 92)
+    && stringsMatch(engine.layer, "behind")
+    && stringsMatch(engine.templateId, "template-plasma");
+}
+
+function isLegacyBattleShipShotDefault(shot) {
+  if (!shot) return false;
+  return stringsMatch(shot.weaponType, "laser")
+    && numbersMatch(shot.direction, 0)
+    && numbersMatch(shot.size, 10)
+    && numbersMatch(shot.length, 150)
+    && numbersMatch(shot.speed, 1.6)
+    && numbersMatch(shot.duration, 420)
+    && numbersMatch(shot.fireRate, 1)
+    && numbersMatch(shot.spread, 0)
+    && numbersMatch(shot.salvoCount, 1)
+    && numbersMatch(shot.intensity, 1)
+    && stringsMatch(shot.layer, "front")
+    && stringsMatch(shot.templateId, "template-plasma");
 }
 
 function getFirstAnchorSource(value, keys) {
