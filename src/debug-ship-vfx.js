@@ -425,8 +425,22 @@ function createDefaultBattleShipAnchors(variant, color, engineTemplates = debugD
   };
   return {
     coils: coilDefaults[variant].map((point, index) => ({ id: `coil-${index + 1}`, ...point })),
-    engines: [normalizeEngine({ x: 34, y: 264, direction: 180, size: 12, length: 92, templateId: engineTemplates[0]?.id ?? "" }, 0, color)],
-    shots: [normalizeShot({ x: 1174, y: 264, direction: 0, weaponType: "laser", size: 10, length: 150, templateId: engineTemplates[0]?.id ?? "" }, 0, color)]
+    engines: [normalizeEngine({ x: 34, y: 264, direction: 0, size: 12, length: 92, templateId: engineTemplates[0]?.id ?? "" }, 0, color)],
+    shots: [normalizeShot({
+      x: 1174,
+      y: 264,
+      direction: 0,
+      weaponType: "plasmaMachineGun",
+      size: 17.5,
+      length: 1199,
+      speed: 3,
+      duration: 900,
+      fireRate: 12,
+      spread: 20,
+      salvoCount: 6,
+      intensity: 1.1,
+      templateId: engineTemplates[0]?.id ?? ""
+    }, 0, color)]
   };
 }
 
