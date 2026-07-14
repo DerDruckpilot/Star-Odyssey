@@ -4,6 +4,8 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
+Implementierungsfortschritt: bis `d1964fe`; Details stehen unter `Implementation Progress`.
+
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
 ## 1. Executive Summary
@@ -13,13 +15,15 @@ Star Odyssey besitzt einen umfangreichen, lauffaehigen Classic-Kern, 32 datenget
 Der Stand ist trotzdem **nicht final polished**:
 
 - **Classic ist nicht vollstaendig regelkonform.** Der nicht dokumentierte 2-Spieler-Modus, fehlende neutrale Bauteile/Sondergrenzen im 3-Spieler-Spiel und die zu frueh endende Nachschub-Nachholfrist weichen von Anleitung bzw. Almanach ab.
-- **Eine vollstaendige Partie ist nicht in allen Zustaenden verlaesslich abschliessbar.** Eine Begegnungsbelohnung kann ohne Fortsetzungspfad haengen bleiben, wenn alle echten Mutterschiff-Ausbaugrenzen erreicht sind (`ENC-001`, P0).
+- **Der urspruengliche P0-Encounter-Softlock ist behoben.** Ausbau-Belohnungen ohne freien physischen Platz setzen den Flow nun kontrolliert fort (`ENC-001`). Weitere P1-Regelabweichungen verhindern weiterhin eine vollstaendige Regelabnahme.
 - **Supernova ist nicht vollstaendig regelkonform spielbar.** 13 von 25 Missionen sind nicht automatisch regelgeprueft; Fabrikbestand und Brettdarstellung sind unvollstaendig; Schlachtschiffkaempfe werden automatisch und teilweise mit falschen Folgen ausgewertet.
 - **Private Informationen sind technisch nicht privat.** Der Host verteilt den vollstaendigen Spielerzustand inklusive Ressourcen und Missionen an jeden Controller (`SN-002`).
 - **Das visuelle Niveau ist bei 1920 x 1080 bereits zusammenhaengend, aber nicht ueber alle Zielgeraete fertig.** Die 4K-Hauptmenue-Komposition bleibt wegen fester Obergrenzen zu klein; Controller-Panels verdecken den Space-Hintergrund weitgehend.
 - **Deployment und reale Hardware bleiben Risikobereiche.** Der Service Worker nutzt einen unveraenderten Cache-Namen und cache-first fuer Assets; die LAN-Auslieferung erfolgt ueber HTTP; echte Fire-TV-, PWA- und Langzeit-Performance wurden nicht vollstaendig auf Hardware verifiziert.
 
-### Befundzahlen
+### Urspruengliche Befundzahlen
+
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 2 von 31 IDs erledigt (1 P0, 1 P1); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -42,9 +46,9 @@ Der Stand ist trotzdem **nicht final polished**:
 
 ### Groesste Risiken
 
-1. `ENC-001`: Eine Ausbau-Belohnung ohne waehbare Ausbauart erzeugt einen Encounter-Softlock.
-2. `SN-004` / `SN-005`: Schlachtschiffkaempfe laufen ohne erforderliche Spielerinteraktion und mit teilweise falschen Folgen ab.
-3. `SN-002`: Missionen und Ressourcen aller Spieler werden an alle Controller verteilt und koennen ausgelesen werden.
+1. `SN-004` / `SN-005`: Schlachtschiffkaempfe laufen ohne erforderliche Spielerinteraktion und mit teilweise falschen Folgen ab.
+2. `SN-002`: Missionen und Ressourcen aller Spieler werden an alle Controller verteilt und koennen ausgelesen werden.
+3. `CLS-001` / `CLS-002`: Spielerzahl und Drei-Spieler-Aufbau weichen von den massgeblichen Classic-Regeln ab.
 
 ### Verifikationsgrenzen
 
@@ -163,7 +167,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### ENC-001 - Ausbau-Belohnung kann Encounter ohne Fortsetzung sperren
 
 - **Bereich:** Begegnungen / Zustandsmaschine
-- **Status:** FEHLERHAFT
+- **Status:** UMGESETZT
 - **Prioritaet:** P0 - Blocker
 - **Aufwand:** S
 - **Betroffene Spielvariante:** beide
@@ -177,6 +181,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Abhaengigkeiten:** Encounter-Ergebnistext und bestehender `finishEncounter`-/Weiter-Pfad.
 - **Akzeptanzkriterien:** Bei mindestens einer gueltigen Ausbauart bleibt die Wahl unveraendert; bei null gueltigen Arten erscheint eine klare Meldung und der Encounter kann genau einmal fortgesetzt/abgeschlossen werden; Save/Load in diesem Schritt bleibt stabil; kein Effekt wird doppelt ausgefuehrt.
 - **Verifikationsstatus:** Statisch vollstaendig verifiziert; der Null-Optionen-Pfad ist direkt aus Engine- und UI-Gates ableitbar, aber nicht als vorhandener automatisierter Test abgedeckt.
+- **Resolution (14.07.2026):** **ERLEDIGT.** `src/game/gameState.js` prueft vor der Auswahl die noch physisch anbaubaren Ausbauarten. Bei vollstaendig belegtem Mutterschiff wird die Auswahl mit einer klaren DE-/EN-Meldung uebersprungen und die restliche Effektkette genau einmal fortgesetzt. `scripts/check-game-state.js` deckt Abschluss, Folgeeffekt, Save/Load und wiederholtes Submit ab. Commit: `d1964fe`. Verifikation: `npm run check`, `npm test`, `git diff --check`.
 
 ## 8. Offene P1-Befunde
 
@@ -345,7 +350,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### ENC-003 - Galaktischer Rat zaehlt Freundschafts-Frachtringboni als echte Anbauten
 
 - **Bereich:** Begegnung 32 / Zahn der Zeit
-- **Status:** REGELABWEICHUNG
+- **Status:** UMGESETZT
 - **Prioritaet:** P1 - Kritisch
 - **Aufwand:** XS
 - **Betroffene Spielvariante:** beide
@@ -359,6 +364,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Abhaengigkeiten:** Encounter-Ergebnisanzeige `ENC-004`, Siegpunktberechnung.
 - **Akzeptanzkriterien:** Tests fuer klare Mehrheit, Gleichstand und null Frachtringe; Freundschaftsbonus aendert kein Ergebnis; Kartenboni bleiben ansonsten funktional.
 - **Verifikationsstatus:** Vollstaendig verifiziert.
+- **Resolution (14.07.2026):** **ERLEDIGT.** `globalLeaderHalfMedal` wertet ausschliesslich `getRealUpgradeValue(player, "cargo")` aus. Ein Regressionstest belegt eine eindeutige physische Frachtringmehrheit und die alleinige Vergabe der halben Medaille. Commit: `d1964fe`. Verifikation: `npm run check`, `npm test`, `git diff --check`.
 
 ### PWA-001 - Unversionierter Cache-first-Assetcache kann alte UI dauerhaft ausliefern
 
@@ -1077,4 +1083,13 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - Portabler Saveexport/-import (`OPS-001`).
 - Legacy-Assetbereinigung (`ASSET-001`) ist Polish/Wartbarkeit und kein Spielblocker.
 
-**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-Praesentation, aber wegen eines P0-Softlocks, mehrerer P1-Regel-/Supernova-Fehler und nicht abgeschlossener Hardware-/Mehrgeraeteabnahme noch nicht release- oder final-polish-bereit.
+**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-Praesentation. Der urspruengliche P0-Softlock ist behoben; mehrere P1-Regel-/Supernova-Fehler und die nicht abgeschlossene Hardware-/Mehrgeraeteabnahme verhindern weiterhin Release- und Final-Polish-Reife.
+
+## Implementation Progress
+
+Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die Prioritaet bleibt als historische Einstufung erhalten; der Ergebnisstatus und die Resolution-Notiz am jeweiligen Befund sind fuer den aktuellen Stand massgeblich.
+
+| Audit-ID | Prioritaet | Ergebnis | Commit | Verifikation | Restpunkt |
+|---|---|---|---|---|---|
+| `ENC-001` | P0 | ERLEDIGT | `d1964fe` | `npm run check`, `npm test`, `git diff --check`; gezielter Null-Auswahl-, Save/Load- und Wiederholungs-Smoke | keiner |
+| `ENC-003` | P1 | ERLEDIGT | `d1964fe` | `npm run check`, `npm test`, `git diff --check`; physische Frachtringmehrheit im Zahn-der-Zeit-Smoke | keiner |
