@@ -34,8 +34,8 @@ jobs:
           cp *.html _site/
           cp -R src _site/
           cp -R assets _site/
-          mkdir -p _site/public/assets/ui/menu
-          cp -R public/assets/ui/menu/processed _site/public/assets/ui/menu/
+          cp -R public _site/
+          cp controller.webmanifest sw.js _site/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
