@@ -6,6 +6,7 @@ import {
   buildSupernovaFactory,
   calculateVictoryPoints,
   buildShip,
+  canFoundColonyWithShip,
   cancelPendingSpaceportUpgrade,
   cancelTradeOffer,
   confirmPendingSpaceportUpgrade,
@@ -158,6 +159,129 @@ assert(game.board.placedQuadrants.filter((quadrant) => quadrant.type === "empty"
 assert((game.board.exploredOutposts ?? []).length === 0, "Outposts should start hidden in new games.");
 assert((game.board.exploredEmptySlots ?? []).length === 0, "Empty quadrants should start hidden in new games.");
 assert((game.board.exploredSystems ?? []).every((systemId) => systemId.startsWith("start-")), "Only start systems should be explored at game start.");
+
+const threePlayerSetupGame = createGameState({
+  language: "de",
+  playerCount: 3,
+  boardLayout,
+  playerSetup: [
+    { name: "Rot", color: "red" },
+    { name: "Blau", color: "blue" },
+    { name: "Grün", color: "green" }
+  ]
+});
+const neutralStartingStructures = threePlayerSetupGame.board.structures.filter((structure) => structure.isNeutral);
+assert(neutralStartingStructures.length === 3, "Three-player games should reserve the fourth start system with three neutral structures.");
+assert(neutralStartingStructures.filter((structure) => structure.type === "colony").length === 2, "The neutral start system should contain two colonies.");
+assert(neutralStartingStructures.filter((structure) => structure.type === "spaceport").length === 1, "The neutral start system should contain one spaceport.");
+assert(neutralStartingStructures.every((structure) => structure.color === "yellow"), "Neutral start structures should use the unused fourth player color.");
+assert(threePlayerSetupGame.players.every((player) => calculateVictoryPoints(threePlayerSetupGame, player.id) === 0), "Neutral start structures must not award victory points.");
+
+const restoredThreePlayerSetupGame = normalizeGameState(structuredClone(threePlayerSetupGame), {
+  language: "de",
+  playerCount: 3,
+  boardLayout
+});
+assert(
+  restoredThreePlayerSetupGame.board.structures.filter((structure) => structure.isNeutral && structure.color === "yellow").length === 3,
+  "Save/load normalization should preserve neutral start structures and their color."
+);
+
+const neutralPlanetId = neutralStartingStructures[0]?.adjacentPlanetIds?.[0];
+const neutralPlanetToken = threePlayerSetupGame.board.numberTokens.planetTokensById?.[neutralPlanetId];
+assert(neutralPlanetToken?.type === "number", "Neutral start structures should be adjacent to a numbered production planet.");
+if (neutralPlanetToken?.type === "number") {
+  const productionDice = neutralPlanetToken.value <= 7
+    ? [1, neutralPlanetToken.value - 1]
+    : [6, neutralPlanetToken.value - 6];
+  const neutralProductionGame = rollProduction({
+    ...structuredClone(threePlayerSetupGame),
+    phase: "production"
+  }, boardLayout, { dice: productionDice });
+  assert(
+    neutralProductionGame.players.every((player) => getResourceTotal(player) === 0),
+    "Neutral start structures must not produce resources for any player."
+  );
+}
+
+let neutralBlockingGame = structuredClone(threePlayerSetupGame);
+neutralBlockingGame = rollPlacementStart(neutralBlockingGame, { dice: [6, 6], total: 12 });
+neutralBlockingGame = rollPlacementStart(neutralBlockingGame, { dice: [4, 5], total: 9 });
+neutralBlockingGame = rollPlacementStart(neutralBlockingGame, { dice: [3, 4], total: 7 });
+const neutralStartSite = boardLayout.startSites.find((site) => site.nodeId === neutralStartingStructures[0]?.locationId);
+assert(Boolean(neutralStartSite), "Neutral start structures should map to real start sites.");
+const neutralBlockingStructureCount = neutralBlockingGame.board.structures.length;
+neutralBlockingGame = placeInitialSpaceport(neutralBlockingGame, boardLayout, neutralStartSite?.id);
+assert(neutralBlockingGame.board.structures.length === neutralBlockingStructureCount, "Neutral start structures should block their occupied build sites.");
+
+const fourPlayerSetupGame = createGameState({ language: "de", playerCount: 4, boardLayout });
+assert(fourPlayerSetupGame.board.structures.length === 0, "Four-player games should not create neutral start structures.");
+
+function createColonyLimitGame(playerCount) {
+  const limitGame = createGameState({ language: "de", playerCount, boardLayout });
+  const limitSystem = limitGame.board.placedSystems.find((system) => (system.colonySites ?? []).length === 3);
+  const [firstSite, secondSite, targetSite] = limitSystem.colonySites;
+  limitGame.phase = "flight";
+  limitGame.currentPlayerIndex = 0;
+  limitGame.board.exploredSystems = [...new Set([...limitGame.board.exploredSystems, limitSystem.id])];
+  limitGame.board.structures = [
+    {
+      id: "colony-limit-one",
+      ownerPlayerId: limitGame.players[1].id,
+      type: "colony",
+      locationId: firstSite.nodeId,
+      systemId: limitSystem.id,
+      adjacentPlanetIds: firstSite.adjacentPlanetIds
+    },
+    {
+      id: "colony-limit-two",
+      ownerPlayerId: limitGame.players[2].id,
+      type: "spaceport",
+      locationId: secondSite.nodeId,
+      systemId: limitSystem.id,
+      adjacentPlanetIds: secondSite.adjacentPlanetIds
+    }
+  ];
+  limitGame.board.ships = [{
+    id: "colony-limit-ship",
+    ownerPlayerId: limitGame.players[0].id,
+    type: "colonyShip",
+    shipVariant: 1,
+    locationId: targetSite.nodeId,
+    status: "active"
+  }];
+  for (const planet of limitSystem.planets ?? []) {
+    limitGame.board.numberTokens.planetTokensById[planet.id] = {
+      ...(limitGame.board.numberTokens.planetTokensById[planet.id] ?? {}),
+      type: "number",
+      value: 6,
+      revealed: true
+    };
+  }
+  return { limitGame, targetSite };
+}
+
+{
+  const { limitGame: threePlayerColonyLimitGame, targetSite } = createColonyLimitGame(3);
+  const threePlayerDestinationGame = structuredClone(threePlayerColonyLimitGame);
+  threePlayerDestinationGame.board.ships[0].locationId = targetSite.launchNodeIds[0];
+  assert(!canFoundColonyWithShip(threePlayerColonyLimitGame, boardLayout, "colony-limit-ship"), "A third occupied colony site should be blocked in three-player games.");
+  assert(
+    getShipDestinationState(threePlayerDestinationGame, boardLayout, "colony-limit-ship", targetSite.nodeId).reason === "colonyLimit",
+    "The board destination state should expose the three-player colony limit."
+  );
+  assert(
+    foundColony(threePlayerColonyLimitGame, boardLayout, "colony-limit-ship").board.structures.length === 2,
+    "The host rule path should reject a third occupied colony site in three-player games."
+  );
+
+  const { limitGame: fourPlayerColonyLimitGame } = createColonyLimitGame(4);
+  assert(canFoundColonyWithShip(fourPlayerColonyLimitGame, boardLayout, "colony-limit-ship"), "Four-player games should allow all three colony sites in a system.");
+  assert(
+    foundColony(fourPlayerColonyLimitGame, boardLayout, "colony-limit-ship").board.structures.length === 3,
+    "The three-player colony limit must not affect four-player games."
+  );
+}
 
 let placementTieGame = createGameState({ language: "de", playerCount: 2, boardLayout });
 placementTieGame = rollPlacementStart(placementTieGame, { dice: [3, 3], total: 6 });

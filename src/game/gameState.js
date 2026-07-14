@@ -189,9 +189,10 @@ export function createGameState({ language, playerCount, boardLayout, playerSetu
   const normalizedGameVariant = normalizeGameVariant(gameVariant);
   const boardPlacement = createBoardPlacement(boardLayout);
   const numberTokens = createNumberTokenState(boardLayout, boardPlacement);
-  const startingStructures = [];
+  const initialPlayers = createPlayers(safePlayerCount, language, playerSetup);
+  const startingStructures = createNeutralStartingStructures(safePlayerCount, boardLayout, initialPlayers);
   const startingShips = [];
-  const players = attachPlayerAssets(createPlayers(safePlayerCount, language, playerSetup), startingStructures, startingShips);
+  const players = attachPlayerAssets(initialPlayers, startingStructures, startingShips);
 
   return finalizeDerivedState({
     gameId: createId("game"),
@@ -1367,25 +1368,12 @@ function getNextAvailableShipVariant(ships, playerId, shipType = "transporter") 
 }
 
 export function foundColony(gameState, boardLayout, shipId) {
-  if (isGameOverState(gameState)) return gameState;
-  if (gameState.phase !== "flight") return gameState;
+  if (!canFoundColonyWithShip(gameState, boardLayout, shipId)) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const ships = normalizeShips(gameState.board?.ships);
   const ship = ships.find((candidate) => candidate.id === shipId);
   const colonySite = getGameColonySites(gameState, boardLayout).find((site) => site.nodeId === ship?.locationId);
-  if (
-    !activePlayer ||
-    !ship ||
-    ship.ownerPlayerId !== activePlayer.id ||
-    ship.type !== "colonyShip" ||
-    !colonySite ||
-    !isSystemExplored(gameState, boardLayout, colonySite.systemId) ||
-    isColonySiteBlockedBySpecial(gameState, colonySite) ||
-    isStructureAtLocation(gameState.board?.structures, colonySite.nodeId)
-  ) {
-    return gameState;
-  }
 
   const structure = {
     id: createId("colony"),
@@ -1420,6 +1408,27 @@ export function foundColony(gameState, boardLayout, shipId) {
     }
   });
   return placePendingGiftedShips(nextState, boardLayout);
+}
+
+export function canFoundColonyWithShip(gameState, boardLayout, shipId) {
+  if (!gameState || isGameOverState(gameState) || gameState.phase !== "flight") return false;
+
+  const activePlayer = gameState.players?.[gameState.currentPlayerIndex];
+  const ship = normalizeShips(gameState.board?.ships).find((candidate) => candidate.id === shipId);
+  const colonySite = getGameColonySites(gameState, boardLayout).find((site) => site.nodeId === ship?.locationId);
+  const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout, { useFallback: false });
+
+  return Boolean(
+    activePlayer &&
+    ship &&
+    ship.ownerPlayerId === activePlayer.id &&
+    ship.type === "colonyShip" &&
+    colonySite &&
+    isSystemExplored(gameState, boardLayout, colonySite.systemId) &&
+    !isColonySiteBlockedBySpecial(gameState, colonySite) &&
+    !isStructureAtLocation(structures, colonySite.nodeId) &&
+    !isThreePlayerColonyLimitReached(gameState, boardLayout, colonySite.systemId, structures)
+  );
 }
 
 export function foundTradeStation(gameState, boardLayout, shipId) {
@@ -1794,6 +1803,20 @@ export function getShipDestinationState(gameState, boardLayout, shipId, targetNo
       distance,
       endpointType,
       reason: "shipType"
+    };
+  }
+
+  if (
+    ship.type === "colonyShip" &&
+    colonySite &&
+    isThreePlayerColonyLimitReached(gameState, boardLayout, colonySite.systemId, structures)
+  ) {
+    return {
+      validDestination: false,
+      passable: true,
+      distance,
+      endpointType,
+      reason: "colonyLimit"
     };
   }
 
@@ -5722,10 +5745,10 @@ function syncCalculatedVictoryPoints(gameState) {
 }
 
 function createStartingStructures(playerCount, boardLayout) {
-  const sitesById = new Map((boardLayout.startSites ?? []).map((site) => [site.id, site]));
+  const sitesById = createStartSiteLookup(boardLayout);
   const assignments = (boardLayout.startAssignments ?? []).slice(0, playerCount);
 
-  return assignments.flatMap((assignment) => {
+  const playerStructures = assignments.flatMap((assignment) => {
     const ownerPlayerId = `player-${assignment.playerIndex + 1}`;
     return assignment.structures.map((structure, index) => {
       const site = sitesById.get(structure.locationId);
@@ -5734,11 +5757,50 @@ function createStartingStructures(playerCount, boardLayout) {
         id: `${ownerPlayerId}-${structure.type}-${index + 1}`,
         ownerPlayerId,
         type: structure.type,
-        locationId: structure.locationId,
+        locationId: site?.nodeId ?? structure.locationId,
+        systemId: site?.systemId ?? null,
         adjacentPlanetIds: site?.adjacentPlanetIds ?? []
       };
     });
   });
+
+  return [...playerStructures, ...createNeutralStartingStructures(playerCount, boardLayout)];
+}
+
+function createNeutralStartingStructures(playerCount, boardLayout, players = []) {
+  if (playerCount !== 3) return [];
+
+  const neutralAssignment = (boardLayout.startAssignments ?? [])[3];
+  if (!neutralAssignment) return [];
+
+  const usedColors = new Set(
+    players.length > 0
+      ? players.map((player) => player.color)
+      : playerColorKeys.slice(0, playerCount)
+  );
+  const neutralColor = playerColorKeys.find((color) => !usedColors.has(color)) ?? playerColorKeys[3];
+  const sitesById = createStartSiteLookup(boardLayout);
+
+  return neutralAssignment.structures.map((structure, index) => {
+    const site = sitesById.get(structure.locationId);
+    return {
+      id: `neutral-player-${structure.type}-${index + 1}`,
+      ownerPlayerId: "neutral-player",
+      type: structure.type,
+      locationId: site?.nodeId ?? structure.locationId,
+      systemId: site?.systemId ?? null,
+      adjacentPlanetIds: site?.adjacentPlanetIds ?? [],
+      isNeutral: true,
+      color: neutralColor
+    };
+  });
+}
+
+function createStartSiteLookup(boardLayout) {
+  return new Map((boardLayout.startSites ?? []).flatMap((site) => [
+    [site.id, site],
+    [site.nodeId, site]
+  ]));
 }
 
 function createStartingShips(playerCount, boardLayout, structures) {
@@ -5795,6 +5857,8 @@ function normalizeStructures(structures, playerCount, boardLayout, options = {})
       systemId: structure.systemId ?? null,
       dockId: structure.dockId ?? null,
       outpostId: structure.outpostId ?? null,
+      isNeutral: Boolean(structure.isNeutral),
+      color: playerColorKeys.includes(structure.color) ? structure.color : null,
       adjacentPlanetIds: Array.isArray(structure.adjacentPlanetIds) ? structure.adjacentPlanetIds : []
     }));
 }
@@ -6532,6 +6596,24 @@ function isStructureAtLocation(structures, locationId) {
 function isColonySiteBlockedBySpecial(gameState, colonySite) {
   return (colonySite?.adjacentPlanetIds ?? [])
     .some((planetId) => isActiveSpecialToken(getPlanetToken(gameState.board?.numberTokens, planetId)));
+}
+
+function isThreePlayerColonyLimitReached(gameState, boardLayout, systemId, structures) {
+  if (gameState.playerCount !== 3 || !systemId) return false;
+  if ((boardLayout.startSystems ?? []).some((system) => system.id === systemId)) return false;
+
+  const colonySites = getGameColonySites(gameState, boardLayout);
+  const sitesByLocation = new Map(colonySites.flatMap((site) => [
+    [site.id, site],
+    [site.nodeId, site]
+  ]));
+  const occupiedColonySites = structures.filter((structure) => {
+    if (!["colony", "spaceport"].includes(structure.type)) return false;
+    const structureSystemId = structure.systemId ?? sitesByLocation.get(structure.locationId)?.systemId;
+    return structureSystemId === systemId;
+  });
+
+  return occupiedColonySites.length >= 2;
 }
 
 function getShortestPathCost(boardLayout, fromNodeId, toNodeId, blockedNodeIds = new Set()) {

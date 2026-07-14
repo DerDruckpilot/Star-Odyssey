@@ -48,6 +48,7 @@ import {
   buildSupernovaFactory,
   buildShip,
   buyUpgrade,
+  canFoundColonyWithShip as canFoundColonyInGame,
   canDrawSupply,
   cancelPendingShipPlacement,
   cancelPendingSpaceportUpgrade,
@@ -6311,15 +6312,9 @@ function isShipAtDock(ship) {
 }
 
 function canFoundColonyWithShip(ship) {
-  const colonySite = getColonySiteAtNode(ship.locationId);
   return Boolean(
     !isShipFlightAnimating(ship.id) &&
-    state.gameState?.phase === "flight" &&
-    ship.type === "colonyShip" &&
-    colonySite &&
-    isSystemExplored(colonySite.systemId) &&
-    !isColonySiteBlockedBySpecial(colonySite) &&
-    !getStructureAtLocation(colonySite.nodeId)
+    canFoundColonyInGame(state.gameState, boardLayout, ship.id)
   );
 }
 
@@ -7226,10 +7221,13 @@ function renderStructuresLayer() {
     if (!site) continue;
     const selectedClass = isSelectedElement("structure", structure.id) ? " is-selected" : "";
     const pendingSpaceportClass = isValidPendingSpaceportTarget(structure.id) ? " is-spaceport-build-target" : "";
-    const ownerIndex = Number.parseInt(structure.ownerPlayerId.replace("player-", ""), 10);
     const owner = state.gameState?.players?.find((player) => player.id === structure.ownerPlayerId);
+    const structureColor = owner?.color ?? structure.color;
+    const ownerIndex = owner
+      ? Number.parseInt(structure.ownerPlayerId.replace("player-", ""), 10)
+      : playerPieceColors.indexOf(structureColor) + 1;
     const structureGroup = createSvgElement("g", {
-      class: `structure structure--${structure.type}${selectedClass}${pendingSpaceportClass}`
+      class: `structure structure--${structure.type}${structure.isNeutral ? " structure--neutral" : ""}${selectedClass}${pendingSpaceportClass}`
     });
     enableBoardElementSelection(structureGroup, "structure", structure.id);
 
@@ -7264,7 +7262,7 @@ function renderStructuresLayer() {
       }));
       structureGroup.append(createSvgElement("image", {
         class: `spaceport-image player-color-${ownerIndex}`,
-        href: getPlayerSpaceportAssetPath(owner?.color),
+        href: getPlayerSpaceportAssetPath(structureColor),
         x: placement.x - placement.width / 2,
         y: placement.y - placement.height / 2,
         width: placement.width,
@@ -7285,7 +7283,7 @@ function renderStructuresLayer() {
       }));
       structureGroup.append(createSvgElement("image", {
         class: `colony-image player-color-${ownerIndex}`,
-        href: getPlayerColonyAssetPath(owner?.color),
+        href: getPlayerColonyAssetPath(structureColor),
         x: placement.x - placement.width / 2,
         y: placement.y - placement.height / 2,
         width: placement.width,

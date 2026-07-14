@@ -109,6 +109,9 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
 
   await expect(page.locator(".board-placeholder")).toBeVisible();
   await expect(page.locator(".board-event-log")).toBeVisible();
+  await expect(page.locator(".structure--neutral")).toHaveCount(3);
+  await expect(page.locator('.structure--neutral image[href*="player-colony-yellow.png"]')).toHaveCount(2);
+  await expect(page.locator('.structure--neutral image[href*="player-spaceport-yellow.png"]')).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Player 1" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "⚙" })).toHaveCount(0);
   await expect.poll(() => Boolean(getLatestPlayerState(controllerOneStates))).toBe(true);
