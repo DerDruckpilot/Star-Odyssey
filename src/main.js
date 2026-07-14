@@ -131,7 +131,7 @@ const boardBackgroundAssetPath = "./assets/backgrounds/space-background-4k.png";
 const mainMenuLayoutUrl = "./public/assets/ui/menu/processed/menu-preview-layout.json";
 const mainMenuButtonLayoutUrl = "./public/assets/ui/menu/processed/menu-button-layout.json";
 const mainMenuAssetPaths = {
-  background: "./public/assets/ui/menu/processed/background/bg_space_base_4k.png",
+  background: "./public/assets/ui/backgrounds/space-menu-hero-widescreen.png",
   stars_overlay: "./public/assets/ui/menu/processed/background/bg_stars_overlay.png",
   planet: "./public/assets/ui/menu/processed/background/bg_planet_bottom_left.png",
   galaxy: "./public/assets/ui/menu/processed/background/bg_galaxy_bottom_right.png",
@@ -1798,8 +1798,8 @@ function renderMenu() {
 
   const title = document.createElement("h1");
   title.id = "screen-title";
-  title.className = "visually-hidden";
-  title.textContent = "Space Odyssey";
+  title.className = "main-menu-title";
+  title.textContent = "Star Odyssey";
 
   const buttonList = document.createElement("nav");
   buttonList.className = "main-menu-button-list";
@@ -1863,7 +1863,7 @@ function renderMenu() {
 
 function renderLoadingScreen() {
   const screen = document.createElement("section");
-  screen.className = "menu-screen loading-screen";
+  screen.className = "menu-screen shell-screen loading-screen";
   screen.setAttribute("aria-labelledby", "screen-title");
 
   const title = document.createElement("h1");
@@ -1900,7 +1900,7 @@ function renderLoadingScreen() {
 
 function renderPlayerSelect() {
   const screen = document.createElement("section");
-  screen.className = "menu-screen";
+  screen.className = "menu-screen shell-screen setup-screen player-select-screen";
   screen.setAttribute("aria-labelledby", "screen-title");
 
   const title = document.createElement("h1");
@@ -1924,6 +1924,10 @@ function renderPlayerSelect() {
 
   const variantGroup = document.createElement("div");
   variantGroup.className = "player-options variant-options";
+
+  const variantLabel = document.createElement("h2");
+  variantLabel.className = "setup-section-label";
+  variantLabel.textContent = t("selectGameVariant");
   for (const variant of [gameVariants.classic, gameVariants.supernova]) {
     const button = createButton(t(`gameVariant_${variant}`), () => {
       state.selectedGameVariant = variant;
@@ -1942,7 +1946,7 @@ function renderPlayerSelect() {
     continueButton
   );
 
-  screen.append(renderLanguageToggle(), title, options, variantGroup, actions, renderNotice());
+  screen.append(renderLanguageToggle(), title, options, variantLabel, variantGroup, actions, renderNotice());
   return screen;
 }
 
@@ -1953,7 +1957,7 @@ function renderControllerConnect() {
   updateControllerLobbyConnections();
 
   const screen = document.createElement("section");
-  screen.className = "menu-screen controller-screen";
+  screen.className = "menu-screen shell-screen controller-screen lobby-screen";
   screen.setAttribute("aria-labelledby", "screen-title");
 
   const title = document.createElement("h1");
@@ -2027,7 +2031,7 @@ function renderPlayerSetup() {
   ensurePlayerSetup(state.selectedPlayers ?? 2);
 
   const screen = document.createElement("section");
-  screen.className = "menu-screen player-setup-screen";
+  screen.className = "menu-screen shell-screen setup-screen player-setup-screen";
   screen.setAttribute("aria-labelledby", "screen-title");
 
   const title = document.createElement("h1");
