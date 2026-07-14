@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `38a5b35`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `7a267f2`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -14,7 +14,7 @@ Star Odyssey besitzt einen umfangreichen, lauffaehigen Classic-Kern, 32 datenget
 
 Der Stand ist trotzdem **nicht final polished**:
 
-- **Classic ist nicht vollstaendig regelkonform.** Der nicht dokumentierte 2-Spieler-Modus und fehlende neutrale Bauteile/Sondergrenzen im 3-Spieler-Spiel weichen von Anleitung bzw. Almanach ab. Die Nachschub-Nachholfrist ist inzwischen korrigiert (`CLS-003`).
+- **Classic ist nicht vollstaendig regelkonform.** Neue Partien sind inzwischen auf die belegten 3/4 Spieler begrenzt (`CLS-001`); fehlende neutrale Bauteile und Sondergrenzen im 3-Spieler-Spiel weichen aber weiterhin von Anleitung bzw. Almanach ab (`CLS-002`). Die Nachschub-Nachholfrist ist korrigiert (`CLS-003`).
 - **Der urspruengliche P0-Encounter-Softlock ist behoben.** Ausbau-Belohnungen ohne freien physischen Platz setzen den Flow nun kontrolliert fort (`ENC-001`). Auch Hehlerei-/Piraten-Sonderwuerfe warten nun auf die aktive Controlleraktion und werden sichtbar ausgewertet (`ENC-002`); `ENC-004` verhindert weiterhin eine vollstaendige Encounter-Regelabnahme.
 - **Supernova ist nicht vollstaendig regelkonform spielbar.** 13 von 25 Missionen sind nicht automatisch regelgeprueft; das Fabriksystem ist inzwischen mit Bestand, Brett- und Controllerdarstellung vervollstaendigt (`SN-003`); Schlachtschiffkaempfe werden weiterhin automatisch und teilweise mit falschen Folgen ausgewertet.
 - **Private Controllerdaten sind inzwischen getrennt.** Der Host erzeugt player-spezifische View-States; fremde Ressourcenarten, Freundschaftskarten, Missionen und private Auswahlentwuerfe werden nicht mehr serialisiert (`SN-002`).
@@ -23,7 +23,7 @@ Der Stand ist trotzdem **nicht final polished**:
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 7 von 31 IDs erledigt (1 P0, 6 P1); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 8 von 31 IDs erledigt (1 P0, 7 P1); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -48,7 +48,7 @@ Die Zahlen bilden den Auditstichtag ab. Aktuell sind 7 von 31 IDs erledigt (1 P0
 
 1. `SN-004` / `SN-005`: Schlachtschiffkaempfe laufen ohne erforderliche Spielerinteraktion und mit teilweise falschen Folgen ab.
 2. `SN-001`: 13 Missionsbedingungen sind nicht automatisch regelgeprueft; dadurch bleibt die Supernova-Siegbedingung fachlich unvollstaendig.
-3. `CLS-001` / `CLS-002`: Spielerzahl und Drei-Spieler-Aufbau weichen von den massgeblichen Classic-Regeln ab.
+3. `CLS-002` / `ENC-004`: Drei-Spieler-Aufbau und sichtbare Zahn-der-Zeit-Phasen weichen von den massgeblichen Regeln ab.
 
 ### Verifikationsgrenzen
 
@@ -103,13 +103,13 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 7. **Encounter-Raumsprung als digitale Board-Auswahl.** Der Controller waehlt eigenes Schiff und Ziel auf dem Board; verdeckte Mittelpunkte besitzen einen Fallback auf einen gueltigen Punkt. Diese digitale Aufloesung ist in den Encounter-Spezifikationen bewusst beschrieben.
 8. **Encounter-Informationen sind rollenbezogen.** Aktiver, betroffener passiver und unbeteiligter Spieler erhalten unterschiedliche Texte/Aktionen.
 9. **Landscape-first.** TV und Smartphone-Controller sind fuer Querformat ausgelegt; Hochformat zeigt einen Drehhinweis.
-10. **Zwei-Spieler-Nachbar-Fallback in Begegnungen.** Links/rechts/zweiter Nachbar kann bei zwei vorhandenen Spielern auf den jeweils anderen Spieler fallen. Dies bestaetigt jedoch nicht, dass das gesamte offizielle Classic-Spiel als 2-Spieler-Variante freigegeben ist (`CLS-001`).
+10. **Zwei-Spieler-Nachbar-Fallback in Begegnungen.** Links/rechts/zweiter Nachbar kann in geladenen Legacy-/Testzustaenden mit zwei vorhandenen Spielern auf den jeweils anderen Spieler fallen. Neue Partien bieten ausschliesslich die belegten Spielerzahlen 3 und 4 an (`CLS-001`, erledigt).
 
 ## 4. Vollstaendigkeitsmatrix der klassischen Regeln
 
 | Regelbereich | Soll laut Quelle | Implementierungsstatus | Beleg | Offene Audit-IDs |
 |---|---|---|---|---|
-| Spielerzahl | Offiziell 3 oder 4 Spieler | REGELABWEICHUNG: 2, 3 oder 4 waehlt/startet | `src/game/gameState.js:181-227`; `src/main.js:1901-1951` | `CLS-001` |
+| Spielerzahl | Offiziell 3 oder 4 Spieler | UMGESETZT: Neue Partien bieten 3 oder 4; explizite alte 2-Spieler-Saves bleiben ladbar | `src/main.js` (`renderPlayerSelect`, `validatePlayerSetup`); `src/game/gameState.js` (`createGameState`, `normalizeGameState`); E2E-/State-Smokes | - |
 | Startaufbau | 2 Kolonien, 1 Raumhafen, Startschiff, Ressourcen/halbe Medaille/Antrieb; bei 3 Spielern neutrale Teile der vierten Farbe | TEILWEISE UMGESETZT | `src/game/gameState.js:181-227`; Platzierungsfluss in `src/game/gameState.js`; neutrale 3-Spieler-Blocker fehlen; Legacy-Fallback `:5598+` | `CLS-002` |
 | 3-Spieler-Sondergrenze | Ausserhalb der Startsysteme hoechstens 2 Kolonien je Planetensystem | FEHLT | `src/game/gameState.js:1355-1408` ohne Spielerzahl-/Systemlimit | `CLS-002` |
 | Spielfeld/Systeme | Startsysteme, Wilder Weltraum, leere Felder, Aussenposten, Zahlenchips | UMGESETZT | `src/data/board.js`; `src/data/boardPoints.js`; `src/data/boardNumberChips.js` | - |
@@ -193,7 +193,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Aufwand:** M
 - **Betroffene Spielvariante:** Classic
 - **Quelle bzw. Sollverhalten:** Anleitung und Almanach definieren das Grundspiel fuer 3 oder 4 Spieler. Eine 2-Spieler-Variante mit eigenem Aufbau, Zug- und Mehrheitenregelwerk ist nicht Bestandteil der geprueften Quellen.
-- **Aktuelles Istverhalten:** Setup und `createInitialState` akzeptieren 2, 3 oder 4 Spieler; 2 ist zudem der technische Default. Nur einzelne Encounter-Nachbarrollen besitzen einen dokumentierten 2-Spieler-Fallback.
+- **Urspruengliches Istverhalten:** Setup und `createGameState` akzeptierten 2, 3 oder 4 Spieler; 2 war zudem der technische Default. Nur einzelne Encounter-Nachbarrollen besassen einen dokumentierten 2-Spieler-Fallback.
 - **Konkrete Abweichung:** Das Gesamtspiel bietet eine nicht spezifizierte Variante als gleichwertige Classic-Auswahl an, obwohl Aufbau, Aussenpostenmehrheiten, Handel und Balance dafuer nicht belegt sind.
 - **Beleg:** `src/game/gameState.js:181-227`; `src/main.js:1901-1951`; Encounter-Nachbar-Fallback in der Encounter-Logik.
 - **Auswirkung:** Eine als "Klassisches Spiel" bezeichnete 2-Spieler-Partie kann regelwidrige oder unbalancierte Ergebnisse liefern; Regelkonformitaet ist nicht zusicherbar.
@@ -201,7 +201,10 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Entweder 2 Spieler aus dem Classic-Setup entfernen oder eine explizite, vollstaendig dokumentierte und getestete Star-Odyssey-2-Spieler-Variante definieren und als bewusste Abweichung kennzeichnen.
 - **Abhaengigkeiten:** Setup-UI, Boardaufbau, Nachbarrollen, Aussenposten-/Mehrheitenlogik und Tests.
 - **Akzeptanzkriterien:** Classic bietet nur 3/4 Spieler oder eine separat benannte, dokumentierte 2-Spieler-Variante; alle davon abhaengigen Regeln besitzen Tests; bestehende 2-Spieler-Saves werden kontrolliert behandelt.
-- **Verifikationsstatus:** Vollstaendig verifiziert gegen Quellen und erreichbaren Setup-Pfad.
+- **Verifikationsstatus:** Vollstaendig dynamisch verifiziert.
+- **Resolution (`7a267f2`):** Der Neuspielpfad bietet nur noch 3 und 4 Spieler; 3 ist Standard und Initialfokus. Validierung und frische Fallbacks verhindern neue 2-Spieler-Partien. Die Engine behaelt explizite 2-Spieler-Zustaende ausschliesslich fuer bestehende Saves und interne Tests bei, und `normalizeGameState` erhaelt deren Spielerzahl kontrolliert.
+- **Geaenderte Dateien:** `src/main.js`, `src/game/gameState.js`, `scripts/check-game-state.js`, `tests/e2e/smoke.spec.js`.
+- **Verifikation:** `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; Drei-Controller-Lobby bis zum Brett, Fire-TV-Setupnavigation, fehlende 2-Spieler-Neuanlage sowie Erhalt eines geladenen 2-Spieler-Legacyzustands.
 
 ### CLS-002 - 3-Spieler-Aufbau und Koloniegrenze sind unvollstaendig
 
@@ -922,7 +925,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
    - Erledigt: `ENC-001` besitzt Null-Optionen-Fallback und Save/Load-Test.
 
 2. **Classic-Regelkorrekturen**
-   - `CLS-001`: Produktentscheidung fuer 2-Spieler-Modus treffen.
+   - Erledigt: `CLS-001` begrenzt neue Partien auf 3/4 Spieler und erhaelt alte 2-Spieler-Saves kontrolliert.
    - `CLS-002`: 3-Spieler-Neutralaufbau und Zwei-Kolonien-Grenze.
    - Erledigt: `CLS-003` haelt den Nachschubanspruch bis zum normalen Mutterschiffwurf.
    - Erledigt: `ENC-002` wartet auf den aktiven Controller und zeigt den reinen Kugelwurf auf dem Host; `ENC-003` wertet nur physische Frachtringe.
@@ -972,7 +975,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 ### Quellen und Regeln
 
 - [ ] Massgebliche Classic-/Supernova-Quellen sind in einem frischen Checkout eindeutig verfuegbar (`DOC-001`).
-- [~] Classic-Regeln sind implementiert; Spielerzahl und 3-Spieler-Aufbau bleiben offen (`CLS-001`, `CLS-002`); die Nachschubfrist ist korrigiert (`CLS-003`).
+- [~] Classic-Regeln sind implementiert; Spielerzahl (`CLS-001`) und Nachschubfrist (`CLS-003`) sind korrigiert, der 3-Spieler-Aufbau bleibt offen (`CLS-002`).
 - [x] Fuenf Rohstoffe, Produktion und Sieben-Grundlogik sind vorhanden.
 - [x] Physische Mutterschiff-Anbauten und Freundschaftsboni sind getrennt.
 - [~] Alle 32 Encounter sind als Daten vorhanden; ein konkreter Flow-/Regelfehler ist offen (`ENC-004`); der Einzelwurf `ENC-002` ist korrigiert und E2E-verifiziert.
@@ -1049,7 +1052,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### 1. Kann eine vollstaendige klassische Partie regelkonform gespielt werden?
 
-**Nein, derzeit nicht belastbar regelkonform.** Der Kern ist weitgehend spielbar, aber `CLS-001` und `CLS-002` sind relevante Abweichungen; `ENC-004` betrifft weiterhin die Encounter-Regel-/Ablauftreue. `ENC-001`, `ENC-002`, `ENC-003` und die Nachschubfrist `CLS-003` sind korrigiert. Ohne die verbleibenden Korrekturen und eine reale Vollpartie kann Classic nicht als vollstaendig abgenommen gelten.
+**Nein, derzeit nicht belastbar regelkonform.** Der Kern ist weitgehend spielbar, aber `CLS-002` bleibt eine relevante Abweichung; `ENC-004` betrifft weiterhin die Encounter-Regel-/Ablauftreue. Spielerzahl (`CLS-001`), `ENC-001`, `ENC-002`, `ENC-003` und die Nachschubfrist `CLS-003` sind korrigiert. Ohne die verbleibenden Korrekturen und eine reale Vollpartie kann Classic nicht als vollstaendig abgenommen gelten.
 
 ### 2. Kann eine vollstaendige Supernova-Partie regelkonform gespielt werden?
 
@@ -1077,7 +1080,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### 8. Welche Punkte verhindern aktuell die Bezeichnung "final polished"?
 
-- Classic-Regelabweichungen `CLS-001` und `CLS-002`.
+- Classic-Regelabweichung `CLS-002`; `CLS-001` ist erledigt.
 - Verbleibende Encounter-Abweichung `ENC-004`; `ENC-002` ist erledigt.
 - Unvollstaendige Missionen und Schlachtschiffkaempfe `SN-001`, `SN-004`, `SN-005`; Fabriken (`SN-003`) und Controllerprivacy (`SN-002`) sind erledigt.
 - Robuste Mehrgeraete-Wiederherstellung und Controllerberechtigung `NET-001`, `NET-002`; die Payload-Privatsphaere aus `SN-002` ist korrigiert.
@@ -1106,3 +1109,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `SN-002` | P1 | ERLEDIGT | `1943a2d` | `npm run check`, `npm test`, `npm run test:e2e` (8/8), `git diff --check`; rohe WebSocket-Payloads beider Spieler, Host-Darstellung und Reconnect | Controller-Authentisierung/Doppelverbindung bleiben getrennt unter `NET-001`/`NET-002` |
 | `SN-003` | P1 | ERLEDIGT | `d8fabc6` | `npm run check`, `npm test`, `npm run test:e2e` (9/9), `git diff --check`; Fabriklimit, unveraenderter State, Save/Load, Classic-Isolation sowie identische TV-/Controllerdarstellung | keiner |
 | `ENC-002` | P1 | ERLEDIGT | `38a5b35` | `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; aktive Einzelausloesung, sichtbare Hostanimation, Save/Load, reine Kugelwertung und Wiederholungsschutz | keiner |
+| `CLS-001` | P1 | ERLEDIGT | `7a267f2` | `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; nur 3/4 im Neuspielpfad, Drei-Controller-Lobby, Fire-TV-Fokus und Erhalt expliziter 2-Spieler-Legacy-Saves | keiner |
