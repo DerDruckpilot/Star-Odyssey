@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `affdc7f`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `a028c6a`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -19,11 +19,11 @@ Der Stand ist trotzdem **nicht final polished**:
 - **Supernova ist nicht vollstaendig regelkonform spielbar.** 13 von 25 Missionen sind nicht automatisch regelgeprueft; Fabrikbestand und Brettdarstellung sind unvollstaendig; Schlachtschiffkaempfe werden automatisch und teilweise mit falschen Folgen ausgewertet.
 - **Private Informationen sind technisch nicht privat.** Der Host verteilt den vollstaendigen Spielerzustand inklusive Ressourcen und Missionen an jeden Controller (`SN-002`).
 - **Das visuelle Niveau ist bei 1920 x 1080 bereits zusammenhaengend, aber nicht ueber alle Zielgeraete fertig.** Die 4K-Hauptmenue-Komposition bleibt wegen fester Obergrenzen zu klein; Controller-Panels verdecken den Space-Hintergrund weitgehend.
-- **Deployment und reale Hardware bleiben Risikobereiche.** Der Service Worker nutzt einen unveraenderten Cache-Namen und cache-first fuer Assets; die LAN-Auslieferung erfolgt ueber HTTP; echte Fire-TV-, PWA- und Langzeit-Performance wurden nicht vollstaendig auf Hardware verifiziert.
+- **Deployment und reale Hardware bleiben Risikobereiche.** Der veraltete Assetcache ist korrigiert (`PWA-001`); die LAN-Auslieferung erfolgt aber weiterhin ueber HTTP, und echte Fire-TV-, PWA- und Langzeit-Performance wurden nicht vollstaendig auf Hardware verifiziert.
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 3 von 31 IDs erledigt (1 P0, 2 P1); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 4 von 31 IDs erledigt (1 P0, 3 P1); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -370,7 +370,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### PWA-001 - Unversionierter Cache-first-Assetcache kann alte UI dauerhaft ausliefern
 
 - **Bereich:** Deployment / Service Worker
-- **Status:** FEHLERHAFT
+- **Status:** UMGESETZT
 - **Prioritaet:** P1 - Kritisch
 - **Aufwand:** S
 - **Betroffene Spielvariante:** ausserhalb des Spiels/UI
@@ -383,7 +383,8 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Cache-Namen/build revisionieren, alte Caches in `activate` entfernen und zentrale UI-Assets network-first bzw. stale-while-revalidate mit Revision nutzen; Updatehinweis/Reload kontrollieren.
 - **Abhaengigkeiten:** Deploymentprozess, PWA-Manifest, Assetpreloader und `PWA-002`.
 - **Akzeptanzkriterien:** Ein Deployment mit geaendertem gleichnamigem Asset aktualisiert bestehende Installationen; alte Caches werden entfernt; Host und Controller nutzen dieselbe Revision; Offline-Fallback bleibt funktionsfaehig.
-- **Verifikationsstatus:** Strategie statisch vollstaendig verifiziert; reales Upgrade einer installierten PWA wurde nicht ausgefuehrt.
+- **Verifikationsstatus:** Strategie statisch und als Chromium-Cacheupgrade verifiziert; reales Upgrade einer auf iOS/Android installierten PWA wurde nicht ausgefuehrt.
+- **Resolution (`a028c6a`):** Der Service Worker verwendet einen neuen `v2`-Cache, entfernt bei Aktivierung nur alte Star-Odyssey-Caches und laedt alle gleichnamigen UI-Assets network-first mit Offline-Fallback. Controller registrieren Updates ohne HTTP-Cache und laden bei einem echten Workerwechsel einmal mit unveraenderter Session-URL neu. Ein Chromium-Regressionstest verifiziert die Entfernung eines kuenstlichen `v1`-Caches sowie die Ersetzung eines absichtlich veralteten gleichnamigen `v2`-Assets.
 
 ## 9. Offene P2-Befunde
 
@@ -454,7 +455,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Beleg:** `controller.webmanifest:1-25`; `controller.html:5-40`; `src/controller.js:285-349,2474-2491`; `docs/fire-tv-lan-testing.md:32,56`; HTTP-Server `tools/tv-server.mjs:294`.
 - **Auswirkung:** "Zum Home-Bildschirm", Service Worker und adressleistenfreie Nutzung koennen auf iOS/Android im LAN fehlen oder inkonsistent sein; das Akzeptanzkriterium ist auf realen Handys nicht gesichert.
 - **Reproduktionsschritte:** Controller ueber eine normale private `http://`-LAN-IP auf iOS/Android oeffnen und Installierbarkeit/Service-Worker-Registrierung pruefen.
-- **Empfohlene spaetere Massnahme:** Einen fuer lokale Geraete vertrauenswuerdigen HTTPS-Pfad oder dokumentierten Wrapper/Installationsweg bereitstellen; Sessionquery beim Start weiterhin erhalten; `PWA-001` gleichzeitig beheben.
+- **Empfohlene spaetere Massnahme:** Einen fuer lokale Geraete vertrauenswuerdigen HTTPS-Pfad oder dokumentierten Wrapper/Installationsweg bereitstellen; Sessionquery beim Start weiterhin erhalten. Die zugehoerige Cachekorrektur `PWA-001` ist erledigt.
 - **Abhaengigkeiten:** Zertifikats-/LAN-Deploymentstrategie, Fire-TV-WebView-Vertrauen und QR-URL-Erzeugung.
 - **Akzeptanzkriterien:** Auf mindestens iOS Safari und Android Chrome laesst sich die reale Controller-URL installieren/starten; Standalone behaelt Session/Spieler; Service Worker ist aktiv; normale Browsernutzung bleibt moeglich.
 - **Verifikationsstatus:** Code und HTTP-Betrieb verifiziert; Installation auf realer Hardware **NICHT VERIFIZIERT**.
@@ -737,7 +738,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 
 | Bereich | Beobachtung | Bewertung | Zugeordnete IDs |
 |---|---|---|---|
-| Hauptmenue | Bei 1920 x 1080 zusammenhaengender Hero-Screen, ein einzelner Titel, scharfer Hintergrund/Rahmen und vier klar fokussierbare Buttons. Bei 4K bleiben Titel und Controls relativ zu klein. | 1080p UMGESETZT; 4K VISUELL VERBESSERUNGSWÜRDIG | `UI-001`, `UI-003`, `PWA-001` |
+| Hauptmenue | Bei 1920 x 1080 zusammenhaengender Hero-Screen, ein einzelner Titel, scharfer Hintergrund/Rahmen und vier klar fokussierbare Buttons. Bei 4K bleiben Titel und Controls relativ zu klein. | 1080p UMGESETZT; 4K VISUELL VERBESSERUNGSWÜRDIG | `UI-001`, `UI-003` |
 | Untermenues/Setup | Neues-Spiel-Setup verwendet denselben Space-/Gold-/Cyan-Stil; Auswahl, Fokus, Zurueck/Weiter sind klar. Zentrale Flaeche ist stark abgedunkelt, aber lesbar. | UMGESETZT im geprueften Browserpfad | `UI-001` fuer 4K-Hardwarewirkung |
 | QR-Lobby | Spieler-Cards, Farben, Status und QR-Flaechen sind gut lesbar. In der Nachpruefung waren beide QR-Codes nach dem asynchronen Rendern vollstaendig geladen. | UMGESETZT im Browser; reales TV-Scanning NICHT VERIFIZIERT | `TEST-001`, `FIRE-001` |
 | Controller | Keine kaputten Bilder oder Viewport-Ueberlaeufe bei 852 x 393; Drehhinweis bei 393 x 852 korrekt. Dunkle Panels verdecken den Hintergrund fast vollstaendig. | VISUELL VERBESSERUNGSWÜRDIG | `UI-002`, `CTRL-001` |
@@ -832,7 +833,7 @@ Die Datenvollstaendigkeit ist belegt; eine sichtbare Validierung aller 12 Kombin
 - Apple-Metadaten, `viewport-fit=cover`, Safe-Area-Nutzung, `100dvh`/VisualViewport, Fullscreen-Featurecheck und einmaliger iOS-Home-Screen-Hinweis sind vorhanden.
 - Sessionparameter werden beim PWA-Launcher ueber gespeicherte Controller-URL wiederhergestellt.
 - Portrait zeigt im Browser-Smoke den Drehhinweis; Landscape nutzt den verfuegbaren Viewport ohne Ganzseitenueberlauf.
-- Offene Betriebsprobleme: unsicherer HTTP-Kontext (`PWA-002`) und stale Assetcache (`PWA-001`).
+- Offenes Betriebsproblem: unsicherer HTTP-Kontext (`PWA-002`). Der stale Assetcache (`PWA-001`) ist korrigiert und besitzt einen Browser-Regressionstest.
 
 ## 15. Save-/Load- und Zustands-Audit
 
@@ -933,7 +934,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
    - `SAVE-001`, `STATE-001`: sichtbare Speicherfehler und eindeutige Migration.
 
 5. **Controller, Fire TV und PWA**
-   - `PWA-001`: Cacheversionierung zuerst, damit weitere UI-Fixes sicher ausgeliefert werden.
+   - Erledigt: `PWA-001` versioniert und revalidiert den Controller-Assetcache.
    - `PWA-002`: realer sicherer PWA-Betrieb.
    - `FIRE-001`: Release-Wrapper haerten und auf Hardware testen.
    - `CTRL-001`: Controllertexte vollstaendig lokalisieren.
@@ -1011,7 +1012,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - [ ] Releasewrapper ist ohne dauerhaftes Debugging/permissive Defaults gehaertet (`FIRE-001`).
 - [x] Manifest, Apple-Metadaten, Fullscreen-Button, iOS-Hinweis und Safe-Area-CSS sind vorhanden.
 - [ ] PWA funktioniert ueber die reale LAN-URL in sicherem Kontext (`PWA-002`).
-- [ ] Service-Worker-Updates liefern neue Assets garantiert aus (`PWA-001`).
+- [x] Service-Worker-Updates ersetzen alte gleichnamige Assets und behalten Offline-Fallback (`PWA-001`).
 - [x] Portrait-Drehhinweis und Landscape-Grundlayout funktionieren im Browser-Smoke.
 
 ### Visuelles Niveau, Assets und VFX
@@ -1074,7 +1075,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - Verbleibende Encounter-Abweichungen `ENC-002` und `ENC-004`.
 - Unvollstaendige Missionen/Fabriken/Schlachtschiffkaempfe `SN-001` bis `SN-005`.
 - Fehlende Privatsphaere und robuste Mehrgeraete-Wiederherstellung `SN-002`, `NET-001`, `NET-002`.
-- Stale-Cache-/PWA-/Fire-TV-Risiken `PWA-001`, `PWA-002`, `FIRE-001`.
+- PWA-/Fire-TV-Risiken `PWA-002` und `FIRE-001`; der stale Assetcache `PWA-001` ist korrigiert.
 - 4K-/Controller-/VFX-Abnahme und zu geringe End-to-End-Testabdeckung `UI-001`, `UI-002`, `TEST-001`, `PERF-001`.
 
 ### 9. Welche Punkte sind nur optionaler Zusatzkomfort?
@@ -1095,3 +1096,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `ENC-001` | P0 | ERLEDIGT | `d1964fe` | `npm run check`, `npm test`, `git diff --check`; gezielter Null-Auswahl-, Save/Load- und Wiederholungs-Smoke | keiner |
 | `ENC-003` | P1 | ERLEDIGT | `d1964fe` | `npm run check`, `npm test`, `git diff --check`; physische Frachtringmehrheit im Zahn-der-Zeit-Smoke | keiner |
 | `CLS-003` | P1 | ERLEDIGT | `affdc7f` | `npm run check`, `npm test`, `git diff --check`; Classic vor/nach Flugwurf, Save/Load vor/nach Verbrauch und Supernova-3-Karten-Smoke | keiner |
+| `PWA-001` | P1 | ERLEDIGT | `a028c6a` | `npm run check`, `npm test`, vollstaendiger E2E-Smoke sowie gezielter Chromium-v1/v2-Cacheupgrade-Test | realer installierter iOS-/Android-PWA-Upgrade bleibt Hardwareabnahme unter `PWA-002`/`TEST-001` |
