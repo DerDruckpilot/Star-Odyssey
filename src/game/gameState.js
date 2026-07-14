@@ -3162,6 +3162,17 @@ function normalizeLocalizedText(text) {
 function normalizePendingEncounterStep(pendingStep) {
   if (!pendingStep || typeof pendingStep !== "object") return null;
 
+  if (pendingStep.type === "singleMothershipRoll") {
+    return {
+      type: "singleMothershipRoll",
+      activePlayerId: typeof pendingStep.activePlayerId === "string" ? pendingStep.activePlayerId : null,
+      roll: normalizeEncounterRollResult(pendingStep.roll),
+      effect: pendingStep.effect && typeof pendingStep.effect === "object" ? pendingStep.effect : null,
+      contextPayload: normalizeEncounterPendingContext(pendingStep.contextPayload),
+      remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
+    };
+  }
+
   if (pendingStep.type === "dualMothershipRoll") {
     return {
       type: "dualMothershipRoll",
@@ -3983,44 +3994,9 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
       };
     }
     case "mothershipOutcomeRoll": {
-      const outcomeRoll = createEncounterRoll(payload.forcedRoll);
-      const outcome = (effect.outcomes ?? []).find((entry) => {
-        const [minValue, maxValue] = entry.range ?? [];
-        return Number.isInteger(minValue) && Number.isInteger(maxValue)
-          ? outcomeRoll.total >= minValue && outcomeRoll.total <= maxValue
-          : false;
-      });
-      const followUp = runEncounterEffectSequence(
-        gameState,
-        state,
-        activePlayerId,
-        outcome?.effects ?? [],
-        card,
-        payload,
-        { resultText: outcome?.resultText }
-      );
-      const outcomeLog = createEncounterLog("logEncounterOutcomeRoll", {
-        player: activePlayer.name,
-        total: outcomeRoll.total
-      });
-      if (!followUp) {
-        return {
-          state,
-          logEntries: [outcomeLog]
-        };
-      }
       return {
-        state: {
-          players: followUp.players,
-          board: followUp.board,
-          pendingGiftedTradeShips: followUp.pendingGiftedTradeShips,
-          remainingMovementByShipId: followUp.remainingMovementByShipId
-        },
-        logEntries: [outcomeLog, ...(followUp.logEntries ?? [])],
-        combat: followUp.combat ?? null,
-        resultText: followUp.resultText,
-        pendingStep: followUp.pendingStep ?? null,
-        nextEncounter: followUp.nextEncounter ?? null
+        state,
+        pendingStep: createSingleMothershipRollStep(activePlayer, effect, payload)
       };
     }
     case "jumpFirstShip": {
@@ -4147,6 +4123,10 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
 function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, pendingStep, payload = {}) {
   const state = createEncounterWorkingState(gameState);
   const remainingEffects = pendingStep.remainingEffects ?? [];
+
+  if (pendingStep.type === "singleMothershipRoll") {
+    return resolveSingleMothershipRollPending(gameState, state, activePlayer, card, pendingStep, payload);
+  }
 
   if (pendingStep.type === "dualMothershipRoll") {
     return resolveDualMothershipRollPending(gameState, state, activePlayer, card, pendingStep, payload);
@@ -4628,6 +4608,105 @@ function createDualMothershipRollStep(gameState, state, activePlayer, effect, pa
       lastSelectionMode: payload.lastSelectionMode
     }),
     remainingEffects: []
+  };
+}
+
+function createSingleMothershipRollStep(activePlayer, effect, payload = {}) {
+  return {
+    type: "singleMothershipRoll",
+    activePlayerId: activePlayer.id,
+    roll: null,
+    effect,
+    contextPayload: normalizeEncounterPendingContext({
+      lastSelectedResources: payload.lastSelectedResources,
+      lastSelectionMode: payload.lastSelectionMode
+    }),
+    remainingEffects: []
+  };
+}
+
+function resolveSingleMothershipRollPending(gameState, state, activePlayer, card, pendingStep, payload = {}) {
+  const rollPlayer = state.players.find((player) => player.id === pendingStep.activePlayerId);
+  if (!rollPlayer || !pendingStep.effect) return null;
+
+  const rollerPlayerId = typeof payload.playerId === "string" ? payload.playerId : activePlayer.id;
+  if (rollerPlayerId !== rollPlayer.id) return null;
+
+  const storedRoll = normalizeEncounterRollResult(pendingStep.roll);
+  if (!storedRoll) {
+    if (payload.completeRoll) return null;
+    return {
+      players: state.players,
+      board: state.board,
+      pendingGiftedTradeShips: state.pendingGiftedTradeShips,
+      remainingMovementByShipId: state.remainingMovementByShipId,
+      logEntries: [],
+      resultText: null,
+      status: "pending",
+      pendingStep: {
+        ...pendingStep,
+        roll: createEncounterRoll(payload.forcedRoll)
+      }
+    };
+  }
+
+  if (!payload.completeRoll) {
+    return {
+      players: state.players,
+      board: state.board,
+      pendingGiftedTradeShips: state.pendingGiftedTradeShips,
+      remainingMovementByShipId: state.remainingMovementByShipId,
+      logEntries: [],
+      resultText: null,
+      status: "pending",
+      pendingStep: {
+        ...pendingStep,
+        roll: storedRoll
+      }
+    };
+  }
+
+  const outcome = (pendingStep.effect.outcomes ?? []).find((entry) => {
+    const [minValue, maxValue] = entry.range ?? [];
+    return Number.isInteger(minValue) && Number.isInteger(maxValue)
+      ? storedRoll.total >= minValue && storedRoll.total <= maxValue
+      : false;
+  });
+  const followUp = runEncounterEffectSequence(
+    gameState,
+    state,
+    activePlayer.id,
+    [
+      ...(outcome?.effects ?? []),
+      ...(pendingStep.remainingEffects ?? [])
+    ],
+    card,
+    {
+      ...(pendingStep.contextPayload ?? {}),
+      outcomeRoll: storedRoll
+    },
+    { resultText: outcome?.resultText }
+  );
+  const outcomeLog = createEncounterLog("logEncounterOutcomeRoll", {
+    player: rollPlayer.name,
+    total: storedRoll.total
+  });
+  if (!followUp) {
+    return {
+      players: state.players,
+      board: state.board,
+      pendingGiftedTradeShips: state.pendingGiftedTradeShips,
+      remainingMovementByShipId: state.remainingMovementByShipId,
+      logEntries: [outcomeLog],
+      resultText: outcome?.resultText ?? null,
+      status: "resolved",
+      pendingStep: null
+    };
+  }
+
+  return {
+    ...followUp,
+    logEntries: [outcomeLog, ...(followUp.logEntries ?? [])]
   };
 }
 

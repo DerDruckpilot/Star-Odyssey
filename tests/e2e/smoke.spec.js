@@ -429,6 +429,88 @@ test("Supernova factories render on the board", async ({ page }) => {
   await controller.close();
 });
 
+test("active controller starts a visible single-player encounter roll", async ({ page }) => {
+  await page.goto("/");
+  const initialFlightSpeed = await page.evaluate(async () => {
+    const [{
+      advanceToFlightPhase,
+      createGameState,
+      determineFlightSpeed,
+      resolveEncounterChoice,
+      startPendingFlightEncounter,
+      submitEncounterPending,
+      updateEncounterResourceSelection
+    }, { boardLayout }] = await Promise.all([
+      import("/src/game/gameState.js"),
+      import("/src/data/boardLayout.js")
+    ]);
+    let gameState = createGameState({
+      language: "de",
+      playerCount: 2,
+      boardLayout
+    });
+    gameState = {
+      ...gameState,
+      players: gameState.players.map((player, index) => index === 0
+        ? {
+          ...player,
+          resources: { ore: 1, fuel: 0, carbon: 0, food: 0, goods: 0 },
+          halfMedals: 2
+        }
+        : player),
+      board: {
+        ...gameState.board,
+        ships: [{
+          id: "encounter-roll-e2e-ship",
+          ownerPlayerId: "player-1",
+          type: "colonyShip",
+          locationId: boardLayout.points[0].id,
+          status: "active"
+        }]
+      }
+    };
+    gameState = advanceToFlightPhase(gameState);
+    gameState = determineFlightSpeed(gameState, {
+      balls: ["black", "yellow"],
+      encounterCardId: "spreadsheet-14"
+    });
+    gameState = startPendingFlightEncounter(gameState);
+    gameState = resolveEncounterChoice(gameState, { choiceId: "accept" });
+    gameState = updateEncounterResourceSelection(gameState, "ore", 1);
+    gameState = submitEncounterPending(gameState);
+    localStorage.removeItem("starOdyssey.autosave.v1");
+    localStorage.setItem("star-odyssey-current-game", JSON.stringify(gameState));
+    return gameState.flightSpeedTotal;
+  });
+
+  await page.reload();
+  await expect(page.locator(".board-screen")).toBeVisible();
+  await expect(page.locator(".mothership-speed-overlay")).toHaveCount(0);
+
+  const sessionId = await page.evaluate(() => sessionStorage.getItem("star-odyssey-controller-session"));
+  const controller = await page.context().newPage();
+  await controller.goto(`/controller.html?session=${sessionId}&player=1`);
+  const rollButton = controller.getByRole("button", { name: "Mit Mutterschiff würfeln" });
+  await expect(rollButton).toBeVisible();
+  await rollButton.click();
+
+  await expect(page.locator(".mothership-speed-overlay")).toBeVisible();
+  await expect(page.locator(".mothership-speed-ball")).toHaveCount(2);
+  await expect(controller.getByText("Der Wurf wird auf dem Spielfeld angezeigt.")).toBeVisible();
+  await expect(rollButton).toHaveCount(0);
+  await expect(page.locator(".encounter-modal-overlay")).toHaveCount(0);
+
+  await expect.poll(async () => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null");
+    return state?.activeEncounter?.status ?? null;
+  }), { timeout: 10000 }).toBe("resolved");
+  await expect(page.locator(".mothership-speed-overlay")).toHaveCount(0);
+  const resolvedState = await page.evaluate(() => JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null"));
+  expect(resolvedState.flightSpeedTotal).toBe(initialFlightSpeed);
+  await expect(controller.getByText("Begegnung abschließen.")).toBeVisible();
+  await controller.close();
+});
+
 test("outpost debug page loads and exports layout", async ({ page }) => {
   await page.goto("/debug-outposts.html");
 

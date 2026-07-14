@@ -174,7 +174,8 @@ const state = {
     : null,
   loadingProgress: 0,
   driveComparisonPreviewKey: null,
-  driveComparisonPreviewStartedAt: 0
+  driveComparisonPreviewStartedAt: 0,
+  singleMothershipRollAnimationKey: null
 };
 
 const remoteHost = {
@@ -2509,6 +2510,9 @@ function renderGameOverOverlay() {
 function renderEncounterModal() {
   const encounter = state.gameState?.activeEncounter;
   if (state.view !== "board" || !encounter) return document.createDocumentFragment();
+  if (encounter.pendingStep?.type === "singleMothershipRoll" && encounter.pendingStep.roll) {
+    return document.createDocumentFragment();
+  }
 
   const overlay = document.createElement("div");
   const isBoardSelection = ["shipJumpSelection", "boardTargetSelection", "shipBlockSelection"].includes(encounter.pendingStep?.type);
@@ -2533,6 +2537,8 @@ function getEncounterActionPlayer() {
     pendingOwnerPlayerId = encounter.pendingStep.currentTargetPlayerId;
   } else if (encounter?.pendingStep?.type === "dualMothershipRoll") {
     pendingOwnerPlayerId = getDualMothershipRollActionPlayerId(encounter.pendingStep) ?? pendingOwnerPlayerId;
+  } else if (encounter?.pendingStep?.type === "singleMothershipRoll") {
+    pendingOwnerPlayerId = encounter.pendingStep.activePlayerId ?? pendingOwnerPlayerId;
   } else if (encounter?.pendingStep?.type === "driveComparisonPreview") {
     pendingOwnerPlayerId = encounter.pendingStep.activePlayerId ?? pendingOwnerPlayerId;
   }
@@ -3299,6 +3305,11 @@ function renderEncounterActions(player) {
     return wrapper;
   }
 
+  if (encounter.pendingStep?.type === "singleMothershipRoll") {
+    wrapper.append(renderEncounterSingleMothershipRoll(encounter.pendingStep, player));
+    return wrapper;
+  }
+
   if (encounter.pendingStep?.type === "driveComparisonPreview") {
     wrapper.append(renderEncounterDriveComparisonPreview(encounter.pendingStep, player));
     return wrapper;
@@ -3389,6 +3400,35 @@ function renderEncounterDualMothershipRoll(pendingStep, player) {
   if (hasDualMothershipRollForPlayer(pendingStep, player.id)) {
     const waiting = document.createElement("p");
     waiting.textContent = t("encounterMothershipRollDone");
+    wrapper.append(waiting);
+    return wrapper;
+  }
+
+  wrapper.append(createButton(
+    t("encounterMothershipRollButton"),
+    () => submitEncounterPendingAction({ playerId: player.id }),
+    "small-button"
+  ));
+  return wrapper;
+}
+
+function renderEncounterSingleMothershipRoll(pendingStep, player) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+  const prompt = document.createElement("p");
+  prompt.textContent = t("encounterSingleMothershipRollPrompt");
+  wrapper.append(prompt);
+
+  if (player?.id !== pendingStep.activePlayerId) {
+    const waiting = document.createElement("p");
+    waiting.textContent = t("notYourTurn");
+    wrapper.append(waiting);
+    return wrapper;
+  }
+
+  if (pendingStep.roll) {
+    const waiting = document.createElement("p");
+    waiting.textContent = t("encounterSingleMothershipRollDone");
     wrapper.append(waiting);
     return wrapper;
   }
@@ -4931,6 +4971,55 @@ function drawShipEngineVfxOverlays() {
   for (const layerName of shipVfxCanvasLayers) {
     drawShipEngineVfxLayer(layerName);
   }
+}
+
+function ensurePendingSingleMothershipRollAnimation() {
+  const encounter = state.gameState?.activeEncounter;
+  const pendingStep = encounter?.pendingStep;
+  if (state.view !== "board" || pendingStep?.type !== "singleMothershipRoll" || !pendingStep.roll) {
+    state.singleMothershipRollAnimationKey = null;
+    return;
+  }
+
+  const key = [
+    encounter.cardId ?? "",
+    pendingStep.activePlayerId ?? "",
+    pendingStep.roll.balls?.join("-") ?? "",
+    pendingStep.roll.total ?? 0
+  ].join(":");
+  if (state.singleMothershipRollAnimationKey === key) return;
+
+  const player = state.gameState?.players?.find((candidate) => candidate.id === pendingStep.activePlayerId);
+  if (!player) return;
+
+  state.singleMothershipRollAnimationKey = key;
+  const queued = queueMothershipSpeedAnimation(player, {
+    balls: pendingStep.roll.balls,
+    baseSpeed: pendingStep.roll.total,
+    encounterTriggered: false
+  }, {
+    totalSpeed: pendingStep.roll.total,
+    onComplete: () => {
+      const currentEncounter = state.gameState?.activeEncounter;
+      const currentPendingStep = currentEncounter?.pendingStep;
+      const currentKey = currentPendingStep?.type === "singleMothershipRoll" && currentPendingStep.roll
+        ? [
+          currentEncounter.cardId ?? "",
+          currentPendingStep.activePlayerId ?? "",
+          currentPendingStep.roll.balls?.join("-") ?? "",
+          currentPendingStep.roll.total ?? 0
+        ].join(":")
+        : "";
+      if (currentKey !== key) return;
+
+      state.gameState = submitEncounterPending(state.gameState, {
+        playerId: currentPendingStep.activePlayerId,
+        completeRoll: true
+      });
+      saveCurrentGameState();
+    }
+  });
+  if (!queued) state.singleMothershipRollAnimationKey = null;
 }
 
 function queueMothershipSpeedAnimation(player, flightRoll, options = {}) {
@@ -8082,6 +8171,13 @@ function getRemoteEncounterStateForController() {
 
 function getRemoteEncounterPendingStep(pendingStep) {
   if (!pendingStep) return null;
+  if (pendingStep.type === "singleMothershipRoll") {
+    return {
+      type: "singleMothershipRoll",
+      activePlayerId: pendingStep.activePlayerId,
+      rolled: Boolean(pendingStep.roll)
+    };
+  }
   if (pendingStep.type === "dualMothershipRoll") {
     return {
       type: "dualMothershipRoll",
@@ -8438,6 +8534,9 @@ function isRemoteActionPlayerActive(playerId) {
 
 function isRemoteEncounterActionPlayer(playerId) {
   const pendingStep = state.gameState?.activeEncounter?.pendingStep;
+  if (pendingStep?.type === "singleMothershipRoll") {
+    return Boolean(playerId && pendingStep.activePlayerId === playerId && !pendingStep.roll);
+  }
   if (pendingStep?.type === "dualMothershipRoll") {
     return isDualMothershipRollParticipant(pendingStep, playerId)
       && !hasDualMothershipRollForPlayer(pendingStep, playerId);
@@ -8625,7 +8724,10 @@ function executeRemoteAction(actionId, payload = {}) {
       }
       break;
     case "encounter.submitPending":
-      if (isRemoteEncounterActionPlayer(playerId)) submitEncounterPendingAction(payload);
+      if (isRemoteEncounterActionPlayer(playerId)) {
+        const { completeRoll: _completeRoll, forcedRoll: _forcedRoll, ...safePayload } = payload;
+        submitEncounterPendingAction(safePayload);
+      }
       break;
     case "encounter.startBoardSelection":
       if (
@@ -8756,6 +8858,7 @@ function render() {
   app.classList.toggle("app-shell--board", state.view === "board");
   app.classList.toggle("app-shell--main-menu", state.view === "menu");
   app.classList.toggle("app-shell--shell", ["controllers", "loading", "playerSetup", "players"].includes(state.view));
+  ensurePendingSingleMothershipRollAnimation();
 
   const views = {
     board: renderBoardShell,

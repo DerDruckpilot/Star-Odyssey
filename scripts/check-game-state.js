@@ -879,6 +879,90 @@ const postEncounterMoveState = moveShip(
 );
 assert(postEncounterMoveState !== null, "Game state should remain usable after finishing an encounter.");
 
+let singleRollEncounterGame = {
+  ...encounterBaseState,
+  players: encounterBaseState.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      resources: { ore: 1, fuel: 0, carbon: 0, food: 0, goods: 0 },
+      upgrades: { drive: 1, cargo: 0, cannon: 6 },
+      friendshipCards: ["wise-cannon-boost"],
+      halfMedals: 2
+    }
+    : player)
+};
+singleRollEncounterGame = determineFlightSpeed(singleRollEncounterGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "spreadsheet-14"
+});
+singleRollEncounterGame = revealPendingFlightEncounter(singleRollEncounterGame);
+singleRollEncounterGame = resolveEncounterChoice(singleRollEncounterGame, { choiceId: "accept" });
+singleRollEncounterGame = updateEncounterResourceSelection(singleRollEncounterGame, "ore", 1);
+singleRollEncounterGame = submitEncounterPending(singleRollEncounterGame);
+assert(
+  singleRollEncounterGame.activeEncounter?.pendingStep?.type === "singleMothershipRoll",
+  "Pirate outcome rolls should wait for an explicit active-player mothership roll."
+);
+assert(
+  !singleRollEncounterGame.activeEncounter?.pendingStep?.roll,
+  "Pirate outcome rolls must not be generated before the active player presses the roll button."
+);
+assert(singleRollEncounterGame.players[0].halfMedals === 2, "Pirate roll outcomes must not apply before the visible roll.");
+const singleRollFlightSpeed = singleRollEncounterGame.flightSpeedTotal;
+const rejectedPassiveSingleRoll = submitEncounterPending(singleRollEncounterGame, {
+  playerId: "player-2",
+  forcedRoll: { balls: ["blue", "blue"] }
+});
+assert(
+  !rejectedPassiveSingleRoll.activeEncounter?.pendingStep?.roll,
+  "A passive player must not be able to trigger an active-only encounter roll."
+);
+singleRollEncounterGame = submitEncounterMothershipRoll(singleRollEncounterGame, "player-1", ["blue", "blue"]);
+assert(
+  singleRollEncounterGame.activeEncounter?.pendingStep?.type === "singleMothershipRoll"
+    && singleRollEncounterGame.activeEncounter.pendingStep.roll?.total === 2,
+  "The active player's pirate roll should be stored until the board animation completes."
+);
+assert(singleRollEncounterGame.players[0].halfMedals === 2, "A stored roll must not apply its outcome before animation completion.");
+const savedSingleRollEncounter = normalizeGameState(JSON.parse(JSON.stringify(singleRollEncounterGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(
+  savedSingleRollEncounter.activeEncounter?.pendingStep?.roll?.total === 2,
+  "A waiting single-player encounter roll should survive save/load normalization."
+);
+const repeatedSingleRoll = submitEncounterPending(savedSingleRollEncounter, {
+  playerId: "player-1",
+  forcedRoll: { balls: ["yellow", "yellow"] }
+});
+assert(
+  repeatedSingleRoll.activeEncounter?.pendingStep?.roll?.total === 2,
+  "Repeated input must not replace an already stored encounter roll."
+);
+singleRollEncounterGame = submitEncounterPending(savedSingleRollEncounter, {
+  playerId: "player-1",
+  completeRoll: true
+});
+assert(singleRollEncounterGame.activeEncounter?.status === "resolved", "The pirate encounter should resolve after the board animation completes.");
+assert(
+  singleRollEncounterGame.players[0].halfMedals === 1,
+  "Pirate outcome rolls must use only colored ball points, without cannon or friendship bonuses."
+);
+assert(
+  singleRollEncounterGame.flightSpeedTotal === singleRollFlightSpeed,
+  "Single-player encounter rolls must not overwrite normal flight speed."
+);
+const repeatedSingleRollCompletion = submitEncounterPending(singleRollEncounterGame, {
+  playerId: "player-1",
+  completeRoll: true
+});
+assert(
+  repeatedSingleRollCompletion.players[0].halfMedals === 1,
+  "Reloading or resubmitting must not apply a completed single-player roll twice."
+);
+
 let driveGainEncounterGame = determineFlightSpeed(encounterBaseState, {
   balls: ["black", "yellow"],
   encounterCardId: "spreadsheet-14"

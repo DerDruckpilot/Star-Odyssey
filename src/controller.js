@@ -926,13 +926,15 @@ function renderEncounterPanel() {
   title.textContent = "Begegnung";
   const isOwner = gameState.encounter.playerId === selectedPlayerId;
   const pendingStep = gameState.encounter.pendingStep;
+  const isSingleRollStep = pendingStep?.type === "singleMothershipRoll";
+  const isSingleRollParticipant = isSingleRollStep && pendingStep.activePlayerId === selectedPlayerId;
   const isDualRollStep = pendingStep?.type === "dualMothershipRoll";
   const isDualRollParticipant = isDualRollStep && isControllerDualMothershipRollParticipant(pendingStep);
   const isDriveComparisonStep = pendingStep?.type === "driveComparisonPreview";
   const isDriveComparisonParticipant = isDriveComparisonStep && isControllerDriveComparisonParticipant(pendingStep);
   panel.append(title);
 
-  if (!isOwner && !isDualRollParticipant && !isDriveComparisonParticipant) {
+  if (!isOwner && !isSingleRollParticipant && !isDualRollParticipant && !isDriveComparisonParticipant) {
     const activeName = gameState.activePlayerName || "Ein anderer Spieler";
     const neutral = document.createElement("p");
     neutral.className = "encounter-prompt";
@@ -960,6 +962,8 @@ function renderEncounterPanel() {
   if (isOwner && gameState.encounter.status === "resolved") {
     const finishAction = findAction("finishEncounter");
     if (finishAction) panel.append(renderActionGrid([finishAction]));
+  } else if (isSingleRollParticipant) {
+    panel.append(renderControllerEncounterSingleMothershipRoll(pendingStep));
   } else if (isDualRollParticipant) {
     panel.append(renderControllerEncounterDualMothershipRoll(pendingStep));
   } else if (isDriveComparisonParticipant) {
@@ -1085,8 +1089,32 @@ function renderControllerEncounterDualMothershipRoll(pendingStep) {
   return wrapper;
 }
 
+function renderControllerEncounterSingleMothershipRoll(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list";
+
+  const prompt = document.createElement("p");
+  prompt.textContent = "Würfle für die Begegnung mit deinem Mutterschiff.";
+  wrapper.append(prompt);
+
+  if (pendingStep.rolled) {
+    const waiting = document.createElement("p");
+    waiting.textContent = "Der Wurf wird auf dem Spielfeld angezeigt.";
+    wrapper.append(waiting);
+    return wrapper;
+  }
+
+  wrapper.append(createButton(
+    "Mit Mutterschiff würfeln",
+    () => sendNamedAction("encounter.submitPending"),
+    "small-button"
+  ));
+  return wrapper;
+}
+
 function getEncounterStatusLabel() {
   if (gameState?.encounter?.status === "resolved") return "Begegnung abschließen.";
+  if (gameState?.encounter?.pendingStep?.type === "singleMothershipRoll") return "Würfle mit dem Mutterschiff.";
   if (gameState?.encounter?.pendingStep?.type === "dualMothershipRoll") return "Würfle mit dem Mutterschiff.";
   if (gameState?.encounter?.pendingStep?.type === "driveComparisonPreview") return "Antriebsvergleich wird angezeigt.";
   if (gameState?.encounter?.pendingStep?.hint) return gameState.encounter.pendingStep.hint;
