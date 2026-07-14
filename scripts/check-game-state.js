@@ -126,12 +126,15 @@ for (const color of ["red", "blue", "yellow", "green"]) {
   }
 }
 assert(Object.keys(shipVfxData.battleShipVfxAnchors ?? {}).length === 12, "Battle ship VFX data should cover all 12 battle ship variants.");
+assert(shipVfxData.engineTemplates?.some((template) => template.id === "template-plasma" && template.name === "Red Flame" && template.emitters?.length === 6), "Battle ship plasma engine template should be available.");
 for (const color of ["red", "blue", "yellow", "green"]) {
   for (const variant of [1, 2, 3]) {
     const anchors = shipVfxData.battleShipVfxAnchors?.[`${color}-battle-ship-${variant}`];
-    assert(anchors?.coils?.length > 0, `Missing battle ship coil VFX anchors for ${color} variant ${variant}.`);
+    assert(anchors?.coils?.length === variant, `Battle ship ${color} variant ${variant} should have ${variant} coil VFX anchor(s).`);
     assert(anchors?.engines?.length > 0, `Missing battle ship engine VFX anchors for ${color} variant ${variant}.`);
-    assert(anchors?.shots?.length > 0, `Missing battle ship shot VFX anchors for ${color} variant ${variant}.`);
+    assert(anchors?.engines?.every((engine) => engine.templateId === "template-plasma"), `Battle ship ${color} variant ${variant} should use the plasma engine template.`);
+    assert(anchors?.shots?.length === 2, `Battle ship ${color} variant ${variant} should have two shot VFX anchors.`);
+    assert(anchors?.shots?.every((shot) => shot.weaponType === "plasmaMachineGun" && shot.length === 1199), `Battle ship ${color} variant ${variant} should use the imported plasma machine gun range.`);
     assert(Number.isFinite(anchors?.assetWidth) && Number.isFinite(anchors?.assetHeight), `Missing battle ship asset size for ${color} variant ${variant}.`);
   }
 }

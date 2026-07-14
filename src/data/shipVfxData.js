@@ -34,7 +34,7 @@ const colonyShipVfxAnchors = {
 
 export const shipVfxData = {
   version: 3,
-  engineTemplates: mergeEngineTemplates(engineTemplates, tradeShipVfxData.engineTemplates),
+  engineTemplates: mergeEngineTemplates(engineTemplates, battleShipVfxData.engineTemplates, tradeShipVfxData.engineTemplates),
   colonyShipVfxAnchors,
   battleShipVfxAnchors: battleShipVfxData.battleShipVfxAnchors,
   tradeShipVfxAnchors: tradeShipVfxData.tradeShipVfxAnchors,
@@ -63,9 +63,9 @@ export function getShipEngineTemplate(templateId) {
   return shipVfxData.engineTemplates.find((template) => template.id === templateId) ?? null;
 }
 
-function mergeEngineTemplates(primaryTemplates, secondaryTemplates = []) {
+function mergeEngineTemplates(...templateGroups) {
   const templatesById = new Map();
-  for (const template of [...primaryTemplates, ...secondaryTemplates]) {
+  for (const template of templateGroups.flat()) {
     if (template?.id && !templatesById.has(template.id)) {
       templatesById.set(template.id, template);
     }

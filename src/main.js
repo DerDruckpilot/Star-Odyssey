@@ -293,6 +293,8 @@ const shipFlightAnimation = {
 };
 const shipEngineTrailDuration = 1250;
 const shipEngineTrails = [];
+const shipWeaponBurstDuration = 1100;
+const shipWeaponBursts = [];
 const shipVfxCanvasLayers = ["behind", "inline", "front"];
 const shipVfxAnimation = {
   frameRequestId: null,
@@ -1225,8 +1227,13 @@ function moveSelectedShipTo(targetNodeId) {
   state.notice = "";
   const fromPoint = getBoardPointById(selectedShip.locationId);
   const toPoint = getBoardPointById(targetNodeId);
+  const destinationState = getSelectedShipDestinationState(targetNodeId);
+  const battleWeaponBurst = destinationState?.endpointType === "battle" && selectedShip.type === "battleShip" && toPoint
+    ? createShipWeaponBurstSnapshot(selectedShip, toPoint, fromPoint)
+    : null;
   state.gameState = moveShip(state.gameState, boardLayout, selectedShip.id, targetNodeId, { deferExploration: true });
   queueShipFlightAnimation(selectedShip, fromPoint, toPoint, () => {
+    if (battleWeaponBurst) queueShipWeaponBurst(battleWeaponBurst);
     state.gameState = completeShipExploration(state.gameState, boardLayout, selectedShip.id);
     saveCurrentGameState();
   });
@@ -5134,7 +5141,8 @@ function drawShipEngineVfxLayer(layerName) {
   targetContext.setTransform(1, 0, 0, 1, 0, 0);
   targetContext.clearRect(0, 0, width, height);
   pruneShipEngineTrails(getShipVfxTime());
-  if (shipFlightAnimation.items.length === 0 && shipEngineTrails.length === 0) return;
+  pruneShipWeaponBursts(getShipVfxTime());
+  if (shipFlightAnimation.items.length === 0 && shipEngineTrails.length === 0 && shipWeaponBursts.length === 0) return;
 
   targetContext.setTransform(width / boardLayout.width, 0, 0, height / boardLayout.height, 0, 0);
   const pointsById = new Map((boardLayout.points ?? []).map((point) => [point.id, point]));
@@ -5156,6 +5164,9 @@ function drawShipEngineVfxLayer(layerName) {
     drawShipEngineVfx(targetContext, ship, owner, anchors, trail.pose, layerName, time, {
       inactiveSince: trail.inactiveSince
     });
+  }
+  for (const burst of shipWeaponBursts) {
+    drawShipWeaponBurstVfx(targetContext, burst, layerName, time);
   }
   targetContext.setTransform(1, 0, 0, 1, 0, 0);
 }
@@ -5551,10 +5562,52 @@ function queueShipEngineTrail(shipId, pose, inactiveSince) {
   }
 }
 
+function createShipWeaponBurstSnapshot(ship, targetPoint, sourcePoint = null) {
+  const owner = state.gameState?.players?.find((player) => player.id === ship.ownerPlayerId) ?? null;
+  const anchors = getShipVfxAnchorsForRender(owner, ship);
+  if (!anchors?.shots?.length || !targetPoint) return null;
+  const angle = sourcePoint
+    ? Math.atan2(targetPoint.y - sourcePoint.y, targetPoint.x - sourcePoint.x)
+    : getShipVisualAngle(ship.id);
+  return {
+    shipId: ship.id,
+    ownerColor: owner?.color,
+    anchors,
+    visual: getShipVisualDefaults(ship),
+    pose: {
+      x: targetPoint.x,
+      y: targetPoint.y,
+      angle
+    }
+  };
+}
+
+function queueShipWeaponBurst(snapshot) {
+  if (!snapshot?.anchors?.shots?.length) return;
+  shipWeaponBursts.push({
+    ...snapshot,
+    startTime: getAnimationNow(),
+    duration: Math.max(
+      shipWeaponBurstDuration,
+      ...snapshot.anchors.shots.map((shot) => Number(shot.duration) || 0)
+    )
+  });
+  startShipVfxLoop();
+}
+
 function pruneShipEngineTrails(now) {
   for (let index = shipEngineTrails.length - 1; index >= 0; index -= 1) {
     if (shipEngineTrails[index].expiresAt <= now) {
       shipEngineTrails.splice(index, 1);
+    }
+  }
+}
+
+function pruneShipWeaponBursts(now) {
+  for (let index = shipWeaponBursts.length - 1; index >= 0; index -= 1) {
+    const burst = shipWeaponBursts[index];
+    if (now - burst.startTime >= burst.duration) {
+      shipWeaponBursts.splice(index, 1);
     }
   }
 }
@@ -5631,6 +5684,7 @@ function updateShipVfxAnimation(now) {
   shipVfxAnimation.currentTime = now;
   shipVfxAnimation.frameRequestId = null;
   pruneShipEngineTrails(now);
+  pruneShipWeaponBursts(now);
   drawShipEngineVfxOverlays();
   if (shouldRunShipVfxLoop()) {
     startShipVfxLoop();
@@ -5650,6 +5704,7 @@ function syncShipVfxLoop() {
 function shouldRunShipVfxLoop() {
   if (state.view !== "board" || !state.gameState) return false;
   if (shipEngineTrails.length > 0) return true;
+  if (shipWeaponBursts.length > 0) return true;
   if (shipFlightAnimation.items.length > 0) return false;
   return state.gameState.phase === "flight" && state.gameState.hasRolledFlightSpeed;
 }
@@ -5762,6 +5817,117 @@ function drawShipEngineParticles(targetContext, options) {
     targetContext.fill();
   }
 
+  targetContext.restore();
+}
+
+function drawShipWeaponBurstVfx(targetContext, burst, layerName, time) {
+  const progress = clamp01((time - burst.startTime) / burst.duration);
+  if (progress >= 1) return;
+  const anchors = burst.anchors;
+  const visual = burst.visual;
+  for (const shot of anchors.shots ?? []) {
+    const shotLayer = normalizeShipVfxLayer(shot.layer ?? "front");
+    if (shotLayer !== layerName) continue;
+    const origin = getShipVfxWorldPoint(anchors, visual, burst.pose, shot.x, shot.y);
+    const direction = burst.pose.angle + degreesToRadians(shot.direction ?? 0);
+    const color = shot.color ?? getShipVfxColor(burst.ownerColor);
+    if (shot.weaponType === "rocket") {
+      drawShipRocketBurst(targetContext, origin, direction, shot, color, progress, anchors, visual);
+    } else if (shot.weaponType === "laser") {
+      drawShipLaserBurst(targetContext, origin, direction, shot, color, progress, anchors, visual);
+    } else {
+      drawShipPlasmaBurst(targetContext, origin, direction, shot, color, progress, anchors, visual);
+    }
+  }
+}
+
+function getShipShotScale(anchors, visual) {
+  return getShipVfxFitScale(anchors, visual);
+}
+
+function drawShipLaserBurst(targetContext, origin, direction, shot, color, progress, anchors, visual) {
+  const scale = getShipShotScale(anchors, visual);
+  const length = Math.max(4, (Number(shot.length) || 150) * scale);
+  const alpha = Math.sin(progress * Math.PI) * (Number(shot.intensity) || 1);
+  const end = {
+    x: origin.x + Math.cos(direction) * length,
+    y: origin.y + Math.sin(direction) * length
+  };
+  const gradient = targetContext.createLinearGradient(origin.x, origin.y, end.x, end.y);
+  gradient.addColorStop(0, rgbaFromHex("#ffffff", Math.min(0.95, alpha)));
+  gradient.addColorStop(0.38, rgbaFromHex(color, Math.min(0.9, alpha)));
+  gradient.addColorStop(1, rgbaFromHex(color, 0));
+  targetContext.save();
+  targetContext.globalCompositeOperation = "lighter";
+  targetContext.strokeStyle = gradient;
+  targetContext.lineCap = "round";
+  targetContext.lineWidth = Math.max(1.2, (Number(shot.size) || 8) * scale * 0.42);
+  targetContext.beginPath();
+  targetContext.moveTo(origin.x, origin.y);
+  targetContext.lineTo(end.x, end.y);
+  targetContext.stroke();
+  targetContext.restore();
+}
+
+function drawShipPlasmaBurst(targetContext, origin, direction, shot, color, progress, anchors, visual) {
+  const scale = getShipShotScale(anchors, visual);
+  const count = Math.max(1, Math.round(Number(shot.salvoCount) || 6));
+  const length = Math.max(8, (Number(shot.length) || 190) * scale);
+  const spread = (Number(shot.spread) || 0) * scale;
+  const intensity = Number(shot.intensity) || 1;
+  const size = Math.max(1.1, (Number(shot.size) || 7) * scale);
+  const side = direction + Math.PI / 2;
+  targetContext.save();
+  targetContext.globalCompositeOperation = "lighter";
+  for (let index = 0; index < count; index += 1) {
+    const phase = (progress * 1.15 + index / Math.max(2, count + 1)) % 1;
+    const travel = phase * length;
+    const lateral = Math.sin(index * 1.7 + progress * Math.PI * 4) * spread * 0.42;
+    const x = origin.x + Math.cos(direction) * travel + Math.cos(side) * lateral;
+    const y = origin.y + Math.sin(direction) * travel + Math.sin(side) * lateral;
+    const alpha = (1 - phase) * intensity * Math.sin(progress * Math.PI);
+    if (alpha <= 0.02) continue;
+    const radius = size * (0.65 + (1 - phase) * 0.35);
+    const glow = targetContext.createRadialGradient(x, y, 0, x, y, radius * 3.4);
+    glow.addColorStop(0, rgbaFromHex("#ffffff", Math.min(0.92, alpha)));
+    glow.addColorStop(0.42, rgbaFromHex(color, Math.min(0.85, alpha)));
+    glow.addColorStop(1, rgbaFromHex(color, 0));
+    targetContext.fillStyle = glow;
+    targetContext.beginPath();
+    targetContext.arc(x, y, radius * 3.4, 0, Math.PI * 2);
+    targetContext.fill();
+  }
+  targetContext.restore();
+}
+
+function drawShipRocketBurst(targetContext, origin, direction, shot, color, progress, anchors, visual) {
+  const scale = getShipShotScale(anchors, visual);
+  const count = Math.max(1, Math.round(Number(shot.salvoCount) || 3));
+  const length = Math.max(8, (Number(shot.length) || 220) * scale);
+  const spread = (Number(shot.spread) || 8) * scale;
+  const size = Math.max(1.4, (Number(shot.size) || 9) * scale);
+  const side = direction + Math.PI / 2;
+  targetContext.save();
+  targetContext.globalCompositeOperation = "lighter";
+  for (let index = 0; index < count; index += 1) {
+    const phase = clamp01(progress * 1.18 - index * 0.08);
+    if (phase <= 0 || phase >= 1) continue;
+    const lateral = (index - (count - 1) / 2) * spread;
+    const x = origin.x + Math.cos(direction) * phase * length + Math.cos(side) * lateral;
+    const y = origin.y + Math.sin(direction) * phase * length + Math.sin(side) * lateral;
+    const tailX = x - Math.cos(direction) * size * 5;
+    const tailY = y - Math.sin(direction) * size * 5;
+    targetContext.strokeStyle = rgbaFromHex(color, (1 - phase) * 0.8);
+    targetContext.lineWidth = Math.max(1, size * 0.8);
+    targetContext.beginPath();
+    targetContext.moveTo(tailX, tailY);
+    targetContext.lineTo(x, y);
+    targetContext.stroke();
+    targetContext.fillStyle = rgbaFromHex("#ffffff", 0.86);
+    targetContext.beginPath();
+    targetContext.arc(x, y, size, 0, Math.PI * 2);
+    targetContext.fill();
+  }
   targetContext.restore();
 }
 
