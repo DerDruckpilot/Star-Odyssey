@@ -126,7 +126,7 @@ const boardBackgroundAssetPath = "./assets/backgrounds/space-background-4k.png";
 const mainMenuAssetPaths = {
   background: "./public/assets/ui/backgrounds/star-odyssey-menu-hero-4k.webp",
   interfaceBackground: "./public/assets/ui/backgrounds/star-odyssey-interface-4k.webp",
-  frame: "./public/assets/ui/frames/star-odyssey-frame-master.png",
+  frame: "./public/assets/ui/frames/star-odyssey-frame-ornate-4k.webp",
   compass: "./public/assets/ui/brand/star-odyssey-compass.png",
   buttonPlate: "./public/assets/ui/buttons/star-odyssey-button-plate.png",
 };
@@ -138,6 +138,8 @@ let gameAssetsStatus = "idle";
 let gameAssetsPreloadPromise = null;
 let remoteFocusIndex = 0;
 let remoteFocusContext = "";
+let remoteFocusKey = "";
+let remoteFocusFrame = 0;
 
 const initialLanguage = loadLanguage();
 const startupAutosaveReset = consumeAutosaveResetUrlParam();
@@ -924,7 +926,7 @@ function getRemoteFocusControls() {
   if (!scope) return [];
   return [...scope.querySelectorAll([
     "button:not(:disabled)",
-    "[role='button'][tabindex]",
+    "[role='button'][tabindex='0']",
     "input:not(:disabled)",
     "select:not(:disabled)",
     "textarea:not(:disabled)"
@@ -934,9 +936,41 @@ function getRemoteFocusControls() {
   });
 }
 
+function getRemoteFocusContext() {
+  return `${state.view}:${state.modal ?? ""}:${state.hudPlayerId ?? ""}`;
+}
+
+function getRemoteControlKey(control, controls = getRemoteFocusControls()) {
+  if (!control) return "";
+  const explicitKey = control.dataset.remoteId || control.id || control.getAttribute("name");
+  if (explicitKey) return explicitKey;
+  const semanticKey = [
+    control.tagName.toLowerCase(),
+    control.getAttribute("aria-label") || "",
+    control.dataset.action || "",
+    control.textContent?.trim() || ""
+  ].join(":");
+  const matchingControls = controls.filter((candidate) => [
+    candidate.tagName.toLowerCase(),
+    candidate.getAttribute("aria-label") || "",
+    candidate.dataset.action || "",
+    candidate.textContent?.trim() || ""
+  ].join(":") === semanticKey);
+  return `${semanticKey}:${Math.max(0, matchingControls.indexOf(control))}`;
+}
+
+function captureRemoteFocus() {
+  const controls = getRemoteFocusControls();
+  const active = document.activeElement;
+  if (!controls.includes(active)) return;
+  remoteFocusIndex = controls.indexOf(active);
+  remoteFocusKey = getRemoteControlKey(active, controls);
+}
+
 function setRemoteFocus(control, controls = getRemoteFocusControls()) {
   if (!control) return;
   remoteFocusIndex = Math.max(0, controls.indexOf(control));
+  remoteFocusKey = getRemoteControlKey(control, controls);
   controls.forEach((candidate) => candidate.classList.toggle("is-remote-focused", candidate === control));
   control.focus({ preventScroll: true });
 }
@@ -971,17 +1005,29 @@ function findRemoteControlInDirection(controls, current, direction) {
 
 function prepareRemoteNavigation() {
   if (state.view === "board" && !state.modal && !state.hudPlayerId) return;
+  if (remoteFocusFrame) cancelAnimationFrame(remoteFocusFrame);
   const controls = getRemoteFocusControls();
   if (controls.length === 0) return;
-  const context = `${state.view}:${state.modal ?? ""}:${state.hudPlayerId ?? ""}`;
-  if (context !== remoteFocusContext) {
+  const context = getRemoteFocusContext();
+  const enteredContext = context !== remoteFocusContext;
+  let target = null;
+  if (enteredContext) {
     remoteFocusContext = context;
-    const preferredIndex = controls.findIndex((control) => control.dataset.remoteAutofocus === "true");
-    const selectedIndex = controls.findIndex((control) => control.getAttribute("aria-pressed") === "true");
-    remoteFocusIndex = preferredIndex >= 0 ? preferredIndex : selectedIndex >= 0 ? selectedIndex : 0;
+    target = controls.find((control) => control.dataset.remoteAutofocus === "true")
+      ?? controls.find((control) => control.getAttribute("aria-pressed") === "true")
+      ?? controls[0];
+  } else if (remoteFocusKey) {
+    target = controls.find((control) => getRemoteControlKey(control, controls) === remoteFocusKey) ?? null;
   }
-  remoteFocusIndex = Math.min(remoteFocusIndex, controls.length - 1);
-  requestAnimationFrame(() => setRemoteFocus(controls[remoteFocusIndex], controls));
+  target ??= controls[Math.min(remoteFocusIndex, controls.length - 1)] ?? controls[0];
+  const targetKey = getRemoteControlKey(target, controls);
+  remoteFocusFrame = requestAnimationFrame(() => {
+    remoteFocusFrame = 0;
+    if (context !== getRemoteFocusContext()) return;
+    const currentControls = getRemoteFocusControls();
+    const currentTarget = currentControls.find((control) => getRemoteControlKey(control, currentControls) === targetKey);
+    if (currentTarget) setRemoteFocus(currentTarget, currentControls);
+  });
 }
 
 function handleRemoteBack() {
@@ -1015,6 +1061,7 @@ function handleRemoteBack() {
 }
 
 function handleRemoteKeydown(event) {
+  if (event.defaultPrevented) return;
   if (["Escape", "BrowserBack", "GoBack"].includes(event.key) || event.keyCode === 4) {
     if (handleRemoteBack()) event.preventDefault();
     return;
@@ -1025,9 +1072,29 @@ function handleRemoteKeydown(event) {
     ArrowLeft: "left",
     ArrowRight: "right"
   };
-  const direction = directions[event.key];
-  if (!direction) return;
+  const keyCodeDirections = {
+    19: "up",
+    20: "down",
+    21: "left",
+    22: "right",
+    37: "left",
+    38: "up",
+    39: "right",
+    40: "down"
+  };
+  const direction = directions[event.key] ?? keyCodeDirections[event.keyCode];
   const active = document.activeElement;
+  const isNativeEnter = ["Enter", "NumpadEnter"].includes(event.key) || event.keyCode === 13;
+  const isFireTvSelect = event.key === "Select" || [23, 66, 160].includes(event.keyCode);
+  if (!direction && isFireTvSelect && !isNativeEnter && active instanceof HTMLElement) {
+    const controls = getRemoteFocusControls();
+    if (controls.includes(active)) {
+      event.preventDefault();
+      active.click();
+    }
+    return;
+  }
+  if (!direction) return;
   if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
   const controls = getRemoteFocusControls();
   if (controls.length === 0) return;
@@ -1735,6 +1802,7 @@ function renderLanguageToggle() {
 
   for (const language of languages) {
     const button = createButton(language.toUpperCase(), () => setLanguage(language), "language-button");
+    button.dataset.remoteId = `language-${language}`;
     button.setAttribute("aria-pressed", String(language === state.language));
     wrapper.append(button);
   }
@@ -1785,6 +1853,7 @@ function renderMainMenuActionButton(definition, index) {
   };
   const button = createButton("", () => runMainMenuAction(definition.id), "menu-composite-button main-menu-action-button");
   button.dataset.action = definition.id;
+  button.dataset.remoteId = `menu-${definition.id}`;
   button.setAttribute("aria-label", definition.label);
   if (index === 0) button.dataset.remoteAutofocus = "true";
 
@@ -1919,7 +1988,8 @@ function renderPlayerSelect() {
     }, "player-button");
     button.setAttribute("aria-label", t("playersLabel").replace("{count}", count));
     button.setAttribute("aria-pressed", String(count === state.selectedPlayers));
-    if (count === (state.selectedPlayers ?? 2)) button.dataset.remoteAutofocus = "true";
+    button.dataset.remoteId = `players-${count}`;
+    if (count === 2) button.dataset.remoteAutofocus = "true";
     options.append(button);
   }
 
@@ -1934,6 +2004,7 @@ function renderPlayerSelect() {
       state.selectedGameVariant = variant;
       render();
     }, "player-button variant-button");
+    button.dataset.remoteId = `variant-${variant}`;
     button.setAttribute("aria-pressed", String(variant === state.selectedGameVariant));
     variantGroup.append(button);
   }
@@ -1941,9 +2012,12 @@ function renderPlayerSelect() {
   const actions = document.createElement("div");
   actions.className = "setup-actions";
   const continueButton = createButton(t("continue"), enterControllerLobby, "menu-button");
+  continueButton.dataset.remoteId = "setup-continue";
   continueButton.disabled = state.selectedPlayers === null;
+  const backButton = createButton(t("back"), () => setView("menu"), "secondary-button");
+  backButton.dataset.remoteId = "setup-back";
   actions.append(
-    createButton(t("back"), () => setView("menu"), "secondary-button"),
+    backButton,
     continueButton
   );
 
@@ -1987,6 +2061,7 @@ function renderControllerConnect() {
     state.controllerMode = false;
     setView("players");
   }, "secondary-button");
+  backButton.dataset.remoteId = "lobby-back";
   backButton.dataset.remoteAutofocus = "true";
   actions.append(backButton);
 
@@ -2049,8 +2124,11 @@ function renderPlayerSetup() {
   const actions = document.createElement("div");
   actions.className = "setup-actions";
   const startButton = createButton(t("startGame"), startGameNow, "menu-button");
+  startButton.dataset.remoteId = "player-setup-start";
+  const backButton = createButton(t("back"), () => setView("controllers"), "secondary-button");
+  backButton.dataset.remoteId = "player-setup-back";
   actions.append(
-    createButton(t("back"), () => setView("controllers"), "secondary-button"),
+    backButton,
     startButton
   );
 
@@ -2073,6 +2151,7 @@ function renderPlayerSetup() {
     nameInput.type = "text";
     nameInput.value = playerSetup.name;
     nameInput.autocomplete = "off";
+    nameInput.dataset.remoteId = `player-${index + 1}-name`;
     if (index === 0) nameInput.dataset.remoteAutofocus = "true";
     nameInput.addEventListener("input", () => {
       state.playerSetup[index].name = nameInput.value;
@@ -2083,6 +2162,7 @@ function renderPlayerSetup() {
     const colorLabel = document.createElement("label");
     colorLabel.textContent = t("playerSetupColor");
     const colorSelect = document.createElement("select");
+    colorSelect.dataset.remoteId = `player-${index + 1}-color`;
     for (const color of playerPieceColors) {
       const option = document.createElement("option");
       option.value = color;
@@ -2143,7 +2223,7 @@ function renderQrPlaceholder(playerNumber) {
   card.append(label, qrImage, urlText, status);
   card.title = controllerUrl;
   card.setAttribute("role", "button");
-  card.setAttribute("tabindex", "0");
+  card.setAttribute("tabindex", "-1");
   card.setAttribute("aria-label", qrImage.alt);
   card.addEventListener("click", () => openControllerWindow(controllerUrl));
   card.addEventListener("keydown", (event) => {
@@ -7271,14 +7351,20 @@ function renderSettingsMenu() {
 
   const actions = document.createElement("div");
   actions.className = "modal-actions";
-  actions.append(
-    createButton(t("connectControllers"), () => openModal("controllers"), "menu-button"),
-    createButton(t("save"), () => openModal("save"), "menu-button"),
-    createButton(t("loadGame"), () => openModal("load"), "menu-button"),
-    createButton(t("discardAutosave"), confirmDiscardAutosave, "secondary-button"),
-    createButton(t("backToMenu"), confirmBackToMenu, "secondary-button"),
-    createButton(t("close"), closeModal, "secondary-button")
-  );
+  const settingsButtons = [
+    ["settings-connect", t("connectControllers"), () => openModal("controllers"), "menu-button"],
+    ["settings-save", t("save"), () => openModal("save"), "menu-button"],
+    ["settings-load", t("loadGame"), () => openModal("load"), "menu-button"],
+    ["settings-discard", t("discardAutosave"), confirmDiscardAutosave, "secondary-button"],
+    ["settings-menu", t("backToMenu"), confirmBackToMenu, "secondary-button"],
+    ["settings-close", t("close"), closeModal, "secondary-button"]
+  ].map(([remoteId, label, handler, className], index) => {
+    const button = createButton(label, handler, className);
+    button.dataset.remoteId = remoteId;
+    if (index === 0) button.dataset.remoteAutofocus = "true";
+    return button;
+  });
+  actions.append(...settingsButtons);
 
   wrapper.append(title, modalNotice, languageSection, actions);
   return wrapper;
@@ -7322,10 +7408,12 @@ function renderControllerPairingDialog() {
 
   const actions = document.createElement("div");
   actions.className = "modal-actions modal-actions--row";
-  actions.append(
-    createButton(t("back"), () => openModal("settings"), "secondary-button"),
-    createButton(t("close"), closeModal, "secondary-button")
-  );
+  const backButton = createButton(t("back"), () => openModal("settings"), "secondary-button");
+  backButton.dataset.remoteId = "controller-dialog-back";
+  backButton.dataset.remoteAutofocus = "true";
+  const closeButton = createButton(t("close"), closeModal, "secondary-button");
+  closeButton.dataset.remoteId = "controller-dialog-close";
+  actions.append(backButton, closeButton);
 
   wrapper.append(title, status, qrGrid, actions);
   return wrapper;
@@ -7348,15 +7436,17 @@ function renderSaveDialog() {
   input.maxLength = 48;
   input.placeholder = t("saveNamePlaceholder");
   input.autocomplete = "off";
+  input.dataset.remoteId = "save-name";
+  input.dataset.remoteAutofocus = "true";
 
   const actions = document.createElement("div");
   actions.className = "modal-actions modal-actions--row";
   const saveButton = createButton(t("save"), () => {}, "menu-button");
   saveButton.type = "submit";
-  actions.append(
-    createButton(t("back"), () => openModal("settings"), "secondary-button"),
-    saveButton
-  );
+  saveButton.dataset.remoteId = "save-confirm";
+  const backButton = createButton(t("back"), () => openModal("settings"), "secondary-button");
+  backButton.dataset.remoteId = "save-back";
+  actions.append(backButton, saveButton);
 
   wrapper.append(title, input, actions);
   return wrapper;
@@ -7386,10 +7476,12 @@ function renderLoadDialog() {
 
   const actions = document.createElement("div");
   actions.className = "modal-actions modal-actions--row";
-  actions.append(
-    createButton(t("back"), () => state.view === "board" ? openModal("settings") : closeModal(), "secondary-button"),
-    createButton(t("close"), closeModal, "secondary-button")
-  );
+  const backButton = createButton(t("back"), () => state.view === "board" ? openModal("settings") : closeModal(), "secondary-button");
+  backButton.dataset.remoteId = "load-back";
+  if (saves.length === 0) backButton.dataset.remoteAutofocus = "true";
+  const closeButton = createButton(t("close"), closeModal, "secondary-button");
+  closeButton.dataset.remoteId = "load-close";
+  actions.append(backButton, closeButton);
 
   wrapper.append(title, list, actions);
   return wrapper;
@@ -7416,10 +7508,12 @@ function renderSaveItem(save) {
 
   const actions = document.createElement("div");
   actions.className = "save-actions";
-  actions.append(
-    createButton(t("load"), () => loadSave(save), "small-button"),
-    createButton(t("delete"), () => deleteSave(save.id), "small-button secondary-small-button")
-  );
+  const loadButton = createButton(t("load"), () => loadSave(save), "small-button");
+  loadButton.dataset.remoteId = `load-${save.id}`;
+  loadButton.dataset.remoteAutofocus = "true";
+  const deleteButton = createButton(t("delete"), () => deleteSave(save.id), "small-button secondary-small-button");
+  deleteButton.dataset.remoteId = `delete-${save.id}`;
+  actions.append(loadButton, deleteButton);
 
   item.append(details, actions);
   return item;
@@ -8558,6 +8652,7 @@ function requestTvHardReload() {
 }
 
 function render() {
+  captureRemoteFocus();
   capturePlayerHudScrollPosition();
   document.documentElement.lang = state.language;
   app.classList.toggle("app-shell--board", state.view === "board");
@@ -8596,6 +8691,7 @@ document.addEventListener("focusin", () => {
   const index = controls.indexOf(document.activeElement);
   if (index >= 0) {
     remoteFocusIndex = index;
+    remoteFocusKey = getRemoteControlKey(document.activeElement, controls);
     controls.forEach((control) => control.classList.toggle("is-remote-focused", control === document.activeElement));
   }
 });

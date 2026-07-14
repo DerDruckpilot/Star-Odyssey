@@ -23,6 +23,8 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await page.getByRole("button", { name: "Weiter" }).click();
 
   await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
+  const lobbyBack = page.getByRole("button", { name: "Zurück" });
+  await expect(lobbyBack).toBeFocused();
   const controllerUrls = await page.locator(".qr-url").allTextContents();
   expect(controllerUrls).toHaveLength(2);
   expect(controllerUrls[0]).toContain("/controller.html?session=");
@@ -48,11 +50,13 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await controllerTwo.goto(controllerUrls[1]);
   await expect(controllerOne.getByText("Verbunden als Spieler 1")).toBeVisible();
   await expect(controllerTwo.getByText("Verbunden als Spieler 2")).toBeVisible();
+  await expect(lobbyBack).toBeFocused();
 
   await controllerOne.getByLabel("Name").fill("Alice");
   await controllerOne.getByRole("button", { name: "Rot" }).click();
   await controllerOne.getByRole("button", { name: "Bereit" }).click();
   await expect(page.getByText("Alice ist bereit")).toBeVisible();
+  await expect(lobbyBack).toBeFocused();
 
   await controllerTwo.getByLabel("Name").fill("Bob");
   await controllerTwo.getByRole("button", { name: "Blau" }).click();
@@ -106,14 +110,34 @@ test("TV remote focus reaches setup and the controller PWA shell is valid", asyn
 
   await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("button", { name: "Spiel laden" })).toBeFocused();
+  await page.waitForTimeout(150);
+  await expect(page.getByRole("button", { name: "Spiel laden" })).toBeFocused();
   await page.keyboard.press("ArrowUp");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "Spieleranzahl wählen" })).toBeVisible();
   await expect(page.getByRole("button", { name: "2 Spieler" })).toBeFocused();
+  await page.waitForTimeout(150);
+  await expect(page.getByRole("button", { name: "2 Spieler" })).toBeFocused();
+
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("button", { name: "Klassisches Spiel" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("button", { name: "Zurück" })).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await expect(page.getByRole("button", { name: "2 Spieler" })).toBeFocused();
 
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "2 Spieler" })).toHaveAttribute("aria-pressed", "true");
+  await page.waitForTimeout(150);
+  await expect(page.getByRole("button", { name: "2 Spieler" })).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("button", { name: "3 Spieler" })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("button", { name: "Klassisches Spiel" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(150);
   await expect(page.getByRole("button", { name: "Klassisches Spiel" })).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("button", { name: "Zurück" })).toBeFocused();
@@ -121,6 +145,17 @@ test("TV remote focus reaches setup and the controller PWA shell is valid", asyn
   await expect(page.getByRole("button", { name: "Weiter" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Zurück" })).toBeFocused();
+  await expect(page.locator(".qr-card").first()).toHaveAttribute("tabindex", "-1");
+  await page.waitForTimeout(350);
+  await expect(page.getByRole("button", { name: "Zurück" })).toBeFocused();
+
+  const shellDecoration = await page.locator(".shell-screen").evaluate((element) => ({
+    legacyBorder: getComputedStyle(element, "::before").borderTopStyle,
+    coverPanel: getComputedStyle(element, "::after").content
+  }));
+  expect(["", "none"]).toContain(shellDecoration.legacyBorder);
+  expect(shellDecoration.coverPanel).toBe("none");
 
   const manifestResponse = await page.request.get("/controller.webmanifest");
   expect(manifestResponse.ok()).toBe(true);
