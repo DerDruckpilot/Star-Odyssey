@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `a028c6a`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `1943a2d`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -17,13 +17,13 @@ Der Stand ist trotzdem **nicht final polished**:
 - **Classic ist nicht vollstaendig regelkonform.** Der nicht dokumentierte 2-Spieler-Modus und fehlende neutrale Bauteile/Sondergrenzen im 3-Spieler-Spiel weichen von Anleitung bzw. Almanach ab. Die Nachschub-Nachholfrist ist inzwischen korrigiert (`CLS-003`).
 - **Der urspruengliche P0-Encounter-Softlock ist behoben.** Ausbau-Belohnungen ohne freien physischen Platz setzen den Flow nun kontrolliert fort (`ENC-001`). Weitere P1-Regelabweichungen verhindern weiterhin eine vollstaendige Regelabnahme.
 - **Supernova ist nicht vollstaendig regelkonform spielbar.** 13 von 25 Missionen sind nicht automatisch regelgeprueft; Fabrikbestand und Brettdarstellung sind unvollstaendig; Schlachtschiffkaempfe werden automatisch und teilweise mit falschen Folgen ausgewertet.
-- **Private Informationen sind technisch nicht privat.** Der Host verteilt den vollstaendigen Spielerzustand inklusive Ressourcen und Missionen an jeden Controller (`SN-002`).
+- **Private Controllerdaten sind inzwischen getrennt.** Der Host erzeugt player-spezifische View-States; fremde Ressourcenarten, Freundschaftskarten, Missionen und private Auswahlentwuerfe werden nicht mehr serialisiert (`SN-002`).
 - **Das visuelle Niveau ist bei 1920 x 1080 bereits zusammenhaengend, aber nicht ueber alle Zielgeraete fertig.** Die 4K-Hauptmenue-Komposition bleibt wegen fester Obergrenzen zu klein; Controller-Panels verdecken den Space-Hintergrund weitgehend.
 - **Deployment und reale Hardware bleiben Risikobereiche.** Der veraltete Assetcache ist korrigiert (`PWA-001`); die LAN-Auslieferung erfolgt aber weiterhin ueber HTTP, und echte Fire-TV-, PWA- und Langzeit-Performance wurden nicht vollstaendig auf Hardware verifiziert.
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 4 von 31 IDs erledigt (1 P0, 3 P1); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 5 von 31 IDs erledigt (1 P0, 4 P1); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -47,7 +47,7 @@ Die Zahlen bilden den Auditstichtag ab. Aktuell sind 4 von 31 IDs erledigt (1 P0
 ### Groesste Risiken
 
 1. `SN-004` / `SN-005`: Schlachtschiffkaempfe laufen ohne erforderliche Spielerinteraktion und mit teilweise falschen Folgen ab.
-2. `SN-002`: Missionen und Ressourcen aller Spieler werden an alle Controller verteilt und koennen ausgelesen werden.
+2. `SN-001`: 13 Missionsbedingungen sind nicht automatisch regelgeprueft; dadurch bleibt die Supernova-Siegbedingung fachlich unvollstaendig.
 3. `CLS-001` / `CLS-002`: Spielerzahl und Drei-Spieler-Aufbau weichen von den massgeblichen Classic-Regeln ab.
 
 ### Verifikationsgrenzen
@@ -96,7 +96,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 
 1. **Halbe Medaillen statt Ruhmesringe/RR.** Supernova-Werte werden als halbe Medaillen gespeichert und angezeigt.
 2. **Freundschaftskarten-Ausbauboni sind keine physischen Mutterschiff-Anbauten.** Sie duerfen physische Limits ueberschreiten und werden bei Effekten auf "echte" Anbauten weder mitgezaehlt noch entfernt.
-3. **Digitale Oberflaechentrennung.** TV/Host zeigt oeffentliche Informationen; Controller zeigen Spieleraktionen und private Inhalte. Der technische Zustand erfuellt die beabsichtigte Privatsphaere derzeit nicht vollstaendig (`SN-002`).
+3. **Digitale Oberflaechentrennung.** TV/Host zeigt oeffentliche Informationen; Controller zeigen Spieleraktionen und private Inhalte. Player-spezifische View-States verhindern inzwischen die Serialisierung fremder Ressourcenarten, Karten, Missionen und privater Entwuerfe (`SN-002`, erledigt).
 4. **Regulaere Schiffsgrafiken sind Kolonieschiffe.** Handels- und Schlachtschiffe sind getrennte Kategorien mit eigenen Assets/VFX.
 5. **Sternennebel sehen wie normale Hexfelder aus.** Die Eigenschaft bleibt intern ueber Nebel-IDs vorhanden.
 6. **Variable Wild-Space-Anordnung.** Das digitale Brett nutzt vorgegebene Startsysteme und zufaellig angeordnete Wild-Space-Systeme/Leerfelder entsprechend der Projektdokumentation.
@@ -129,7 +129,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 |---|---|---|---|---|
 | Variantenwahl/Initialisierung | Classic oder Supernova; Default Classic; persistiert | UMGESETZT | Setup `src/main.js:1901-1951`; Normalisierung `src/game/gameState.js:2515-2636,2814-2851` | - |
 | Nachschub | 3-5 SP: 3; 6-8: 2; 9-11: 1; 12-15: 0 | UMGESETZT | `src/game/gameState.js:3014-3026`; Tests `scripts/check-game-state.js:1635+` | - |
-| 25 Missionen | Drei verschiedene Kategorien, privat, regelkonforme Erfuellung | TEILWEISE UMGESETZT: Daten/Ziehung vorhanden, 13 Bedingungen nur manuell; private Daten werden verteilt | `src/data/supernova.js:6-31`; `src/game/gameState.js:2779-2811,2907-2955`; `src/main.js:2700-2764,7722-7817` | `SN-001`, `SN-002` |
+| 25 Missionen | Drei verschiedene Kategorien, privat, regelkonforme Erfuellung | TEILWEISE UMGESETZT: Daten/Ziehung und private Controllerzustellung vorhanden, 13 Bedingungen nur manuell | `src/data/supernova.js:6-31`; `src/game/gameState.js:2779-2811,2907-2955`; `src/remote/controllerState.js`; `src/main.js` | `SN-001` |
 | Fabriken | 5 Typen, 5 Teile je Spieler, Baugrenzen, sichtbare Platzierung, doppelte Eigenproduktion | TEILWEISE UMGESETZT: Kosten/Bau/Produktion vorhanden; Materiallimit und Brettdarstellung fehlen | `src/data/supernova.js:34-39`; `src/game/gameState.js:2195-2268,6463-6572` | `SN-003` |
 | Fabrik-Siegpunktkarten | 5 Karten, je 1 SP, nur alleinige Mehrheit, sofort neu berechnen | UMGESETZT im Zustandsmodell | `src/data/supernova.js:42-47`; `src/game/gameState.js:2863-2881` | - |
 | Schlachtschiffbau | Max. 3, 2 Carbon + 2 Treibstoff, mindestens 1 physische Kanone | UMGESETZT | `src/data/buildCosts.js:36-38`; `src/game/gameState.js:2160-2192` | - |
@@ -149,7 +149,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 | Brett-Hexfelder / Sternennebel | 135 / 15 markiert | 135 / 15 | ja | BEWUSSTE ABWEICHUNG | - |
 | Begegnungskarten | 32 | 32 | ja | TEILWEISE UMGESETZT | `ENC-002`, `ENC-004` |
 | Freundschaftskarten | 20 (4 x 5) | 20 | ja | UMGESETZT | - |
-| Missionskarten | 25 | 25 | ja | TEILWEISE UMGESETZT | `SN-001`, `SN-002` |
+| Missionskarten | 25 | 25 | ja | TEILWEISE UMGESETZT | `SN-001` |
 | Fabrik-Siegpunktkarten | 5 | 5 | ja | UMGESETZT | - |
 | Fabriktypen | 5 | 5 | baubar in Supernova | TEILWEISE UMGESETZT | `SN-003` |
 | Mutterschiff-Ausbauarten | 3 | 3 | ja | UMGESETZT | - |
@@ -261,7 +261,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### SN-002 - Private Missionen und Ressourcen werden an alle Controller verteilt
 
 - **Bereich:** Supernova / Controller / Datenschutz
-- **Status:** FEHLERHAFT
+- **Status:** ERLEDIGT (urspruenglich FEHLERHAFT)
 - **Prioritaet:** P1 - Kritisch
 - **Aufwand:** L
 - **Betroffene Spielvariante:** beide (Missionen nur Supernova; Ressourcen beide)
@@ -274,7 +274,8 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Pro Verbindung einen server-/hostseitig gefilterten View-State erzeugen; fremde Ressourcen/Missionen nie serialisieren. Oeffentliche Summen nur dort senden, wo Regeln sie vorsehen.
 - **Abhaengigkeiten:** Authentisierte Controllerzuordnung (`NET-001`), Remote-State-Schema, Debug-/Hostansicht und Regressionstests.
 - **Akzeptanzkriterien:** Controller-Payload enthaelt fuer fremde Spieler keine privaten Ressourcen-, Karten- oder Missionsdetails; eigener Controller erhaelt sie; Host zeigt private Missionen nicht oeffentlich; Reconnect behaelt Berechtigung; Tests untersuchen das rohe Payload.
-- **Verifikationsstatus:** Vollstaendig statisch verifiziert; LAN-Paketmitschnitt war nicht notwendig, da der Broadcastpfad eindeutig ist.
+- **Resolution:** Commit `1943a2d` erzeugt in `src/remote/controllerState.js` pro Spieler einen gefilterten View-State. `src/main.js` und `tools/tv-server.mjs` senden diese Zustaende sowohl ueber WebSocket als auch im lokalen PC-Testtransport nur an den zugeordneten Controller. Fremde Ressourcenarten, Handelsraten, Freundschaftskarten, Missionsdaten, Upgrade-Boni, Ablageauswahlen und Handelsentwuerfe werden nicht serialisiert; nur die oeffentliche Rohstoffanzahl bleibt erhalten. Die TV-Missionsdarstellung wurde entfernt.
+- **Verifikationsstatus:** ERLEDIGT und automatisiert verifiziert: `scripts/check-controller-state.js` prueft das normalisierte Schema; der Chromium-E2E-Smoke prueft rohe WebSocket-Frames beider Spieler, Supernova-Missionen, Host-Darstellung und Reconnect. `npm run check`, `npm test`, `npm run test:e2e` (8/8) und `git diff --check` liefen gruen.
 
 ### SN-003 - Fabriksystem ist ohne Materiallimit und Brettdarstellung unvollstaendig
 
@@ -471,7 +472,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Aktuelles Istverhalten:** Der Relay-Server ordnet Controller anhand Session-ID und Spielerindex zu. Eine neue Verbindung mit denselben Parametern kann den bestehenden Slot ersetzen; ein pro Controller ausgehandeltes Token oder eine Hostfreigabe ist nicht vorhanden.
 - **Konkrete Abweichung:** Kenntnis/Weitergabe der QR-URL reicht aus, um denselben Spieler erneut zu verbinden und potenziell die aktive Verbindung zu verdraengen.
 - **Beleg:** Session-/Controllerverwaltung `tools/tv-server.mjs:26-49,127-146`; QR-Parameterfluss.
-- **Auswirkung:** Versehentliche Doppel-Tabs, alte Links oder ein zweites Geraet koennen Eingabekonflikte verursachen; zusammen mit `SN-002` besteht ein Informations-/Steuerungsrisiko im LAN.
+- **Auswirkung:** Versehentliche Doppel-Tabs, alte Links oder ein zweites Geraet koennen Eingabekonflikte verursachen. Die Payload-Privatsphaere ist durch `SN-002` inzwischen getrennt; das Steuerungs-/Verdraengungsrisiko bleibt bestehen.
 - **Reproduktionsschritte:** Dieselbe Controller-URL auf zwei Geraeten/Tabs oeffnen; Verbindung und Steuerzustand des ersten Clients beobachten.
 - **Empfohlene spaetere Massnahme:** Kurzlebiges per Spieler ausgestelltes Join-Token plus kontrollierte Reconnect-/Replace-Policy einfuehren; Host und alter Controller erhalten klare Meldung.
 - **Abhaengigkeiten:** QR-Erzeugung, Reconnect-UX, serverseitige Statefilterung und Save/Resume.
@@ -810,13 +811,13 @@ Die Datenvollstaendigkeit ist belegt; eine sichtbare Validierung aller 12 Kombin
 | Mutterschiff | Ausbauten, Werte, Sonderwuerfe | UMGESETZT; Hehlerei-Ausloesung `ENC-002` |
 | Bauen | Classic- und Supernova-Aktionen variantengesteuert | TEILWEISE UMGESETZT; Fabriken `SN-003`, Schlachtschiffkampf spaeter `SN-004`/`SN-005` |
 | Aussenposten | Freundschaft/Mehrheiten | UMGESETZT im Smoke-Umfang |
-| Uebersicht | Spieler-/Punkteinformationen | Private Payloads zu breit `SN-002` |
+| Uebersicht | Spieler-/Punkteinformationen | UMGESETZT; player-spezifische Payloads durch `SN-002` verifiziert |
 | Spielfeld | Pan/Zoom, Schiffs-/Zielauswahl | Grundpfad vorhanden; volle Randfallmatrix nicht verifiziert `TEST-001` |
 
 ### Mehrgeraetefluss
 
 - QR-Erzeugung, lokale Testlinks, mehrere Spielerslots und Controller-Grundverbindung sind implementiert und im Chromium-E2E abgedeckt.
-- Controlleraktionen werden hostseitig gegen den Game State validiert; die Uebertragung enthaelt jedoch zu viele fremde Daten (`SN-002`).
+- Controlleraktionen werden hostseitig gegen den Game State validiert; player-spezifische Zustandsansichten entfernen fremde private Daten (`SN-002`, erledigt).
 - Doppelverbindung/Reconnect besitzt keinen verbindungsspezifischen Berechtigungsnachweis (`NET-001`).
 - Relay-Neustart verliert Sessions (`NET-002`).
 - Netzwerkunterbrechung waehrend Encounter-/Kampf-Pending und mehrere Tabs auf demselben realen Smartphone sind **NICHT VERIFIZIERT** (`TEST-001`).
@@ -929,7 +930,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
    - `SN-005`: Drei getrennte Kampffolgen, Entscheidungen und Positionen.
 
 4. **State, Save/Load und Privatsphaere**
-   - `SN-002`: Player-spezifische Controllerpayloads.
+   - Erledigt: `SN-002` verteilt player-spezifische Controllerpayloads und prueft rohe WebSocket-Frames samt Reconnect.
    - `NET-001`, `NET-002`: Controllerberechtigung und Restore-Handshake.
    - `SAVE-001`, `STATE-001`: sichtbare Speicherfehler und eindeutige Migration.
 
@@ -978,7 +979,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - [x] Variantenwahl und Save-Fallback auf Classic sind vorhanden.
 - [x] Supernova-Nachschubstaffel entspricht der Quelle.
 - [ ] Alle 25 Missionen werden regelkonform automatisch geprueft (`SN-001`).
-- [ ] Private Missionen/Ressourcen bleiben technisch privat (`SN-002`).
+- [x] Private Missionen/Ressourcen bleiben technisch privat (`SN-002`).
 - [~] Fabrikbau, Produktion und Mehrheiten funktionieren; Bestand/Brettdarstellung fehlen (`SN-003`).
 - [x] Schlachtschiffbaukosten, Maximum und Kanonenvoraussetzung sind vorhanden.
 - [ ] Schlachtschiffkaempfe sind interaktiv, gleichstands- und folgenkorrekt (`SN-004`, `SN-005`).
@@ -999,7 +1000,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 - [x] QR-Lobby und Controller-Grundverbindung funktionieren im Chromium-E2E.
 - [x] Alle sieben Controller-Tabs besitzen Render-/Aktionspfade.
-- [ ] Jeder Controller erhaelt nur seine privaten Daten (`SN-002`).
+- [x] Jeder Controller erhaelt nur seine privaten Daten (`SN-002`).
 - [ ] Doppelverbindung/alter QR-Link besitzt sichere Replace-/Reconnect-Regel (`NET-001`).
 - [-] Netzwerkunterbrechung in Encounter/Kampf wurde mit realen Geraeten getestet (`TEST-001`).
 - [ ] Controller ist vollstaendig DE/EN-lokalisiert (`CTRL-001`).
@@ -1063,7 +1064,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### 6. Sind die Smartphone-Controller fuer reale Mehrspieler-Partien geeignet?
 
-**Funktional grundlegend ja, releasefertig nein.** Verbindung, Tabs, Orientation und Grundaktionen funktionieren. Private Daten werden jedoch an alle Controller gesendet (`SN-002`), Reconnect/Doppelverbindung ist nicht robust abgesichert (`NET-001`, `NET-002`), und PWA ueber reales HTTP-LAN ist nicht bestaetigt (`PWA-002`).
+**Funktional grundlegend ja, releasefertig nein.** Verbindung, Tabs, Orientation, Grundaktionen und player-spezifische private Payloads funktionieren. Reconnect/Doppelverbindung ist ausserhalb des verifizierten gleichen Controllerlinks noch nicht robust abgesichert (`NET-001`, `NET-002`), und PWA ueber reales HTTP-LAN ist nicht bestaetigt (`PWA-002`).
 
 ### 7. Ist das visuelle Niveau konsistent und professionell?
 
@@ -1074,7 +1075,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - Classic-Regelabweichungen `CLS-001` und `CLS-002`.
 - Verbleibende Encounter-Abweichungen `ENC-002` und `ENC-004`.
 - Unvollstaendige Missionen/Fabriken/Schlachtschiffkaempfe `SN-001` bis `SN-005`.
-- Fehlende Privatsphaere und robuste Mehrgeraete-Wiederherstellung `SN-002`, `NET-001`, `NET-002`.
+- Robuste Mehrgeraete-Wiederherstellung und Controllerberechtigung `NET-001`, `NET-002`; die Payload-Privatsphaere aus `SN-002` ist korrigiert.
 - PWA-/Fire-TV-Risiken `PWA-002` und `FIRE-001`; der stale Assetcache `PWA-001` ist korrigiert.
 - 4K-/Controller-/VFX-Abnahme und zu geringe End-to-End-Testabdeckung `UI-001`, `UI-002`, `TEST-001`, `PERF-001`.
 
@@ -1097,3 +1098,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `ENC-003` | P1 | ERLEDIGT | `d1964fe` | `npm run check`, `npm test`, `git diff --check`; physische Frachtringmehrheit im Zahn-der-Zeit-Smoke | keiner |
 | `CLS-003` | P1 | ERLEDIGT | `affdc7f` | `npm run check`, `npm test`, `git diff --check`; Classic vor/nach Flugwurf, Save/Load vor/nach Verbrauch und Supernova-3-Karten-Smoke | keiner |
 | `PWA-001` | P1 | ERLEDIGT | `a028c6a` | `npm run check`, `npm test`, vollstaendiger E2E-Smoke sowie gezielter Chromium-v1/v2-Cacheupgrade-Test | realer installierter iOS-/Android-PWA-Upgrade bleibt Hardwareabnahme unter `PWA-002`/`TEST-001` |
+| `SN-002` | P1 | ERLEDIGT | `1943a2d` | `npm run check`, `npm test`, `npm run test:e2e` (8/8), `git diff --check`; rohe WebSocket-Payloads beider Spieler, Host-Darstellung und Reconnect | Controller-Authentisierung/Doppelverbindung bleiben getrennt unter `NET-001`/`NET-002` |
