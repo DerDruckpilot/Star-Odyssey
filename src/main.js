@@ -48,6 +48,7 @@ import {
   buildSupernovaFactory,
   buildShip,
   buyUpgrade,
+  canDrawSupply,
   cancelPendingShipPlacement,
   cancelPendingSpaceportUpgrade,
   cancelPendingTradeStationPlacement,
@@ -1488,7 +1489,7 @@ function rollPlacementForActivePlayer() {
 }
 
 function drawSupplyForActivePlayer() {
-  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+  if (!canDrawSupply(state.gameState)) return;
 
   state.gameState = drawSupply(state.gameState);
   saveCurrentGameState();
@@ -2973,6 +2974,7 @@ function renderPhaseActions(player = getActivePlayer()) {
     );
   } else if (state.gameState.phase === "flight") {
     if (!state.gameState.hasRolledFlightSpeed) {
+      wrapper.append(renderSupplyDrawControls());
       const speedButton = createButton(t("determineSpeed"), determineSpeedForActivePlayer, "small-button");
       speedButton.disabled = isMothershipSpeedAnimating();
       wrapper.append(speedButton);
@@ -3014,7 +3016,7 @@ function renderSupplyDrawControls() {
   wrapper.className = "supply-draw-controls";
   const drawCount = getSupplyDrawCount(getActivePlayer());
 
-  if (drawCount > 0 && !hasActivePlayerDrawnSupplyThisTurn()) {
+  if (drawCount > 0 && canDrawSupply(state.gameState)) {
     wrapper.append(createButton(t("drawSupply").replace("{count}", drawCount), drawSupplyForActivePlayer, "small-button"));
   } else {
     const hint = document.createElement("p");
@@ -6485,17 +6487,6 @@ function isValidPendingShipLaunchNode(nodeId) {
   return findFreeLaunchPointsForPlayer(pending.ownerPlayerId).some((point) => point.id === nodeId);
 }
 
-function hasActivePlayerDrawnSupplyThisTurn() {
-  return Boolean(
-    state.gameState?.hasDrawnSupplyThisTurn &&
-    state.gameState?.supplyDrawTurnKey === getCurrentSupplyDrawTurnKey()
-  );
-}
-
-function getCurrentSupplyDrawTurnKey() {
-  return `${state.gameState?.turnNumber ?? 1}:${getActivePlayer()?.id ?? "unknown"}`;
-}
-
 function getBankTradeRate(player, resource) {
   const baseRate = getTradeRatesForPlayer(state.gameState, player?.id)?.[resource] ?? 3;
   if (resource !== "goods") return baseRate;
@@ -8263,7 +8254,7 @@ function getRemoteControllerActions() {
 
   if (state.gameState.phase === "tradeBuild") {
     const drawCount = getSupplyDrawCount(getActivePlayer());
-    if (drawCount > 0 && !hasActivePlayerDrawnSupplyThisTurn()) {
+    if (drawCount > 0 && canDrawSupply(state.gameState)) {
       actions.push(createRemoteAction("drawSupply", t("drawSupply").replace("{count}", drawCount), {}, { requiresActivePlayer: true }));
     }
     actions.push(createRemoteAction("toFlightPhase", t("toFlightPhase"), {}, { requiresActivePlayer: true }));
@@ -8292,6 +8283,10 @@ function getRemoteControllerActions() {
 
   if (state.gameState.phase === "flight") {
     if (!state.gameState.hasRolledFlightSpeed && !isMothershipSpeedAnimating()) {
+      if (canDrawSupply(state.gameState)) {
+        const drawCount = getSupplyDrawCount(getActivePlayer());
+        actions.push(createRemoteAction("drawSupply", t("drawSupply").replace("{count}", drawCount), {}, { requiresActivePlayer: true }));
+      }
       actions.push(createRemoteAction("determineSpeed", t("determineSpeed"), {}, { requiresActivePlayer: true }));
     }
     for (const ship of getFoundableColonyShipsForActivePlayer()) {

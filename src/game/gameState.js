@@ -589,8 +589,7 @@ function grantStartingSetup(gameState) {
 }
 
 export function drawSupply(gameState) {
-  if (isGameOverState(gameState)) return gameState;
-  if (gameState.phase !== "tradeBuild" || hasSupplyDrawnThisTurn(gameState)) return gameState;
+  if (!canDrawSupply(gameState)) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const drawCount = getSupplyDrawCount(gameState, activePlayer);
@@ -632,6 +631,16 @@ export function drawSupply(gameState) {
       }
     }
   });
+}
+
+export function canDrawSupply(gameState) {
+  if (!gameState || isGameOverState(gameState) || hasSupplyDrawnThisTurn(gameState)) return false;
+  const isEligiblePhase = gameState.phase === "tradeBuild"
+    || (gameState.phase === "flight" && !gameState.hasRolledFlightSpeed);
+  if (!isEligiblePhase) return false;
+
+  const activePlayer = gameState.players?.[gameState.currentPlayerIndex];
+  return Boolean(activePlayer && getSupplyDrawCount(gameState, activePlayer) > 0);
 }
 
 export function updateSevenDiscardSelection(gameState, playerId, resource, delta) {

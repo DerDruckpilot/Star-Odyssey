@@ -1,6 +1,8 @@
 import { boardLayout } from "../src/data/boardLayout.js";
 import {
+  advanceToFlightPhase,
   buyUpgrade,
+  canDrawSupply,
   buildSupernovaFactory,
   calculateVictoryPoints,
   buildShip,
@@ -245,6 +247,49 @@ assert(playerOneTotal >= 2, "Player 1 should draw supply after production.");
 assert(
   getResourceTotal(afterSecondDrawAttempt.players[0]) === playerOneTotal,
   "Player 1 should not draw supply twice in one turn."
+);
+
+let delayedSupplyGame = rollProduction(normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+}), boardLayout, { dice: [1, 5] });
+const delayedSupplyCount = getSupplyDrawCount(delayedSupplyGame, delayedSupplyGame.players[0]);
+assert(delayedSupplyCount > 0, "Delayed supply smoke test needs an active Classic supply entitlement.");
+delayedSupplyGame = advanceToFlightPhase(delayedSupplyGame);
+const savedDelayedSupplyGame = normalizeGameState(JSON.parse(JSON.stringify(delayedSupplyGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(canDrawSupply(savedDelayedSupplyGame), "An undrawn supply entitlement should survive save/load before the normal flight roll.");
+const delayedSupplyBefore = getResourceTotal(savedDelayedSupplyGame.players[0]);
+delayedSupplyGame = drawSupply(savedDelayedSupplyGame);
+assert(
+  getResourceTotal(delayedSupplyGame.players[0]) - delayedSupplyBefore === delayedSupplyCount,
+  "Classic supply should remain drawable once in flight before the normal mothership roll."
+);
+assert(!canDrawSupply(delayedSupplyGame), "A recovered supply entitlement should be consumed after drawing.");
+const savedConsumedSupplyGame = normalizeGameState(JSON.parse(JSON.stringify(delayedSupplyGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(!canDrawSupply(savedConsumedSupplyGame), "A consumed supply entitlement should remain consumed after save/load.");
+
+let expiredSupplyGame = rollProduction(normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+}), boardLayout, { dice: [1, 5] });
+expiredSupplyGame = advanceToFlightPhase(expiredSupplyGame);
+expiredSupplyGame = determineFlightSpeed(expiredSupplyGame, { balls: ["yellow", "red"] });
+const expiredSupplyBefore = getResourceTotal(expiredSupplyGame.players[0]);
+assert(!canDrawSupply(expiredSupplyGame), "The normal flight roll should expire an undrawn supply entitlement.");
+expiredSupplyGame = drawSupply(expiredSupplyGame);
+assert(
+  getResourceTotal(expiredSupplyGame.players[0]) === expiredSupplyBefore,
+  "Supply must not be drawn after the normal flight roll."
 );
 
 game = { ...game, phase: "flight" };
@@ -1701,6 +1746,23 @@ assert(getSupplyDrawCount({
   ...supernovaStartGame,
   players: supernovaStartGame.players.map((player, index) => index === 0 ? { ...player, victoryPoints: 10 } : player)
 }, { ...supernovaStartGame.players[0], victoryPoints: 10 }) === 1, "Supernova players with 9-11 victory points should draw 1 supply card.");
+
+let supernovaDelayedSupplyGame = {
+  ...supernovaStartGame,
+  phase: "flight",
+  hasRolledFlightSpeed: false,
+  supplyDeck: ["ore", "fuel", "carbon", "food", "goods"],
+  players: supernovaStartGame.players.map((player, index) => index === 0
+    ? { ...player, victoryPoints: 4 }
+    : player)
+};
+const supernovaSupplyBefore = getResourceTotal(supernovaDelayedSupplyGame.players[0]);
+assert(canDrawSupply(supernovaDelayedSupplyGame), "Supernova supply should remain available before the normal flight roll.");
+supernovaDelayedSupplyGame = drawSupply(supernovaDelayedSupplyGame);
+assert(
+  getResourceTotal(supernovaDelayedSupplyGame.players[0]) - supernovaSupplyBefore === 3,
+  "A delayed Supernova supply draw should use the variant-specific 3-card amount."
+);
 
 let supernovaFactoryGame = createGameState({
   language: "de",
