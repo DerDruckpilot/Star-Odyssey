@@ -170,6 +170,38 @@ test("TV remote focus reaches setup and the controller PWA shell is valid", asyn
   await expect(page.locator("#controller-root")).toBeHidden();
 });
 
+test("controller service worker replaces stale UI caches", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const oldCache = await caches.open("star-odyssey-ui-v1");
+    await oldCache.put("/controller.webmanifest", new Response("stale-v1"));
+  });
+
+  await page.goto("/controller.html?session=CACHE-TEST&player=1");
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+    if (!navigator.serviceWorker.controller) {
+      await new Promise((resolve) => {
+        navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true });
+      });
+    }
+  });
+
+  await expect.poll(() => page.evaluate(() => caches.keys())).toEqual(["star-odyssey-ui-v2"]);
+  await page.evaluate(async () => {
+    const cache = await caches.open("star-odyssey-ui-v2");
+    await cache.put("/controller.webmanifest", new Response("stale-v2"));
+  });
+
+  const liveManifest = await page.evaluate(async () => (await fetch("/controller.webmanifest")).text());
+  expect(liveManifest).toContain('"display": "standalone"');
+  const cachedManifest = await page.evaluate(async () => {
+    const cache = await caches.open("star-odyssey-ui-v2");
+    return (await cache.match("/controller.webmanifest"))?.text();
+  });
+  expect(cachedManifest).toContain('"display": "standalone"');
+});
+
 test("card debug review pages load and filter cards", async ({ page }) => {
   await page.goto("/debug-friendship-cards.html");
   await expect(page.getByRole("heading", { name: "Freundschaftskarten" })).toBeVisible();

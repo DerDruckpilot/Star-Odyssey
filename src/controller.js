@@ -2485,9 +2485,21 @@ document.addEventListener("fullscreenchange", render);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {
-      // The controller remains usable when service workers are unavailable.
-    });
+    const shouldReloadOnUpdate = Boolean(navigator.serviceWorker.controller);
+    let updateReloadStarted = false;
+    if (shouldReloadOnUpdate) {
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (updateReloadStarted) return;
+        updateReloadStarted = true;
+        window.location.reload();
+      }, { once: true });
+    }
+
+    navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
+      .then((registration) => registration.update())
+      .catch(() => {
+        // The controller remains usable when service workers are unavailable.
+      });
   }, { once: true });
 }
 

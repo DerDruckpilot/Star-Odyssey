@@ -1,4 +1,5 @@
-const CACHE_NAME = "star-odyssey-ui-v1";
+const CACHE_PREFIX = "star-odyssey-ui-";
+const CACHE_NAME = `${CACHE_PREFIX}v2`;
 const CORE_ASSETS = [
   "./controller.html",
   "./controller.webmanifest",
@@ -29,29 +30,30 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys
+        .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+        .map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
 
-async function networkFirst(request) {
-  const cache = await caches.open(CACHE_NAME);
-  try {
-    const response = await fetch(request);
-    if (response.ok) await cache.put(request, response.clone());
-    return response;
-  } catch {
-    return (await cache.match(request)) || Response.error();
-  }
+function getCacheKey(request) {
+  const url = new URL(request.url);
+  url.search = "";
+  url.hash = "";
+  return new Request(url.toString(), { method: "GET" });
 }
 
-async function cacheFirst(request) {
+async function networkFirst(request) {
   const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(request);
-  if (cached) return cached;
-  const response = await fetch(request);
-  if (response.ok) await cache.put(request, response.clone());
-  return response;
+  const cacheKey = getCacheKey(request);
+  try {
+    const response = await fetch(request, { cache: "no-cache" });
+    if (response.ok) await cache.put(cacheKey, response.clone());
+    return response;
+  } catch {
+    return (await cache.match(cacheKey)) || Response.error();
+  }
 }
 
 self.addEventListener("fetch", (event) => {
@@ -59,6 +61,5 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.includes("/api/") || url.pathname.includes("/ws")) return;
-  const isShell = request.mode === "navigate" || /\.(?:html|js|css|webmanifest)$/.test(url.pathname);
-  event.respondWith(isShell ? networkFirst(request) : cacheFirst(request));
+  event.respondWith(networkFirst(request));
 });
