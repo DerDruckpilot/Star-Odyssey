@@ -70,6 +70,7 @@ public class MainActivity extends Activity {
         });
 
         setContentView(root);
+        webView.requestFocus();
         loadCurrentUrl(false);
 
         if (!preferences.contains(PREF_URL)) {
@@ -327,6 +328,16 @@ public class MainActivity extends Activity {
             showUrlDialog();
             return true;
         }
+        int keyCode = event.getKeyCode();
+        if (keyCode == KeyEvent.KEYCODE_DPAD_UP
+            || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+            || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+            || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+            || keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+            || keyCode == KeyEvent.KEYCODE_ENTER
+            || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            webView.requestFocus();
+        }
         return super.dispatchKeyEvent(event);
     }
 
@@ -334,10 +345,11 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         if (controls != null && controls.getVisibility() == View.VISIBLE) {
             hideControls();
-        } else if (webView.canGoBack()) {
-            webView.goBack();
         } else {
-            toggleControls();
+            webView.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('firetvback'))",
+                null
+            );
         }
     }
 

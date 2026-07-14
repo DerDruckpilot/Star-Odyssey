@@ -36,12 +36,7 @@ import {
 import { getBattleShipVfxAnchors, getShipEngineTemplate, getShipVfxAnchors, getTradeShipVfxAnchors } from "./data/shipVfxData.js";
 import { MOTHERSHIP_SPEED_ANIMATION_CONFIG } from "./data/mothershipSpeedAnimationConfig.js";
 import { gameVariants, supernovaFactoryTypes } from "./data/supernova.js";
-import {
-  defaultButtonLayout,
-  menuButtonDefinitions,
-  mergeDeep,
-  renderMenuButtons
-} from "./menu-button-utils.js";
+import { menuButtonDefinitions } from "./menu-button-utils.js";
 import {
   applyDebugLayoutTransform,
   getStructureVisualPosition,
@@ -128,55 +123,12 @@ const planetAssetPaths = {
   goods: "./assets/generated/planets/planet-trade.png"
 };
 const boardBackgroundAssetPath = "./assets/backgrounds/space-background-4k.png";
-const mainMenuLayoutUrl = "./public/assets/ui/menu/processed/menu-preview-layout.json";
-const mainMenuButtonLayoutUrl = "./public/assets/ui/menu/processed/menu-button-layout.json";
 const mainMenuAssetPaths = {
-  background: "./public/assets/ui/backgrounds/space-menu-hero-widescreen.png",
-  stars_overlay: "./public/assets/ui/menu/processed/background/bg_stars_overlay.png",
-  planet: "./public/assets/ui/menu/processed/background/bg_planet_bottom_left.png",
-  galaxy: "./public/assets/ui/menu/processed/background/bg_galaxy_bottom_right.png",
-  frame_corner_master: "./public/assets/ui/menu/processed/frame/frame_corner_master.png",
-  frame_top_edge: "./public/assets/ui/menu/processed/frame/frame_top_edge.png",
-  frame_bottom_edge: "./public/assets/ui/menu/processed/frame/frame_bottom_edge.png",
-  frame_left_edge: "./public/assets/ui/menu/processed/frame/frame_left_edge.png",
-  frame_right_edge: "./public/assets/ui/menu/processed/frame/frame_right_edge.png",
-  frame_top_deco: "./public/assets/ui/menu/processed/frame/frame_top_deco_left.png",
-  frame_bottom_deco: "./public/assets/ui/menu/processed/frame/frame_bottom_deco_left.png",
-  logo: "./public/assets/ui/menu/processed/title/logo_space_odyssey.png",
-  title_compass_emblem: "./public/assets/ui/menu/processed/title/title_compass_emblem.png",
-  title_ring_overlay: "./public/assets/ui/menu/processed/title/title_ring_overlay.png",
-};
-const mainMenuBaseLayer = {
-  x: 50,
-  y: 50,
-  width: 20,
-  height: 20,
-  scale: 1,
-  opacity: 1,
-  rotation: 0,
-  mirrorX: false,
-  mirrorY: false,
-  visible: true,
-};
-const defaultMainMenuLayout = {
-  background: { ...mainMenuBaseLayer, x: 52.2, y: 47.1, width: 99.9, height: 100, scale: 1.06, rotation: 1 },
-  stars_overlay: { ...mainMenuBaseLayer, width: 100, height: 100, opacity: 0.72 },
-  planet: { ...mainMenuBaseLayer, x: 9, y: 88.5, width: 34, height: 46, opacity: 0.82 },
-  galaxy: { ...mainMenuBaseLayer, x: 82, y: 76, width: 22, height: 22, opacity: 0.92 },
-  frame_corner_top_left: { ...mainMenuBaseLayer, x: 7.9, y: 11.2, width: 14, height: 20, scale: 1.31 },
-  frame_corner_top_right: { ...mainMenuBaseLayer, x: 92.3, y: 11.2, width: 14, height: 20, scale: 1.31, mirrorX: true },
-  frame_corner_bottom_left: { ...mainMenuBaseLayer, x: 7.9, y: 88.8, width: 14, height: 20, scale: 1.31, mirrorY: true },
-  frame_corner_bottom_right: { ...mainMenuBaseLayer, x: 92.3, y: 88.8, width: 14, height: 20, scale: 1.31, mirrorX: true, mirrorY: true },
-  frame_top_edge: { ...mainMenuBaseLayer, x: 50, y: 3.2, width: 29, height: 10 },
-  frame_bottom_edge: { ...mainMenuBaseLayer, x: 50, y: 95.9, width: 51.5, height: 13.5, mirrorY: true },
-  frame_left_edge: { ...mainMenuBaseLayer, x: 1.6, y: 50, width: 4.6, height: 60, scale: 0.85 },
-  frame_right_edge: { ...mainMenuBaseLayer, x: 98.4, y: 50, width: 4.6, height: 60, scale: 0.85, mirrorX: true },
-  frame_top_deco: { ...mainMenuBaseLayer, x: 26, y: 3.2, width: 20, height: 7.5, opacity: 0.85, visible: false },
-  frame_bottom_deco: { ...mainMenuBaseLayer, x: 74, y: 96.8, width: 20, height: 7.5, mirrorY: true, opacity: 0.85, visible: false },
-  logo: { ...mainMenuBaseLayer, x: 73, y: 26.3, width: 42, height: 16, scale: 3.36 },
-  title_compass_emblem: { ...mainMenuBaseLayer, x: 24.6, y: 24.6, width: 18, height: 27 },
-  title_ring_overlay: { ...mainMenuBaseLayer, x: 50, y: 16, width: 21, height: 30, opacity: 0.35, visible: false },
-  buttons_group: { ...mainMenuBaseLayer, x: 50, y: 61, width: 42, height: 42, scale: 0.92, spacing: 20 },
+  background: "./public/assets/ui/backgrounds/star-odyssey-menu-hero-4k.webp",
+  interfaceBackground: "./public/assets/ui/backgrounds/star-odyssey-interface-4k.webp",
+  frame: "./public/assets/ui/frames/star-odyssey-frame-master.png",
+  compass: "./public/assets/ui/brand/star-odyssey-compass.png",
+  buttonPlate: "./public/assets/ui/buttons/star-odyssey-button-plate.png",
 };
 const preloadedAssetUrls = new Set();
 const assetPreloadPromises = new Map();
@@ -184,10 +136,8 @@ const optionalAssetFailures = new Set();
 let gameAssetsReady = false;
 let gameAssetsStatus = "idle";
 let gameAssetsPreloadPromise = null;
-let mainMenuLayout = structuredClone(defaultMainMenuLayout);
-let mainMenuButtonLayout = structuredClone(defaultButtonLayout);
-let mainMenuLayoutPromise = null;
-let focusedMainMenuButtonIndex = 0;
+let remoteFocusIndex = 0;
+let remoteFocusContext = "";
 
 const initialLanguage = loadLanguage();
 const startupAutosaveReset = consumeAutosaveResetUrlParam();
@@ -532,29 +482,6 @@ function getGameAssetUrls() {
     playerSpaceportAssetPaths,
     upgradeMenuAssetPaths
   ]).filter(Boolean))];
-}
-
-async function loadMainMenuLayouts() {
-  if (mainMenuLayoutPromise) return mainMenuLayoutPromise;
-  mainMenuLayoutPromise = Promise.all([
-    loadJsonWithFallback(mainMenuLayoutUrl, defaultMainMenuLayout),
-    loadJsonWithFallback(mainMenuButtonLayoutUrl, defaultButtonLayout)
-  ]).then(([layout, buttonLayout]) => {
-    mainMenuLayout = layout;
-    mainMenuButtonLayout = buttonLayout;
-    if (state.view === "menu") render();
-  });
-  return mainMenuLayoutPromise;
-}
-
-async function loadJsonWithFallback(url, fallback) {
-  try {
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) return structuredClone(fallback);
-    return mergeDeep(fallback, await response.json());
-  } catch {
-    return structuredClone(fallback);
-  }
 }
 
 async function preloadGameAssets({ onProgress = null } = {}) {
@@ -990,6 +917,125 @@ function createButton(label, onClick, className = "menu-button") {
   button.textContent = label;
   button.addEventListener("click", onClick);
   return button;
+}
+
+function getRemoteFocusControls() {
+  const scope = state.modal ? app.querySelector(".modal-overlay") : app;
+  if (!scope) return [];
+  return [...scope.querySelectorAll([
+    "button:not(:disabled)",
+    "[role='button'][tabindex]",
+    "input:not(:disabled)",
+    "select:not(:disabled)",
+    "textarea:not(:disabled)"
+  ].join(","))].filter((element) => {
+    const style = window.getComputedStyle(element);
+    return style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0;
+  });
+}
+
+function setRemoteFocus(control, controls = getRemoteFocusControls()) {
+  if (!control) return;
+  remoteFocusIndex = Math.max(0, controls.indexOf(control));
+  controls.forEach((candidate) => candidate.classList.toggle("is-remote-focused", candidate === control));
+  control.focus({ preventScroll: true });
+}
+
+function findRemoteControlInDirection(controls, current, direction) {
+  const currentRect = current.getBoundingClientRect();
+  const origin = {
+    x: currentRect.left + currentRect.width / 2,
+    y: currentRect.top + currentRect.height / 2
+  };
+  const vertical = direction === "up" || direction === "down";
+  const sign = direction === "up" || direction === "left" ? -1 : 1;
+  let best = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (const candidate of controls) {
+    if (candidate === current) continue;
+    const rect = candidate.getBoundingClientRect();
+    const deltaX = rect.left + rect.width / 2 - origin.x;
+    const deltaY = rect.top + rect.height / 2 - origin.y;
+    const primary = vertical ? deltaY * sign : deltaX * sign;
+    if (primary <= 1) continue;
+    const cross = Math.abs(vertical ? deltaX : deltaY);
+    const score = primary + cross * 2.5;
+    if (score < bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function prepareRemoteNavigation() {
+  if (state.view === "board" && !state.modal && !state.hudPlayerId) return;
+  const controls = getRemoteFocusControls();
+  if (controls.length === 0) return;
+  const context = `${state.view}:${state.modal ?? ""}:${state.hudPlayerId ?? ""}`;
+  if (context !== remoteFocusContext) {
+    remoteFocusContext = context;
+    const preferredIndex = controls.findIndex((control) => control.dataset.remoteAutofocus === "true");
+    const selectedIndex = controls.findIndex((control) => control.getAttribute("aria-pressed") === "true");
+    remoteFocusIndex = preferredIndex >= 0 ? preferredIndex : selectedIndex >= 0 ? selectedIndex : 0;
+  }
+  remoteFocusIndex = Math.min(remoteFocusIndex, controls.length - 1);
+  requestAnimationFrame(() => setRemoteFocus(controls[remoteFocusIndex], controls));
+}
+
+function handleRemoteBack() {
+  if (state.modal) {
+    closeModal();
+    return true;
+  }
+  if (state.hudPlayerId) {
+    closePlayerHud();
+    return true;
+  }
+  if (state.view === "players") {
+    setView("menu");
+    return true;
+  }
+  if (state.view === "controllers") {
+    state.controllerLobby = null;
+    state.controllerMode = false;
+    setView("players");
+    return true;
+  }
+  if (state.view === "playerSetup") {
+    setView("controllers");
+    return true;
+  }
+  if (state.view === "menu") {
+    requestAppExit();
+    return true;
+  }
+  return false;
+}
+
+function handleRemoteKeydown(event) {
+  if (["Escape", "BrowserBack", "GoBack"].includes(event.key) || event.keyCode === 4) {
+    if (handleRemoteBack()) event.preventDefault();
+    return;
+  }
+  const directions = {
+    ArrowUp: "up",
+    ArrowDown: "down",
+    ArrowLeft: "left",
+    ArrowRight: "right"
+  };
+  const direction = directions[event.key];
+  if (!direction) return;
+  const active = document.activeElement;
+  if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+  const controls = getRemoteFocusControls();
+  if (controls.length === 0) return;
+  const current = controls.includes(active) ? active : controls[Math.min(remoteFocusIndex, controls.length - 1)];
+  const next = findRemoteControlInDirection(controls, current, direction);
+  if (!next) return;
+  event.preventDefault();
+  setRemoteFocus(next, controls);
 }
 
 function createSvgElement(name, attributes = {}) {
@@ -1707,29 +1753,6 @@ function renderMenuLayer(name, src, classes = []) {
   return image;
 }
 
-function applyMainMenuLayout(scene) {
-  for (const [key, layer] of Object.entries(mainMenuLayout)) {
-    const element = scene.querySelector(`[data-menu-layer="${key}"]`);
-    if (!element) continue;
-    applyMainMenuLayerStyle(element, layer);
-    if (key === "buttons_group") {
-      element.style.gap = `${layer.spacing ?? 20}px`;
-    }
-  }
-}
-
-function applyMainMenuLayerStyle(element, layer) {
-  element.style.display = layer.visible === false ? "none" : "";
-  element.style.left = `${layer.x}%`;
-  element.style.top = `${layer.y}%`;
-  element.style.width = `${layer.width}%`;
-  element.style.height = `${layer.height}%`;
-  element.style.opacity = String(layer.opacity ?? 1);
-  const scaleX = (layer.mirrorX ? -1 : 1) * (layer.scale ?? 1);
-  const scaleY = (layer.mirrorY ? -1 : 1) * (layer.scale ?? 1);
-  element.style.transform = `translate(-50%, -50%) rotate(${layer.rotation ?? 0}deg) scale(${scaleX}, ${scaleY})`;
-}
-
 function getMainMenuDefinitions() {
   const labels = {
     newGame: t("newGame"),
@@ -1753,15 +1776,28 @@ function runMainMenuAction(actionId) {
   actions[actionId]?.();
 }
 
-function updateMainMenuFocus(buttons, nextIndex, shouldFocus = false) {
-  if (buttons.length === 0) return;
-  focusedMainMenuButtonIndex = (nextIndex + buttons.length) % buttons.length;
-  buttons.forEach((button, index) => {
-    const isFocused = index === focusedMainMenuButtonIndex;
-    button.classList.toggle("is-focused", isFocused);
-    button.tabIndex = isFocused ? 0 : -1;
-  });
-  if (shouldFocus) buttons[focusedMainMenuButtonIndex]?.focus();
+function renderMainMenuActionButton(definition, index) {
+  const iconLabels = {
+    newGame: "✦",
+    loadGame: "▣",
+    quitGame: "⏻",
+    settings: "⚙"
+  };
+  const button = createButton("", () => runMainMenuAction(definition.id), "menu-composite-button main-menu-action-button");
+  button.dataset.action = definition.id;
+  button.setAttribute("aria-label", definition.label);
+  if (index === 0) button.dataset.remoteAutofocus = "true";
+
+  const icon = document.createElement("span");
+  icon.className = "main-menu-action-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = iconLabels[definition.id] ?? "✦";
+
+  const label = document.createElement("span");
+  label.className = "main-menu-action-label";
+  label.textContent = definition.label;
+  button.append(icon, label);
+  return button;
 }
 
 function renderMainMenuRotateHint() {
@@ -1796,65 +1832,29 @@ function renderMenu() {
   const scene = document.createElement("div");
   scene.className = "main-menu-scene";
 
+  const brand = document.createElement("header");
+  brand.className = "main-menu-brand";
+  const emblem = renderMenuLayer("logo", mainMenuAssetPaths.compass, ["main-menu-brand-emblem"]);
   const title = document.createElement("h1");
   title.id = "screen-title";
   title.className = "main-menu-title";
   title.textContent = "Star Odyssey";
+  brand.append(emblem, title);
 
   const buttonList = document.createElement("nav");
   buttonList.className = "main-menu-button-list";
-  buttonList.dataset.menuLayer = "buttons_group";
   buttonList.setAttribute("aria-label", "Hauptmenü");
 
   scene.append(
     renderMenuLayer("background", mainMenuAssetPaths.background, ["main-menu-layer--fill"]),
-    renderMenuLayer("stars_overlay", mainMenuAssetPaths.stars_overlay, ["main-menu-layer--fill", "main-menu-layer--screen"]),
-    renderMenuLayer("planet", mainMenuAssetPaths.planet),
-    renderMenuLayer("galaxy", mainMenuAssetPaths.galaxy, ["main-menu-layer--screen"]),
-    renderMenuLayer("frame_corner_top_left", mainMenuAssetPaths.frame_corner_master),
-    renderMenuLayer("frame_corner_top_right", mainMenuAssetPaths.frame_corner_master),
-    renderMenuLayer("frame_corner_bottom_left", mainMenuAssetPaths.frame_corner_master),
-    renderMenuLayer("frame_corner_bottom_right", mainMenuAssetPaths.frame_corner_master),
-    renderMenuLayer("frame_top_edge", mainMenuAssetPaths.frame_top_edge, ["main-menu-layer--stretch"]),
-    renderMenuLayer("frame_bottom_edge", mainMenuAssetPaths.frame_bottom_edge, ["main-menu-layer--stretch"]),
-    renderMenuLayer("frame_left_edge", mainMenuAssetPaths.frame_left_edge, ["main-menu-layer--stretch"]),
-    renderMenuLayer("frame_right_edge", mainMenuAssetPaths.frame_right_edge, ["main-menu-layer--stretch"]),
-    renderMenuLayer("frame_top_deco", mainMenuAssetPaths.frame_top_deco),
-    renderMenuLayer("frame_bottom_deco", mainMenuAssetPaths.frame_bottom_deco),
-    renderMenuLayer("title_ring_overlay", mainMenuAssetPaths.title_ring_overlay, ["main-menu-layer--screen"]),
-    renderMenuLayer("title_compass_emblem", mainMenuAssetPaths.title_compass_emblem),
-    renderMenuLayer("logo", mainMenuAssetPaths.logo),
-    title,
+    renderMenuLayer("frame", mainMenuAssetPaths.frame, ["main-menu-frame"]),
+    brand,
     buttonList,
     renderNotice()
   );
 
-  const buttons = renderMenuButtons(buttonList, mainMenuButtonLayout, {
-    definitions: getMainMenuDefinitions(),
-    focusedIndex: focusedMainMenuButtonIndex,
-    responsive: true,
-  });
-  updateMainMenuFocus(buttons, focusedMainMenuButtonIndex);
-  applyMainMenuLayout(scene);
-
-  buttonList.addEventListener("click", (event) => {
-    const button = event.target.closest(".menu-composite-button");
-    if (!(button instanceof HTMLButtonElement)) return;
-    updateMainMenuFocus(buttons, buttons.indexOf(button));
-    runMainMenuAction(button.dataset.action);
-  });
-
-  buttonList.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      updateMainMenuFocus(buttons, focusedMainMenuButtonIndex + 1, true);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      updateMainMenuFocus(buttons, focusedMainMenuButtonIndex - 1, true);
-    } else if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      runMainMenuAction(buttons[focusedMainMenuButtonIndex]?.dataset.action);
-    }
+  getMainMenuDefinitions().forEach((definition, index) => {
+    buttonList.append(renderMainMenuActionButton(definition, index));
   });
 
   screen.append(scene, renderMainMenuRotateHint());
@@ -1919,6 +1919,7 @@ function renderPlayerSelect() {
     }, "player-button");
     button.setAttribute("aria-label", t("playersLabel").replace("{count}", count));
     button.setAttribute("aria-pressed", String(count === state.selectedPlayers));
+    if (count === (state.selectedPlayers ?? 2)) button.dataset.remoteAutofocus = "true";
     options.append(button);
   }
 
@@ -1981,13 +1982,13 @@ function renderControllerConnect() {
 
   const actions = document.createElement("div");
   actions.className = "setup-actions";
-  actions.append(
-    createButton(t("back"), () => {
-      state.controllerLobby = null;
-      state.controllerMode = false;
-      setView("players");
-    }, "secondary-button")
-  );
+  const backButton = createButton(t("back"), () => {
+    state.controllerLobby = null;
+    state.controllerMode = false;
+    setView("players");
+  }, "secondary-button");
+  backButton.dataset.remoteAutofocus = "true";
+  actions.append(backButton);
 
   screen.append(renderLanguageToggle(), title, qrGrid, hint, preloadStatus, actions);
   return screen;
@@ -2072,6 +2073,7 @@ function renderPlayerSetup() {
     nameInput.type = "text";
     nameInput.value = playerSetup.name;
     nameInput.autocomplete = "off";
+    if (index === 0) nameInput.dataset.remoteAutofocus = "true";
     nameInput.addEventListener("input", () => {
       state.playerSetup[index].name = nameInput.value;
       updateValidation();
@@ -8560,6 +8562,7 @@ function render() {
   document.documentElement.lang = state.language;
   app.classList.toggle("app-shell--board", state.view === "board");
   app.classList.toggle("app-shell--main-menu", state.view === "menu");
+  app.classList.toggle("app-shell--shell", ["controllers", "loading", "playerSetup", "players"].includes(state.view));
 
   const views = {
     board: renderBoardShell,
@@ -8578,14 +8581,25 @@ function render() {
   drawShipEngineVfxOverlays();
   syncShipVfxLoop();
   publishRemoteHostState();
+  prepareRemoteNavigation();
 }
 
 if (state.gameState) {
   void preloadGameAssets();
 }
 connectRemoteHost();
-void loadMainMenuLayouts();
 render();
+
+document.addEventListener("keydown", handleRemoteKeydown);
+document.addEventListener("focusin", () => {
+  const controls = getRemoteFocusControls();
+  const index = controls.indexOf(document.activeElement);
+  if (index >= 0) {
+    remoteFocusIndex = index;
+    controls.forEach((control) => control.classList.toggle("is-remote-focused", control === document.activeElement));
+  }
+});
+window.addEventListener("firetvback", handleRemoteBack);
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") writeAutosaveNow();

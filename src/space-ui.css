@@ -238,6 +238,7 @@ body::after {
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+  transform: none;
   text-shadow:
     0 0.06em 0 rgba(255, 247, 226, 0.6),
     0 0.11em 0.08em rgba(0, 0, 0, 0.9),
@@ -669,5 +670,489 @@ body::after {
 
   .main-menu-title {
     font-size: 3.3rem;
+  }
+}
+
+/* 2026 unified Star Odyssey presentation */
+:root {
+  --so-space-950: #020713;
+  --so-space-900: #061126;
+  --so-space-800: #0a1c38;
+  --so-cyan: #67d7ff;
+  --so-cyan-strong: #20bff5;
+  --so-violet: #9b8cff;
+  --so-gold: #d5ad63;
+  --so-gold-bright: #f3d89b;
+  --so-panel: rgba(5, 16, 38, 0.79);
+  --so-panel-soft: rgba(7, 22, 48, 0.68);
+  --so-line: rgba(106, 206, 255, 0.36);
+  --so-line-gold: rgba(213, 173, 99, 0.58);
+  --so-focus: 0 0 0 2px rgba(255, 244, 207, 0.92), 0 0 22px rgba(70, 198, 255, 0.88);
+}
+
+body {
+  color: #f7f8ff;
+  background-color: var(--so-space-950);
+  background-image: url("../public/assets/ui/backgrounds/star-odyssey-interface-4k.webp");
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+.main-menu-screen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  min-height: var(--app-viewport-height);
+  padding: 0;
+  overflow: hidden;
+  background: #020713 url("../public/assets/ui/backgrounds/star-odyssey-menu-hero-4k.webp") center / cover no-repeat;
+}
+
+.main-menu-screen::before {
+  background: linear-gradient(180deg, rgba(1, 5, 16, 0.04), rgba(1, 5, 16, 0.28));
+}
+
+.main-menu-scene {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: min(100vw, calc(var(--app-viewport-height) * 16 / 9));
+  height: min(var(--app-viewport-height), calc(100vw * 9 / 16));
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  background: #020713;
+  box-shadow: 0 0 80px rgba(0, 0, 0, 0.82);
+}
+
+.main-menu-scene [data-menu-layer="background"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: none;
+}
+
+.main-menu-frame {
+  position: absolute;
+  inset: 1.2%;
+  z-index: 2;
+  width: 97.6%;
+  height: 97.6%;
+  object-fit: fill;
+  transform: none;
+  pointer-events: none;
+  filter: drop-shadow(0 0 12px rgba(21, 170, 232, 0.2));
+}
+
+.main-menu-brand {
+  position: absolute;
+  top: 6.5%;
+  left: 50%;
+  z-index: 3;
+  display: grid;
+  justify-items: center;
+  transform: translateX(-50%);
+}
+
+.main-menu-brand .main-menu-brand-emblem {
+  position: relative;
+  inset: auto;
+  width: min(19vh, 11rem);
+  height: min(19vh, 11rem);
+  object-fit: contain;
+  transform: none;
+  opacity: 0.96;
+  filter: drop-shadow(0 0 18px rgba(91, 199, 255, 0.34));
+}
+
+.main-menu-title {
+  position: relative;
+  inset: auto;
+  margin-top: -3.8vh;
+  color: #f7e7c0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: min(8vh, 5.4rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-shadow: 0 2px 0 #5b3519, 0 5px 20px rgba(0, 0, 0, 0.9), 0 0 30px rgba(79, 192, 255, 0.2);
+}
+
+.main-menu-button-list {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  z-index: 4;
+  width: min(44%, 49rem);
+  height: auto;
+  display: grid;
+  gap: 0.8vh;
+  transform: translateX(-50%);
+}
+
+.main-menu-action-button {
+  position: relative;
+  width: 100%;
+  min-height: min(9.2vh, 6rem);
+  display: grid;
+  grid-template-columns: min(6.6vh, 4.2rem) 1fr min(6.6vh, 4.2rem);
+  align-items: center;
+  border: 0;
+  padding: 0 8%;
+  color: #fff8e7;
+  background: transparent url("../public/assets/ui/buttons/star-odyssey-button-plate.png") center / 100% 100% no-repeat;
+  cursor: pointer;
+  transition: transform 150ms ease, filter 150ms ease, color 150ms ease;
+}
+
+.main-menu-action-icon {
+  display: grid;
+  place-items: center;
+  width: min(5.5vh, 3.5rem);
+  height: min(5.5vh, 3.5rem);
+  color: #7edcff;
+  font-size: min(3.8vh, 2.2rem);
+  line-height: 1;
+  text-shadow: 0 0 14px rgba(50, 202, 255, 0.88);
+}
+
+.main-menu-action-label {
+  grid-column: 2;
+  font-size: min(3.4vh, 2rem);
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95);
+}
+
+.main-menu-action-button:hover,
+.main-menu-action-button:focus-visible,
+.main-menu-action-button.is-remote-focused {
+  outline: none;
+  color: #ffffff;
+  transform: scale(1.025);
+  filter: brightness(1.18) drop-shadow(0 0 13px rgba(43, 196, 255, 0.72));
+}
+
+.main-menu-screen .notice {
+  position: absolute;
+  left: 50%;
+  bottom: 5.3%;
+  z-index: 5;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.shell-screen {
+  position: relative;
+  isolation: isolate;
+  width: 100vw;
+  min-height: var(--app-viewport-height);
+  align-content: center;
+  justify-items: center;
+  gap: min(1.5vh, 1rem);
+  overflow: auto;
+  padding: max(5.5vh, 2.5rem) max(6vw, 3rem);
+  background: #020713 url("../public/assets/ui/backgrounds/star-odyssey-interface-4k.webp") center / cover no-repeat;
+}
+
+.shell-screen::before {
+  content: "";
+  position: fixed;
+  inset: 1.2%;
+  z-index: -1;
+  background: url("../public/assets/ui/frames/star-odyssey-frame-master.png") center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+.shell-screen::after {
+  content: "";
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: -2;
+  width: min(66rem, 72vw);
+  height: min(42rem, 76vh);
+  border: 1px solid var(--so-line);
+  border-radius: 6px;
+  background: linear-gradient(145deg, rgba(5, 17, 42, 0.88), rgba(4, 11, 28, 0.72));
+  box-shadow: inset 0 0 0 1px rgba(213, 173, 99, 0.14), 0 28px 70px rgba(0, 0, 0, 0.42);
+  transform: translate(-50%, -50%);
+  backdrop-filter: blur(12px);
+}
+
+.lobby-screen::after {
+  width: min(96rem, 92vw);
+  height: min(51rem, 84vh);
+}
+
+.shell-screen > * {
+  position: relative;
+  z-index: 1;
+}
+
+.shell-screen .setup-title {
+  color: #f7e7c0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: min(5.2vh, 3.4rem);
+  line-height: 1.05;
+  text-align: center;
+  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.9);
+}
+
+.setup-section-label {
+  margin: 0.5vh 0 0;
+  color: #bcdcf4;
+  font-size: min(2.1vh, 1.2rem);
+  text-transform: uppercase;
+}
+
+.shell-screen .language-toggle {
+  position: fixed;
+  top: max(4.6vh, 2.2rem);
+  right: max(5vw, 2.5rem);
+  z-index: 4;
+}
+
+.language-toggle {
+  border-color: var(--so-line-gold);
+  border-radius: 4px;
+  background: rgba(4, 14, 34, 0.82);
+  box-shadow: inset 0 0 18px rgba(28, 132, 193, 0.12);
+}
+
+.language-button,
+.menu-button,
+.secondary-button,
+.small-button,
+.icon-button,
+.controller-button,
+.controller-color-button,
+.controller-board-back-button,
+.player-hud-button,
+.hud-tab-button {
+  border-radius: 4px;
+  border-color: rgba(105, 204, 255, 0.38);
+  color: #f7f8ff;
+  background: linear-gradient(180deg, rgba(12, 42, 76, 0.9), rgba(5, 19, 43, 0.92));
+  box-shadow: inset 0 0 0 1px rgba(213, 173, 99, 0.08);
+}
+
+.menu-button,
+.secondary-button {
+  min-height: min(7.5vh, 4.8rem);
+  border: 0;
+  background: transparent url("../public/assets/ui/buttons/star-odyssey-button-plate.png") center / 100% 100% no-repeat;
+  text-shadow: 0 2px 7px rgba(0, 0, 0, 0.9);
+}
+
+.secondary-button {
+  filter: saturate(0.68) brightness(0.88);
+}
+
+.language-button[aria-pressed="true"],
+.player-button[aria-pressed="true"],
+.variant-button[aria-pressed="true"] {
+  border-color: var(--so-gold-bright);
+  color: #fff9e8;
+  background: linear-gradient(180deg, rgba(17, 88, 139, 0.94), rgba(8, 38, 78, 0.96));
+  box-shadow: inset 0 0 22px rgba(74, 205, 255, 0.24), 0 0 18px rgba(66, 188, 255, 0.3);
+}
+
+.player-select-screen .player-options:not(.variant-options) {
+  width: min(32rem, 56vw);
+  gap: min(1.3vw, 1.2rem);
+}
+
+.player-select-screen .player-button:not(.variant-button) {
+  min-width: 6rem;
+  aspect-ratio: 1.05;
+  border: 1px solid var(--so-line-gold);
+  border-radius: 6px;
+  font-size: min(5vh, 3.4rem);
+  background: linear-gradient(145deg, rgba(11, 44, 83, 0.94), rgba(5, 18, 43, 0.96));
+}
+
+.variant-options {
+  width: min(44rem, 64vw);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.variant-button {
+  aspect-ratio: auto;
+  min-height: min(7vh, 4.5rem);
+  border: 1px solid var(--so-line);
+  border-radius: 5px;
+  font-size: min(2.4vh, 1.4rem);
+  background: linear-gradient(145deg, rgba(10, 38, 74, 0.92), rgba(5, 17, 40, 0.94));
+}
+
+.setup-actions {
+  width: min(44rem, 64vw);
+  gap: min(1.2vw, 1rem);
+}
+
+.qr-grid {
+  width: min(84rem, 86vw);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: min(1.4vw, 1.2rem);
+}
+
+.qr-card {
+  min-width: 0;
+  gap: min(1vh, 0.65rem);
+  border: 1px solid var(--so-line-gold);
+  border-radius: 6px;
+  padding: min(1.5vh, 0.9rem);
+  background: linear-gradient(160deg, rgba(8, 29, 60, 0.86), rgba(4, 14, 34, 0.78));
+  box-shadow: inset 0 0 24px rgba(46, 167, 224, 0.09), 0 14px 34px rgba(0, 0, 0, 0.25);
+}
+
+.qr-card:hover,
+.qr-card:focus-visible,
+.qr-card.is-remote-focused {
+  outline: none;
+  border-color: var(--so-cyan);
+  box-shadow: var(--so-focus), inset 0 0 28px rgba(46, 167, 224, 0.14);
+}
+
+.qr-card h2 {
+  color: #f7e7c0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: min(2.4vh, 1.35rem);
+}
+
+.qr-image,
+.qr-placeholder {
+  width: min(14vh, 9.5rem);
+  border-radius: 3px;
+  box-shadow: 0 0 0 4px #ffffff, 0 0 22px rgba(70, 198, 255, 0.2);
+}
+
+.qr-url {
+  max-height: 2.5em;
+  overflow: hidden;
+  color: #9db9d3;
+  font-size: min(1.35vh, 0.72rem);
+}
+
+.qr-status {
+  border-radius: 3px;
+  background: rgba(1, 8, 21, 0.62);
+}
+
+.player-setup-form {
+  width: min(52rem, 72vw);
+}
+
+.player-setup-row,
+.settings-language,
+.save-item {
+  border-color: var(--so-line);
+  border-radius: 5px;
+  background: linear-gradient(145deg, rgba(9, 34, 67, 0.8), rgba(4, 15, 36, 0.76));
+  box-shadow: inset 0 0 0 1px rgba(213, 173, 99, 0.07);
+}
+
+.player-setup-row input,
+.player-setup-row select,
+.modal-content input {
+  border-color: rgba(105, 204, 255, 0.4);
+  border-radius: 4px;
+  background: rgba(1, 8, 22, 0.78);
+}
+
+.modal-overlay {
+  background: rgba(1, 5, 16, 0.7) url("../public/assets/ui/backgrounds/star-odyssey-interface-4k.webp") center / cover no-repeat;
+  background-blend-mode: multiply;
+}
+
+.modal-panel {
+  position: relative;
+  border-color: var(--so-line-gold);
+  border-radius: 6px;
+  background: linear-gradient(150deg, rgba(7, 25, 54, 0.96), rgba(3, 11, 29, 0.97));
+  box-shadow: inset 0 0 0 1px rgba(100, 208, 255, 0.13), 0 28px 90px rgba(0, 0, 0, 0.72);
+}
+
+.modal-content h2 {
+  color: #f7e7c0;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+button:hover,
+button:focus-visible,
+button.is-remote-focused,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--so-cyan);
+  box-shadow: var(--so-focus);
+}
+
+.main-menu-action-button:hover,
+.main-menu-action-button:focus-visible,
+.main-menu-action-button.is-remote-focused {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.app-shell--shell {
+  width: 100vw;
+  height: var(--app-viewport-height);
+  min-height: var(--app-viewport-height);
+}
+
+@supports not (backdrop-filter: blur(2px)) {
+  .shell-screen::after {
+    background: rgba(4, 14, 34, 0.94);
+  }
+}
+
+@media (orientation: portrait) and (max-width: 760px) {
+  .main-menu-scene {
+    display: none;
+  }
+}
+
+@media (max-height: 620px) and (orientation: landscape) {
+  .shell-screen {
+    padding-top: 2.4rem;
+    padding-bottom: 1.6rem;
+  }
+
+  .main-menu-button-list {
+    top: 46%;
+    gap: 0.35rem;
+  }
+
+  .main-menu-action-button {
+    min-height: 3.7rem;
+  }
+
+  .qr-grid {
+    gap: 0.55rem;
+  }
+
+  .qr-card {
+    padding: 0.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .main-menu-action-button,
+  button {
+    transition: none !important;
   }
 }

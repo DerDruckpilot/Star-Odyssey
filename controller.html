@@ -3,15 +3,42 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#020712">
+    <meta name="theme-color" content="#061126">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Star Odyssey">
     <title>Star Odyssey Controller</title>
-    <link rel="preload" as="image" href="./public/assets/ui/backgrounds/space-interface-backdrop-widescreen.png">
+    <link rel="manifest" href="./controller.webmanifest">
+    <link rel="apple-touch-icon" href="./public/assets/ui/brand/star-odyssey-app-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="./public/assets/ui/brand/star-odyssey-app-192.png">
+    <link rel="preload" as="image" href="./public/assets/ui/backgrounds/star-odyssey-interface-4k.webp" type="image/webp">
     <link rel="stylesheet" href="./src/styles.css">
-    <link rel="stylesheet" href="./src/controller.css">
     <link rel="stylesheet" href="./src/space-ui.css">
+    <link rel="stylesheet" href="./src/controller.css">
   </head>
   <body>
+    <aside class="controller-orientation-hint" role="status" aria-live="polite">
+      <img src="./public/assets/ui/brand/star-odyssey-compass.png" alt="">
+      <strong>Bitte Gerät drehen</strong>
+      <span>Der Star-Odyssey-Controller ist für das Querformat optimiert.</span>
+    </aside>
     <main id="controller-root" class="controller-shell"></main>
+    <script>
+      (() => {
+        const params = new URLSearchParams(location.search);
+        const storageKey = "star-odyssey-controller-launch-url";
+        if (params.get("session") && params.get("player")) {
+          try { localStorage.setItem(storageKey, `${location.pathname}${location.search}`); } catch {}
+          return;
+        }
+        if (params.get("pwa") === "1") {
+          try {
+            const storedUrl = localStorage.getItem(storageKey);
+            if (storedUrl) location.replace(storedUrl);
+          } catch {}
+        }
+      })();
+    </script>
     <script type="module" src="./src/controller.js"></script>
   </body>
 </html>

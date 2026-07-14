@@ -7,6 +7,7 @@ const params = new URLSearchParams(window.location.search);
 const sessionId = params.get("session") || "";
 const reconnectDelayMs = 1400;
 const localControllerStoragePrefix = "star-odyssey-controller-channel";
+const iosInstallHintStorageKey = "star-odyssey-ios-install-hint-dismissed";
 const resourceLabels = {
   ore: "Erz",
   fuel: "Treibstoff",
@@ -281,6 +282,73 @@ function createButton(label, onClick, className = "controller-button") {
   return button;
 }
 
+function isStandaloneController() {
+  return window.matchMedia("(display-mode: standalone)").matches
+    || window.matchMedia("(display-mode: fullscreen)").matches
+    || window.navigator.standalone === true;
+}
+
+function isIosController() {
+  return /iPad|iPhone|iPod/.test(window.navigator.userAgent)
+    || (window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1);
+}
+
+function shouldShowIosInstallHint() {
+  if (!isIosController() || isStandaloneController()) return false;
+  try {
+    return localStorage.getItem(iosInstallHintStorageKey) !== "true";
+  } catch {
+    return true;
+  }
+}
+
+function renderIosInstallHint() {
+  if (!shouldShowIosInstallHint()) return null;
+  const hint = document.createElement("aside");
+  hint.className = "controller-ios-install-hint";
+  hint.setAttribute("role", "note");
+
+  const text = document.createElement("span");
+  text.textContent = "Für Vollbild: Teilen → Zum Home-Bildschirm";
+  const close = createButton("×", () => {
+    try {
+      localStorage.setItem(iosInstallHintStorageKey, "true");
+    } catch {
+      // The hint can still be dismissed for the current render.
+    }
+    hint.remove();
+  }, "controller-ios-install-close");
+  close.setAttribute("aria-label", "Vollbild-Hinweis schließen");
+  hint.append(text, close);
+  return hint;
+}
+
+function canUseControllerFullscreen() {
+  return Boolean(document.fullscreenEnabled && document.documentElement.requestFullscreen);
+}
+
+async function toggleControllerFullscreen() {
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else {
+      await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+    }
+  } catch {
+    // Browsers may reject fullscreen even after a user gesture.
+  }
+}
+
+function renderFullscreenButton() {
+  if (!canUseControllerFullscreen()) return null;
+  const active = Boolean(document.fullscreenElement);
+  const button = createButton(active ? "↙" : "⛶", toggleControllerFullscreen, "small-button controller-fullscreen-button");
+  const label = active ? "Vollbild beenden" : "Vollbild öffnen";
+  button.setAttribute("aria-label", label);
+  button.title = label;
+  return button;
+}
+
 function render() {
   captureControllerScrollPosition();
   const focusedInput = captureFocusedInput();
@@ -302,7 +370,8 @@ function render() {
   if (gameState?.view === "controllers" && gameState.controllerLobby) {
     content.append(renderSetupPanel());
     shell.append(header, content);
-    root.replaceChildren(shell);
+    const installHint = renderIosInstallHint();
+    root.replaceChildren(...(installHint ? [installHint, shell] : [shell]));
     restoreControllerScrollPosition();
     restoreFocusedInput(focusedInput);
     return;
@@ -313,7 +382,8 @@ function render() {
 
   content.append(tabs, activeContent);
   shell.append(header, content);
-  root.replaceChildren(shell);
+  const installHint = renderIosInstallHint();
+  root.replaceChildren(...(installHint ? [installHint, shell] : [shell]));
   restoreControllerScrollPosition();
   restoreFocusedInput(focusedInput);
 }
@@ -379,6 +449,8 @@ function renderControllerHeader(player) {
 
   const actions = document.createElement("div");
   actions.className = "controller-header-actions";
+  const fullscreenButton = renderFullscreenButton();
+  if (fullscreenButton) actions.append(fullscreenButton);
   if (player && gameState?.view === "board") {
     actions.append(createButton("Schließen", () => {
       boardFullscreen = true;
@@ -2397,6 +2469,26 @@ function getStatusLabel() {
   if (connectionStatus === "missing-session") return "Keine Session in der URL";
   if (connectionStatus === "missing-player") return "Kein Spieler in der URL";
   return "Verbinde ...";
+}
+
+function updateControllerViewportHeight() {
+  const viewportHeight = window.visualViewport?.height || window.innerHeight;
+  document.documentElement.style.setProperty("--controller-viewport-height", `${Math.round(viewportHeight)}px`);
+}
+
+updateControllerViewportHeight();
+window.addEventListener("resize", updateControllerViewportHeight);
+window.addEventListener("orientationchange", updateControllerViewportHeight);
+window.visualViewport?.addEventListener("resize", updateControllerViewportHeight);
+window.visualViewport?.addEventListener("scroll", updateControllerViewportHeight);
+document.addEventListener("fullscreenchange", render);
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {
+      // The controller remains usable when service workers are unavailable.
+    });
+  }, { once: true });
 }
 
 render();

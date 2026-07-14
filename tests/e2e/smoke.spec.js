@@ -98,6 +98,43 @@ test("main menu uses a 16:9 stage and shows a portrait rotate hint", async ({ pa
   await expect(page.locator(".main-menu-rotate-hint")).toBeHidden();
 });
 
+test("TV remote focus reaches setup and the controller PWA shell is valid", async ({ page }) => {
+  await page.goto("/");
+  const newGame = page.getByRole("button", { name: "Neues Spiel" });
+  await expect(newGame).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Star Odyssey" })).toHaveCount(1);
+
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("button", { name: "Spiel laden" })).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Spieleranzahl wählen" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "2 Spieler" })).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "2 Spieler" })).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("button", { name: "Klassisches Spiel" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("button", { name: "Zurück" })).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("button", { name: "Weiter" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
+
+  const manifestResponse = await page.request.get("/controller.webmanifest");
+  expect(manifestResponse.ok()).toBe(true);
+  const manifest = await manifestResponse.json();
+  expect(manifest.display).toBe("standalone");
+  expect(manifest.orientation).toBe("landscape");
+  expect(manifest.icons).toHaveLength(2);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/controller.html?session=TEST&player=1");
+  await expect(page.locator(".controller-orientation-hint")).toBeVisible();
+  await expect(page.locator("#controller-root")).toBeHidden();
+});
+
 test("card debug review pages load and filter cards", async ({ page }) => {
   await page.goto("/debug-friendship-cards.html");
   await expect(page.getByRole("heading", { name: "Freundschaftskarten" })).toBeVisible();
