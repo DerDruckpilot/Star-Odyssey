@@ -3,6 +3,8 @@ export const gameVariants = {
   supernova: "supernova"
 };
 
+export const supernovaFactoryLimitPerPlayer = 5;
+
 export const supernovaMissionCards = [
   { id: "mission-freighter", title: "Frachter", category: "blue", conditionKey: "allCargo", originalText: "Du hast alle 5 Frachtringe an dein Mutterschiff gebaut." },
   { id: "mission-food-factory", title: "Nahrungs Fabrikant", category: "violet", conditionKey: "factoryCard:food", originalText: "Du besitzt die Siegpunktkarte Landwirt." },

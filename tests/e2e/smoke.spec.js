@@ -106,12 +106,16 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await expect.poll(() => Boolean(getLatestPlayerState(controllerTwoStates))).toBe(true);
   expectPrivateControllerState(getLatestPlayerState(controllerOneStates), "player-1", "player-2");
   expectPrivateControllerState(getLatestPlayerState(controllerTwoStates), "player-2", "player-1");
+  expect(getLatestPlayerState(controllerOneStates).gameVariant).toBe("supernova");
 
   await expect(page.locator(".supernova-missions")).toHaveCount(0);
   await expect(page.getByText("Supernova-Missionen")).toHaveCount(0);
 
   await page.screenshot({ path: "test-results/screenshots/board.png", fullPage: true });
 
+  await controllerOne.getByRole("button", { name: "Bauen" }).click();
+  await expect(controllerOne.getByText("Supernova-Fabriken")).toBeVisible();
+  await expect(controllerOne.locator(".factory-build-card")).toHaveCount(5);
   await controllerOne.getByRole("button", { name: "Handeln" }).click();
   await expect(controllerOne.getByRole("heading", { name: "Handeln" })).toBeVisible();
   await expect(controllerOne.getByRole("button", { name: "Spielfeld" })).toBeVisible();
@@ -375,6 +379,54 @@ test("menu preview loads processed assets and live layout controls", async ({ pa
   await expect(page.locator("#button-preview-log")).toContainText("JSON konnte nicht angewendet werden");
   const buttonLayoutResponse = await page.request.get("/public/assets/ui/menu/processed/menu-button-layout.json");
   expect(buttonLayoutResponse.ok()).toBe(true);
+});
+
+test("Supernova factories render on the board", async ({ page }) => {
+  await page.goto("/");
+  const factory = await page.evaluate(async () => {
+    const [{ createGameState }, { boardLayout }, { gameVariants }] = await Promise.all([
+      import("/src/game/gameState.js"),
+      import("/src/data/boardLayout.js"),
+      import("/src/data/supernova.js")
+    ]);
+    const gameState = createGameState({
+      language: "de",
+      playerCount: 2,
+      boardLayout,
+      gameVariant: gameVariants.supernova
+    });
+    const system = boardLayout.planetSystems[0];
+    const planet = system.planets[0];
+    const factoryState = {
+      id: "factory-visual-test",
+      ownerPlayerId: "player-1",
+      type: planet.resource,
+      resource: planet.resource,
+      planetId: planet.id,
+      systemId: system.id
+    };
+    gameState.phase = "tradeBuild";
+    gameState.board.exploredSystems = [...new Set([...(gameState.board.exploredSystems ?? []), system.id])];
+    gameState.supernova.factories = [factoryState];
+    localStorage.removeItem("starOdyssey.autosave.v1");
+    localStorage.setItem("star-odyssey-current-game", JSON.stringify(gameState));
+    return factoryState;
+  });
+
+  await page.reload();
+  const marker = page.locator(`[data-factory-id="${factory.id}"]`);
+  await expect(page.locator(".board-screen")).toBeVisible();
+  await expect(marker).toHaveCount(1);
+  await expect(marker.locator("title")).toContainText("Spieler 1");
+
+  const sessionId = await page.evaluate(() => sessionStorage.getItem("star-odyssey-controller-session"));
+  const controller = await page.context().newPage();
+  await controller.goto(`/controller.html?session=${sessionId}&player=1`);
+  await expect(controller.getByRole("heading", { name: "Spieler 1" })).toBeVisible();
+  await expect(controller.locator(".controller-status")).toHaveText("Verbunden");
+  await controller.getByRole("button", { name: "Spielfeld" }).click();
+  await expect(controller.locator(`[data-factory-id="${factory.id}"]`)).toHaveCount(1);
+  await controller.close();
 });
 
 test("outpost debug page loads and exports layout", async ({ page }) => {

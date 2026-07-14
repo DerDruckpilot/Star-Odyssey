@@ -1,5 +1,6 @@
 import { buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
 import { getFriendshipCardById, getFriendshipCardSummary, getFriendshipCardTitle } from "./data/friendshipCards.js";
+import { supernovaFactoryLimitPerPlayer, supernovaFactoryTypes } from "./data/supernova.js";
 import { mothershipUpgradeSlots, upgradeMenuAssetPaths, upgradeMenuOrder } from "./data/upgradeVisuals.js";
 
 const root = document.querySelector("#controller-root");
@@ -1343,11 +1344,11 @@ function renderUpgradeControls(player) {
   return wrapper;
 }
 
-function renderBuildControls() {
+function renderBuildControls(player) {
   const wrapper = document.createElement("div");
   wrapper.className = "trade-build-section build-controls";
 
-  const isSupernova = state.gameState?.gameVariant === "supernova";
+  const isSupernova = gameState?.gameVariant === "supernova";
   for (const actionDefinition of buildActionDefinitions.filter((definition) => !definition.variant || isSupernova)) {
     const remoteAction = findAction(`build.${actionDefinition.id}`);
     const card = document.createElement("article");
@@ -1381,6 +1382,59 @@ function renderBuildControls() {
     body.append(label, actions);
     card.append(preview, body);
     wrapper.append(card);
+  }
+
+  if (isSupernova) {
+    const factoryCount = player?.counts?.factories ?? 0;
+    const factoryLimitReached = factoryCount >= supernovaFactoryLimitPerPlayer;
+    const title = document.createElement("strong");
+    title.textContent = "Supernova-Fabriken";
+    const stock = document.createElement("small");
+    stock.className = "upgrade-card-bonus";
+    stock.textContent = `Fabriken: ${factoryCount}/${supernovaFactoryLimitPerPlayer}`;
+    wrapper.append(title, stock);
+
+    for (const factoryType of supernovaFactoryTypes) {
+      const remoteAction = findAction(
+        "supernova.factory",
+        (action) => action.payload?.factoryType === factoryType.id
+      );
+      const card = document.createElement("article");
+      card.className = "upgrade-card upgrade-card--menu build-action-card factory-build-card";
+
+      const preview = document.createElement("div");
+      preview.className = `upgrade-card-preview factory-build-preview factory-build-preview--${factoryType.resource}`;
+      preview.setAttribute("aria-hidden", "true");
+      preview.textContent = "⚙";
+
+      const body = document.createElement("div");
+      body.className = "upgrade-card-body";
+      const label = document.createElement("strong");
+      label.className = "upgrade-card-title";
+      label.textContent = factoryType.title;
+
+      const hint = document.createElement("small");
+      hint.className = "upgrade-card-bonus";
+      hint.textContent = factoryLimitReached
+        ? "Alle 5 Fabriken sind gebaut."
+        : remoteAction
+          ? `${getResourceLabel(remoteAction.payload?.resource)}-Planet verfügbar`
+          : "Kein passender Bauplatz";
+
+      const cost = document.createElement("small");
+      cost.className = "upgrade-card-cost";
+      cost.textContent = `Kosten: ${formatCost(factoryType.cost)}`;
+
+      const button = createButton("Bauen", () => remoteAction && sendAction(remoteAction), "small-button");
+      button.disabled = factoryLimitReached || !remoteAction || Boolean(remoteAction.disabled);
+
+      const actions = document.createElement("div");
+      actions.className = "upgrade-card-actions";
+      actions.append(button, cost);
+      body.append(label, hint, actions);
+      card.append(preview, body);
+      wrapper.append(card);
+    }
   }
 
   return wrapper;

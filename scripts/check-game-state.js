@@ -55,7 +55,7 @@ import {
 import { getEncounterCardById, getEncounterDeckIds } from "../src/data/encounterCards.js";
 import { isActiveSpecialToken } from "../src/data/numberTokens.js";
 import { shipVfxData } from "../src/data/shipVfxData.js";
-import { gameVariants } from "../src/data/supernova.js";
+import { gameVariants, supernovaFactoryLimitPerPlayer } from "../src/data/supernova.js";
 
 function getResourceTotal(player) {
   return Object.values(player.resources ?? {}).reduce((sum, value) => sum + value, 0);
@@ -1809,9 +1809,59 @@ if (factoryPlanet) {
   const resourceBeforeFactory = supernovaFactoryGame.players[0].resources[factoryPlanet.resource] ?? 0;
   supernovaFactoryGame = buildSupernovaFactory(supernovaFactoryGame, boardLayout, matchingFactoryOption?.factoryType, factoryPlanet.id);
   assert(supernovaFactoryGame.supernova?.factories?.length === 1, "Building a Supernova factory should persist the factory.");
+  const reloadedFactoryGame = normalizeGameState(JSON.parse(JSON.stringify(supernovaFactoryGame)), {
+    language: "de",
+    playerCount: 2,
+    boardLayout
+  });
+  assert(
+    reloadedFactoryGame.supernova?.factories?.[0]?.planetId === factoryPlanet.id &&
+      reloadedFactoryGame.supernova?.factories?.[0]?.ownerPlayerId === "player-1",
+    "Supernova factories should survive save/load normalization with owner and planet intact."
+  );
   assert(
     Object.values(supernovaFactoryGame.supernova?.factoryMajorityCards ?? {}).includes("player-1"),
     "A unique factory majority should award the matching Supernova victory card."
+  );
+  const factoryLimitGame = normalizeGameState({
+    ...supernovaFactoryGame,
+    supernova: {
+      ...supernovaFactoryGame.supernova,
+      factories: [
+        ...supernovaFactoryGame.supernova.factories,
+        ...Array.from({ length: supernovaFactoryLimitPerPlayer - 1 }, (_, index) => ({
+          id: `factory-limit-test-${index + 2}`,
+          ownerPlayerId: "player-1",
+          type: matchingFactoryOption.factoryType,
+          resource: factoryPlanet.resource,
+          planetId: `${factoryPlanet.id}-limit-${index + 2}`,
+          systemId: factoryPlanet.systemId
+        }))
+      ]
+    }
+  }, {
+    language: "de",
+    playerCount: 2,
+    boardLayout
+  });
+  assert(
+    factoryLimitGame.supernova?.factories?.length === supernovaFactoryLimitPerPlayer,
+    "Supernova factory limit smoke test should contain exactly five owned factories."
+  );
+  assert(
+    getBuildableSupernovaFactoryOptions(factoryLimitGame, boardLayout, "player-1").length === 0,
+    "A player with all five Supernova factories should receive no further factory build options."
+  );
+  const afterRejectedSixthFactory = buildSupernovaFactory(
+    factoryLimitGame,
+    boardLayout,
+    matchingFactoryOption.factoryType,
+    factoryPlanet.id
+  );
+  assert(
+    afterRejectedSixthFactory === factoryLimitGame &&
+      afterRejectedSixthFactory.supernova?.factories?.length === supernovaFactoryLimitPerPlayer,
+    "Building a sixth Supernova factory should be rejected without changing state."
   );
   const token = supernovaFactoryGame.board.numberTokens.planetTokensById[factoryPlanet.id];
   const rollTotal = token?.values?.find((value) => value !== 7) ?? token?.value;
@@ -1826,6 +1876,10 @@ if (factoryPlanet) {
     "A Supernova factory should double production for its owner on the matching planet."
   );
 }
+assert(
+  getBuildableSupernovaFactoryOptions(classicVariantGame, boardLayout, "player-1").length === 0,
+  "Classic games should never expose Supernova factory build options."
+);
 
 let supernovaBattleShipGame = createGameState({
   language: "de",

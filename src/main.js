@@ -35,7 +35,7 @@ import {
 } from "./data/playerPieceVisuals.js";
 import { getBattleShipVfxAnchors, getShipEngineTemplate, getShipVfxAnchors, getTradeShipVfxAnchors } from "./data/shipVfxData.js";
 import { MOTHERSHIP_SPEED_ANIMATION_CONFIG } from "./data/mothershipSpeedAnimationConfig.js";
-import { gameVariants, supernovaFactoryTypes } from "./data/supernova.js";
+import { gameVariants, supernovaFactoryLimitPerPlayer, supernovaFactoryTypes } from "./data/supernova.js";
 import { menuButtonDefinitions } from "./menu-button-utils.js";
 import {
   applyDebugLayoutTransform,
@@ -3797,9 +3797,18 @@ function renderBuildControls(player = getActivePlayer()) {
 
   if (isSupernovaGame(state.gameState)) {
     const factoryOptions = getBuildableSupernovaFactoryOptions(state.gameState, boardLayout, player?.id);
+    const factoryCount = (state.gameState.supernova?.factories ?? [])
+      .filter((factory) => factory.ownerPlayerId === player?.id)
+      .length;
+    const factoryLimitReached = factoryCount >= supernovaFactoryLimitPerPlayer;
     const factoryTitle = document.createElement("strong");
     factoryTitle.textContent = t("supernovaFactories");
-    wrapper.append(factoryTitle);
+    const factoryStock = document.createElement("small");
+    factoryStock.className = "upgrade-card-bonus";
+    factoryStock.textContent = t("supernovaFactoryStock")
+      .replace("{built}", factoryCount)
+      .replace("{limit}", supernovaFactoryLimitPerPlayer);
+    wrapper.append(factoryTitle, factoryStock);
     for (const factoryType of supernovaFactoryTypes) {
       const option = factoryOptions.find((candidate) => candidate.factoryType === factoryType.id);
       const card = document.createElement("article");
@@ -3814,7 +3823,9 @@ function renderBuildControls(player = getActivePlayer()) {
       cost.textContent = `${t("cost")}: ${formatCost(factoryType.cost)}`;
       const hint = document.createElement("small");
       hint.className = "upgrade-card-bonus";
-      hint.textContent = option ? t(`resource_${option.resource}`) : t("noFactorySiteAvailable");
+      hint.textContent = factoryLimitReached
+        ? t("supernovaFactoryLimitReached")
+        : option ? t(`resource_${option.resource}`) : t("noFactorySiteAvailable");
       const button = createButton(t("build"), () => buildActivePlayerSupernovaFactory(factoryType.id, option?.planetId), "small-button");
       button.disabled = Boolean(pendingShipPlacement) || Boolean(pendingSpaceportUpgrade) || !option?.canBuild;
       const actions = document.createElement("div");
@@ -6631,6 +6642,7 @@ function renderBoardSvg() {
     renderGridLayer(),
     renderLinksLayer(),
     renderSystemsLayer(),
+    renderFactoriesLayer(),
     renderPointsLayer(),
     renderPlacementVfxLayer(),
     renderShipsLayer(),
@@ -6943,6 +6955,81 @@ function renderPlanetSystem(system, className, explored) {
   });
 
   return group;
+}
+
+function renderFactoriesLayer() {
+  const group = createSvgElement("g", {
+    class: "board-factories-layer",
+    "aria-hidden": isSupernovaGame(state.gameState) ? "false" : "true"
+  });
+  if (!isSupernovaGame(state.gameState)) return group;
+
+  for (const factory of state.gameState?.supernova?.factories ?? []) {
+    const placement = getFactoryRenderPlacement(factory);
+    if (!placement) continue;
+    const owner = state.gameState?.players?.find((player) => player.id === factory.ownerPlayerId);
+    const ownerIndex = Math.max(1, state.gameState.players.findIndex((player) => player.id === factory.ownerPlayerId) + 1);
+    const factoryType = supernovaFactoryTypes.find((candidate) => candidate.id === factory.type);
+    const factoryGroup = createSvgElement("g", {
+      class: `factory-marker factory-marker--${factory.type}`,
+      "data-factory-id": factory.id,
+      "data-factory-type": factory.type,
+      "data-owner-player-id": factory.ownerPlayerId,
+      transform: `translate(${placement.x} ${placement.y})`
+    });
+    const title = createSvgElement("title");
+    title.textContent = `${factoryType?.title ?? factory.type} - ${owner?.name ?? factory.ownerPlayerId}`;
+    factoryGroup.append(
+      title,
+      createSvgElement("polygon", {
+        class: `factory-marker-gear player-color-${ownerIndex}`,
+        points: createFactoryGearPoints(0, 0, 15, 11)
+      }),
+      createSvgElement("circle", {
+        class: "factory-marker-plate",
+        cx: 0,
+        cy: 0,
+        r: 10
+      }),
+      createSvgElement("circle", {
+        class: "factory-marker-core",
+        cx: 0,
+        cy: 0,
+        r: 7
+      }),
+      createSvgElement("path", {
+        class: "factory-marker-building",
+        d: "M -6 6 V -4 L -2 -1 V -5 L 2 -2 V -6 H 6 V 6 Z"
+      })
+    );
+    group.append(factoryGroup);
+  }
+
+  return group;
+}
+
+function getFactoryRenderPlacement(factory) {
+  const systems = [...(boardLayout.startSystems ?? []), ...getVisiblePlanetSystems()];
+  const system = systems.find((candidate) => (candidate.planets ?? []).some((planet) => planet.id === factory.planetId));
+  const planet = system?.planets?.find((candidate) => candidate.id === factory.planetId);
+  if (!system || !planet) return null;
+  const planetIndex = system.planets.indexOf(planet);
+  const position = getPlanetRenderPosition(system, planet, planetRenderFallbackOffsets[planetIndex] ?? { x: 0, y: 0 });
+  const deltaX = position.x - system.x;
+  const deltaY = position.y - system.y;
+  const distance = Math.hypot(deltaX, deltaY) || 1;
+  return {
+    x: position.x + (deltaX / distance) * 27,
+    y: position.y + (deltaY / distance) * 27
+  };
+}
+
+function createFactoryGearPoints(centerX, centerY, outerRadius, innerRadius) {
+  return Array.from({ length: 16 }, (_, index) => {
+    const angle = (Math.PI * 2 * index) / 16 - Math.PI / 2;
+    const radius = index % 2 === 0 ? outerRadius : innerRadius;
+    return `${centerX + Math.cos(angle) * radius},${centerY + Math.sin(angle) * radius}`;
+  }).join(" ");
 }
 
 function getPlanetRenderPosition(system, planet, fallbackOffset) {
@@ -7816,6 +7903,7 @@ function getRemoteControllerState() {
     controllerLobby: getControllerLobbyStateForRemote(),
     phase: state.gameState?.phase ?? null,
     phaseLabel: state.gameState ? getPhaseLabel(state.gameState.phase) : "",
+    gameVariant: state.gameState?.gameVariant ?? gameVariants.classic,
     activePlayerId: activePlayer?.id ?? null,
     activePlayerName: activePlayer?.name ?? "",
     placement: getRemotePlacementStateForController(),
@@ -7899,7 +7987,12 @@ function getRemotePlayerState(player) {
       battleShips: ships.filter((ship) => ship.type === "battleShip").length,
       colonies: structures.filter((structure) => structure.type === "colony").length,
       spaceports: structures.filter((structure) => structure.type === "spaceport").length,
-      tradeStations: structures.filter((structure) => structure.type === "tradeStation").length
+      tradeStations: structures.filter((structure) => structure.type === "tradeStation").length,
+      factories: isSupernovaGame(state.gameState)
+        ? (state.gameState?.supernova?.factories ?? [])
+          .filter((factory) => factory.ownerPlayerId === player.id)
+          .length
+        : 0
     },
     friendship: getRemoteFriendshipState(player, structures),
     supernovaMissions: isSupernovaGame(state.gameState) ? getSupernovaMissionsForPlayer(state.gameState, player.id) : []
@@ -8273,7 +8366,13 @@ function getRemoteControllerActions() {
         actions.push(createRemoteAction(
           "supernova.factory",
           `${option.label} ${t("build")}`,
-          { factoryType: option.factoryType, planetId: option.planetId },
+          {
+            factoryType: option.factoryType,
+            factoryTitle: option.label,
+            planetId: option.planetId,
+            resource: option.resource,
+            cost: option.cost
+          },
           { requiresActivePlayer: true, disabled: !option.canBuild }
         ));
       }

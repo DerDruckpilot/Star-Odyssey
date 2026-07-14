@@ -6,6 +6,7 @@ import {
   gameVariants,
   getSupernovaFactoryType,
   getSupernovaFactoryVictoryCard,
+  supernovaFactoryLimitPerPlayer,
   supernovaFactoryTypes,
   supernovaFactoryVictoryCards,
   supernovaMissionCards
@@ -2213,6 +2214,8 @@ export function getBuildableSupernovaFactoryOptions(gameState, boardLayout, play
   if (!player) return [];
   const startSystemIds = new Set((boardLayout.startSystems ?? []).map((system) => system.id));
   const factories = gameState.supernova?.factories ?? [];
+  const playerFactoryCount = factories.filter((factory) => factory.ownerPlayerId === ownerPlayerId).length;
+  if (playerFactoryCount >= supernovaFactoryLimitPerPlayer) return [];
   const occupiedPlanetIds = new Set(factories.map((factory) => factory.planetId));
   const playerStructures = (gameState.board?.structures ?? [])
     .filter((structure) => structure.ownerPlayerId === ownerPlayerId && ["colony", "spaceport"].includes(structure.type));
