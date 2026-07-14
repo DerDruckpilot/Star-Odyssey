@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `7a267f2`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `18f6973`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -14,7 +14,7 @@ Star Odyssey besitzt einen umfangreichen, lauffaehigen Classic-Kern, 32 datenget
 
 Der Stand ist trotzdem **nicht final polished**:
 
-- **Classic ist nicht vollstaendig regelkonform.** Neue Partien sind inzwischen auf die belegten 3/4 Spieler begrenzt (`CLS-001`); fehlende neutrale Bauteile und Sondergrenzen im 3-Spieler-Spiel weichen aber weiterhin von Anleitung bzw. Almanach ab (`CLS-002`). Die Nachschub-Nachholfrist ist korrigiert (`CLS-003`).
+- **Classic ist in den konkret auditierten Aufbaupunkten korrigiert.** Neue Partien sind auf 3/4 Spieler begrenzt (`CLS-001`); Drei-Spieler-Partien besitzen die neutralen Teile der vierten Farbe und die Zwei-von-drei-Belegungsgrenze ausserhalb der Startsysteme (`CLS-002`). Die Nachschub-Nachholfrist ist ebenfalls korrigiert (`CLS-003`). `ENC-004` verhindert weiterhin eine vollstaendige Regelabnahme.
 - **Der urspruengliche P0-Encounter-Softlock ist behoben.** Ausbau-Belohnungen ohne freien physischen Platz setzen den Flow nun kontrolliert fort (`ENC-001`). Auch Hehlerei-/Piraten-Sonderwuerfe warten nun auf die aktive Controlleraktion und werden sichtbar ausgewertet (`ENC-002`); `ENC-004` verhindert weiterhin eine vollstaendige Encounter-Regelabnahme.
 - **Supernova ist nicht vollstaendig regelkonform spielbar.** 13 von 25 Missionen sind nicht automatisch regelgeprueft; das Fabriksystem ist inzwischen mit Bestand, Brett- und Controllerdarstellung vervollstaendigt (`SN-003`); Schlachtschiffkaempfe werden weiterhin automatisch und teilweise mit falschen Folgen ausgewertet.
 - **Private Controllerdaten sind inzwischen getrennt.** Der Host erzeugt player-spezifische View-States; fremde Ressourcenarten, Freundschaftskarten, Missionen und private Auswahlentwuerfe werden nicht mehr serialisiert (`SN-002`).
@@ -23,7 +23,7 @@ Der Stand ist trotzdem **nicht final polished**:
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 8 von 31 IDs erledigt (1 P0, 7 P1); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 9 von 31 IDs erledigt (1 P0, 8 P1); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -48,7 +48,7 @@ Die Zahlen bilden den Auditstichtag ab. Aktuell sind 8 von 31 IDs erledigt (1 P0
 
 1. `SN-004` / `SN-005`: Schlachtschiffkaempfe laufen ohne erforderliche Spielerinteraktion und mit teilweise falschen Folgen ab.
 2. `SN-001`: 13 Missionsbedingungen sind nicht automatisch regelgeprueft; dadurch bleibt die Supernova-Siegbedingung fachlich unvollstaendig.
-3. `CLS-002` / `ENC-004`: Drei-Spieler-Aufbau und sichtbare Zahn-der-Zeit-Phasen weichen von den massgeblichen Regeln ab.
+3. `ENC-004` / `NET-001` / `NET-002`: Sichtbare Zahn-der-Zeit-Phasen sowie Controllerberechtigung und Restore-Handshake bleiben offen.
 
 ### Verifikationsgrenzen
 
@@ -110,8 +110,8 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 | Regelbereich | Soll laut Quelle | Implementierungsstatus | Beleg | Offene Audit-IDs |
 |---|---|---|---|---|
 | Spielerzahl | Offiziell 3 oder 4 Spieler | UMGESETZT: Neue Partien bieten 3 oder 4; explizite alte 2-Spieler-Saves bleiben ladbar | `src/main.js` (`renderPlayerSelect`, `validatePlayerSetup`); `src/game/gameState.js` (`createGameState`, `normalizeGameState`); E2E-/State-Smokes | - |
-| Startaufbau | 2 Kolonien, 1 Raumhafen, Startschiff, Ressourcen/halbe Medaille/Antrieb; bei 3 Spielern neutrale Teile der vierten Farbe | TEILWEISE UMGESETZT | `src/game/gameState.js:181-227`; Platzierungsfluss in `src/game/gameState.js`; neutrale 3-Spieler-Blocker fehlen; Legacy-Fallback `:5598+` | `CLS-002` |
-| 3-Spieler-Sondergrenze | Ausserhalb der Startsysteme hoechstens 2 Kolonien je Planetensystem | FEHLT | `src/game/gameState.js:1355-1408` ohne Spielerzahl-/Systemlimit | `CLS-002` |
+| Startaufbau | 2 Kolonien, 1 Raumhafen, Startschiff, Ressourcen/halbe Medaille/Antrieb; bei 3 Spielern neutrale Teile der vierten Farbe | UMGESETZT | `src/game/gameState.js` (`createGameState`, `createNeutralStartingStructures`); State- und Browser-Smokes | - |
+| 3-Spieler-Sondergrenze | Ausserhalb der Startsysteme hoechstens 2 belegte Kolonieplaetze je Planetensystem | UMGESETZT | Zentrale Ziel-/Gruendungsvalidierung in `src/game/gameState.js` (`canFoundColonyWithShip`, `isThreePlayerColonyLimitReached`); State-Smokes fuer 3/4 Spieler | - |
 | Spielfeld/Systeme | Startsysteme, Wilder Weltraum, leere Felder, Aussenposten, Zahlenchips | UMGESETZT | `src/data/board.js`; `src/data/boardPoints.js`; `src/data/boardNumberChips.js` | - |
 | Zugphasen | Produktion, Handel/Bau, Flug, Zugende; nur aktiver Spieler handelt | UMGESETZT | Phasenmaschine in `src/game/gameState.js`; Controller-Gating in `src/main.js` | - |
 | Produktion und Sieben | Planetenertrag; bei 7 Handlimit/Abwurf, Zufallsdiebstahl und Nachschub fuer Mitspieler | UMGESETZT | Produktions-/Siebenlogik `src/game/gameState.js:6336-6572`; Smoke-Tests | - |
@@ -156,7 +156,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 | Kolonieschiff-VFX-Varianten | 4 Farben x 3 | 12 | ja | NICHT VERIFIZIERT | `TEST-001` |
 | Handelsschiff-VFX-Varianten | 4 Farben x 3 | 12 | ja | NICHT VERIFIZIERT | `TEST-001` |
 | Schlachtschiff-VFX-Varianten | 4 Farben x 3 | 12 | ja | NICHT VERIFIZIERT | `TEST-001` |
-| Raumhaefen/Kolonien/Aussenposten | offizielle Limits/4 Aussenposten | Limits und 4 Aussenposten vorhanden | ja | TEILWEISE UMGESETZT | `CLS-002` |
+| Raumhaefen/Kolonien/Aussenposten | offizielle Limits/4 Aussenposten | Limits, Drei-Spieler-Sondergrenze und 4 Aussenposten vorhanden | ja | UMGESETZT | - |
 | Halbe Medaillen | Classic/Supernova-Werttraeger | Zustand, UI und Punkteberechnung vorhanden | ja | UMGESETZT | - |
 | Spielerfarben | 4 | 4 | ja | UMGESETZT | - |
 | Blaupausen | Schiffe, Mutterschiff, Supernova-Bauten | mehrere Assets/Renderpfade vorhanden | teilweise visuell geprueft | NICHT VERIFIZIERT | `TEST-001` |
@@ -209,12 +209,12 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### CLS-002 - 3-Spieler-Aufbau und Koloniegrenze sind unvollstaendig
 
 - **Bereich:** Classic / Aufbau und Bauen
-- **Status:** REGELABWEICHUNG
+- **Status:** UMGESETZT
 - **Prioritaet:** P1 - Kritisch
 - **Aufwand:** M
 - **Betroffene Spielvariante:** Classic
 - **Quelle bzw. Sollverhalten:** Beim 3-Spieler-Aufbau bleiben zwei Kolonien und ein Raumhafen der vierten Farbe als neutrale Blocker auf dem Brett. Ausserhalb der Startsysteme duerfen in einem Planetensystem hoechstens zwei Kolonien stehen.
-- **Aktuelles Istverhalten:** Der initiale Zustand startet ohne neutrale Strukturen; der normale Startplatzierungsfluss platziert nur Teile realer Spieler. `foundColony` prueft weder die 3-Spieler-Sonderregel noch die Anzahl vorhandener Kolonien im Zielsystem.
+- **Aktuelles Istverhalten:** Zum Auditstichtag startete der initiale Zustand ohne neutrale Strukturen; der normale Startplatzierungsfluss platzierte nur Teile realer Spieler. `foundColony` pruefte weder die 3-Spieler-Sonderregel noch die Anzahl vorhandener Belegungen im Zielsystem.
 - **Konkrete Abweichung:** Brettbelegung und Bauverfuegbarkeit sind im 3-Spieler-Spiel gegenueber Anleitung/Almanach erweitert.
 - **Beleg:** `src/game/gameState.js:181-227` (`startingStructures: []`); normaler Platzierungsfluss; `src/game/gameState.js:1355-1408` (`foundColony`); `src/game/gameState.js:5598+` ist nur ein Legacy-Fallback, kein regulaerer Neutralaufbau.
 - **Auswirkung:** Andere Raumhaefen-/Kolonieplaetze und ein dritter Kolonieplatz koennen verfuegbar sein; Produktion, Punkte und Routen werden regelrelevant veraendert.
@@ -222,7 +222,10 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Neutralteile deterministisch gemaess offizieller 3-Spieler-Vorbereitung erzeugen und als nicht spielergesteuerte Blocker persistieren; das Zwei-Kolonien-Limit in der hostseitigen Bauvalidierung durchsetzen.
 - **Abhaengigkeiten:** Board-Setup, Strukturmodell, Rendering, Save/Load, Bauzielmarkierung und vorhandene Saves.
 - **Akzeptanzkriterien:** Drei-Spieler-Neustart zeigt die drei neutralen Bauteile; sie blockieren korrekt, produzieren/zaehlen nicht fuer Spieler; ausserhalb Alpha-Delta wird die dritte Kolonie hostseitig und im Controller verhindert; 4-Spieler-Classic bleibt unveraendert.
-- **Verifikationsstatus:** Codepfad und Quellen vollstaendig verifiziert; konkrete offizielle Feldkoordinaten muessen beim Fix nochmals aus der Aufbauabbildung uebernommen werden.
+- **Verifikationsstatus:** Vollstaendig dynamisch verifiziert.
+- **Resolution (`18f6973`):** Drei-Spieler-Neustarts erzeugen auf den drei offiziellen Bauplaetzen des vierten Startsystems zwei neutrale Kolonien und einen neutralen Raumhafen in der nicht verwendeten Spielerfarbe. Die Teile sind keinem Spieler zugeordnet, produzieren und punkten nicht, blockieren aber Aufbauplaetze und bleiben ueber Save/Load erhalten. Ausserhalb der vier Startsysteme verhindert eine zentrale Enginepruefung den dritten belegten Kolonieplatz; dieselbe Pruefung steuert Boardziel und Hostaktion. Vier-Spieler-Spiele bleiben unveraendert.
+- **Geaenderte Dateien:** `src/game/gameState.js`, `src/main.js`, `scripts/check-game-state.js`, `tests/e2e/smoke.spec.js`.
+- **Verifikation:** `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; Neutralfarbe/-anzahl, Blockade, ausbleibende Produktion/Punkte, Save/Load, Drei-/Vier-Spieler-Grenze und gerenderte gelbe Brettfiguren.
 
 ### CLS-003 - Nachschub kann nicht bis zum Mutterschiffwurf nachgeholt werden
 
@@ -584,9 +587,9 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Aufwand:** L
 - **Betroffene Spielvariante:** beide
 - **Quelle bzw. Sollverhalten:** Release-Readiness erfordert automatisierte Nachweise fuer Kernzug, alle Regelvarianten, Encounter-Pending-State, Save/Load, Mehrgeraetefluss und Supernova-Kaempfe/Missionen.
-- **Aktuelles Istverhalten:** Struktur- und Game-State-Smokes sowie 9 Chromium-E2E-Tests laufen gruen. E2E deckt Hauptmenue, Lobby, Startbrett, Controllerbasis, Orientation, Remoteweg, Debugseiten, Controllerprivacy und die Fabrikdarstellung auf TV/Controller ab. Supernova-Tests decken Initialisierung, Nachschub, Fabrikbestand/-produktion/-mehrheit/-darstellung, Schlachtschiffbau und einen **manuell** markierten Missionssieg ab; keine Schlachtschiffkampfmatrix, keine 25 Missionsbedingungen und kein voller Save/Resume-Encounter.
+- **Aktuelles Istverhalten:** Struktur- und Game-State-Smokes sowie 10 Chromium-E2E-Tests laufen gruen. E2E deckt Hauptmenue, Lobby, Startbrett inklusive Neutralteilen, Controllerbasis, Orientation, Remoteweg, Debugseiten, Controllerprivacy und die Fabrikdarstellung auf TV/Controller ab. Supernova-Tests decken Initialisierung, Nachschub, Fabrikbestand/-produktion/-mehrheit/-darstellung, Schlachtschiffbau und einen **manuell** markierten Missionssieg ab; keine Schlachtschiffkampfmatrix, keine 25 Missionsbedingungen und kein voller Save/Resume-Encounter.
 - **Konkrete Abweichung:** Gruene Tests belegen Seitenstart und Teilregeln, nicht die behauptete vollstaendige Classic-/Supernova-Partie.
-- **Beleg:** `scripts/check-game-state.js`; `tests/*.spec.js` bzw. E2E-Ausgabe mit 9 Tests; fehlende Treffer fuer Supernova-Kampffolgen.
+- **Beleg:** `scripts/check-game-state.js`; `tests/e2e/smoke.spec.js` bzw. E2E-Ausgabe mit 10 Tests; fehlende Treffer fuer Supernova-Kampffolgen.
 - **Auswirkung:** Kritische Fehler wie `SN-004` und `SN-005` bleiben trotz gruener Suite bestehen; weitere Regressionen koennen erst am Spielabend auffallen. `ENC-001` besitzt inzwischen einen gezielten Regressionstest.
 - **Reproduktionsschritte:** Testsuite ausfuehren; anschliessend Abdeckung gegen die in diesem Audit genannten Flows vergleichen.
 - **Empfohlene spaetere Massnahme:** Regelbasierte Szenariotests in priorisierter Reihenfolge ergaenzen: 3-Spieler-Aufbau, alle Missionen, Kampfmatrix, weitere Pending-State-Save/Load-Faelle, Controllerprivacy und Cacheupgrade. P0-Encounter und Nachschubfrist sind inzwischen abgedeckt.
@@ -889,7 +892,7 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 |---|---|---|
 | `npm run check` | PASS | Syntax/Projektcheck bestanden |
 | `npm test` | PASS | `Project structure check passed`; `Game state check passed` |
-| `npm run test:e2e` | PASS, 9 Chromium-Tests | Hauptmenue, Lobby/Start, Controllerbasis, 16:9/Portrait, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung |
+| `npm run test:e2e` | PASS, 10 Chromium-Tests | Hauptmenue, Lobby/Start inklusive Neutralteilen, Controllerbasis, 16:9/Portrait, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung |
 | `git diff --check` | PASS vor Audit-Erstellung | Keine vorbestehenden Whitespacefehler |
 | Statischer Assetpfad-Scan | PASS fuer konkrete Literalpfade | Keine fehlenden aktiven Dateien; Templatepfade separat bewertet |
 | Browser-Smoke auf bestehendem lokalen Server | PASS | Keine beobachteten Konsolenwarnungen/-fehler oder kaputten Bilder in den geprueften Seiten |
@@ -926,7 +929,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
 
 2. **Classic-Regelkorrekturen**
    - Erledigt: `CLS-001` begrenzt neue Partien auf 3/4 Spieler und erhaelt alte 2-Spieler-Saves kontrolliert.
-   - `CLS-002`: 3-Spieler-Neutralaufbau und Zwei-Kolonien-Grenze.
+   - Erledigt: `CLS-002` erzeugt die neutralen Teile der vierten Farbe und erzwingt ausserhalb der Startsysteme die Zwei-von-drei-Belegungsgrenze.
    - Erledigt: `CLS-003` haelt den Nachschubanspruch bis zum normalen Mutterschiffwurf.
    - Erledigt: `ENC-002` wartet auf den aktiven Controller und zeigt den reinen Kugelwurf auf dem Host; `ENC-003` wertet nur physische Frachtringe.
    - `ENC-004`: Zahn-der-Zeit-Phasen.
@@ -975,7 +978,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 ### Quellen und Regeln
 
 - [ ] Massgebliche Classic-/Supernova-Quellen sind in einem frischen Checkout eindeutig verfuegbar (`DOC-001`).
-- [~] Classic-Regeln sind implementiert; Spielerzahl (`CLS-001`) und Nachschubfrist (`CLS-003`) sind korrigiert, der 3-Spieler-Aufbau bleibt offen (`CLS-002`).
+- [~] Classic-Regeln sind implementiert; Spielerzahl (`CLS-001`), Drei-Spieler-Aufbau/-Belegungsgrenze (`CLS-002`) und Nachschubfrist (`CLS-003`) sind korrigiert. Die vollstaendige Abnahme bleibt wegen `ENC-004` und fehlender Vollpartie offen.
 - [x] Fuenf Rohstoffe, Produktion und Sieben-Grundlogik sind vorhanden.
 - [x] Physische Mutterschiff-Anbauten und Freundschaftsboni sind getrennt.
 - [~] Alle 32 Encounter sind als Daten vorhanden; ein konkreter Flow-/Regelfehler ist offen (`ENC-004`); der Einzelwurf `ENC-002` ist korrigiert und E2E-verifiziert.
@@ -1041,7 +1044,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 - [x] `npm run check` ist gruen.
 - [x] `npm test` ist gruen.
-- [x] `npm run test:e2e` ist gruen (9 Chromium-Tests).
+- [x] `npm run test:e2e` ist gruen (10 Chromium-Tests).
 - [x] Gepruefte Browserseiten laden ohne beobachtete Konsolen-/Assetfehler.
 - [ ] P0- und P1-Akzeptanzkriterien besitzen Regressionstests (`TEST-001`).
 - [-] Vollstaendige reale Classic- und Supernova-Testpartien sind protokolliert.
@@ -1052,7 +1055,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### 1. Kann eine vollstaendige klassische Partie regelkonform gespielt werden?
 
-**Nein, derzeit nicht belastbar regelkonform.** Der Kern ist weitgehend spielbar, aber `CLS-002` bleibt eine relevante Abweichung; `ENC-004` betrifft weiterhin die Encounter-Regel-/Ablauftreue. Spielerzahl (`CLS-001`), `ENC-001`, `ENC-002`, `ENC-003` und die Nachschubfrist `CLS-003` sind korrigiert. Ohne die verbleibenden Korrekturen und eine reale Vollpartie kann Classic nicht als vollstaendig abgenommen gelten.
+**Nein, derzeit nicht belastbar regelkonform.** Der Kern ist weitgehend spielbar; Spielerzahl (`CLS-001`), Drei-Spieler-Aufbau/-Belegungsgrenze (`CLS-002`), `ENC-001`, `ENC-002`, `ENC-003` und die Nachschubfrist (`CLS-003`) sind korrigiert. `ENC-004` betrifft weiterhin die Encounter-Regel-/Ablauftreue. Ohne diese Korrektur und eine reale Vollpartie kann Classic nicht als vollstaendig abgenommen gelten.
 
 ### 2. Kann eine vollstaendige Supernova-Partie regelkonform gespielt werden?
 
@@ -1080,8 +1083,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### 8. Welche Punkte verhindern aktuell die Bezeichnung "final polished"?
 
-- Classic-Regelabweichung `CLS-002`; `CLS-001` ist erledigt.
-- Verbleibende Encounter-Abweichung `ENC-004`; `ENC-002` ist erledigt.
+- Verbleibende Classic-/Encounter-Abweichung `ENC-004`; `CLS-001`, `CLS-002`, `CLS-003` und `ENC-002` sind erledigt.
 - Unvollstaendige Missionen und Schlachtschiffkaempfe `SN-001`, `SN-004`, `SN-005`; Fabriken (`SN-003`) und Controllerprivacy (`SN-002`) sind erledigt.
 - Robuste Mehrgeraete-Wiederherstellung und Controllerberechtigung `NET-001`, `NET-002`; die Payload-Privatsphaere aus `SN-002` ist korrigiert.
 - PWA-/Fire-TV-Risiken `PWA-002` und `FIRE-001`; der stale Assetcache `PWA-001` ist korrigiert.
@@ -1110,3 +1112,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `SN-003` | P1 | ERLEDIGT | `d8fabc6` | `npm run check`, `npm test`, `npm run test:e2e` (9/9), `git diff --check`; Fabriklimit, unveraenderter State, Save/Load, Classic-Isolation sowie identische TV-/Controllerdarstellung | keiner |
 | `ENC-002` | P1 | ERLEDIGT | `38a5b35` | `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; aktive Einzelausloesung, sichtbare Hostanimation, Save/Load, reine Kugelwertung und Wiederholungsschutz | keiner |
 | `CLS-001` | P1 | ERLEDIGT | `7a267f2` | `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; nur 3/4 im Neuspielpfad, Drei-Controller-Lobby, Fire-TV-Fokus und Erhalt expliziter 2-Spieler-Legacy-Saves | keiner |
+| `CLS-002` | P1 | ERLEDIGT | `18f6973` | `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; Neutralteile, Blockade, ausbleibende Produktion/Punkte, Save/Load, 3-/4-Spieler-Grenze und TV-Rendering | keiner |
