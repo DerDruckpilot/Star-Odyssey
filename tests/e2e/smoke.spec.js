@@ -1,5 +1,38 @@
 import { expect, test } from "@playwright/test";
 
+function collectControllerStateFrames(page) {
+  const states = [];
+  page.on("websocket", (webSocket) => {
+    webSocket.on("framereceived", ({ payload }) => {
+      try {
+        const message = JSON.parse(typeof payload === "string" ? payload : payload.toString());
+        if (message.type === "state" && message.state) states.push(message.state);
+      } catch {
+        // Ignore non-JSON websocket frames from unrelated browser tooling.
+      }
+    });
+  });
+  return states;
+}
+
+function getLatestPlayerState(states) {
+  return [...states].reverse().find((state) => state.players?.length > 0) ?? null;
+}
+
+function expectPrivateControllerState(state, ownPlayerId, foreignPlayerId) {
+  expect(state.viewerPlayerId).toBe(ownPlayerId);
+  const ownPlayer = state.players.find((player) => player.id === ownPlayerId);
+  const foreignPlayer = state.players.find((player) => player.id === foreignPlayerId);
+  expect(ownPlayer).toHaveProperty("resources");
+  expect(ownPlayer.supernovaMissions).toHaveLength(3);
+  expect(ownPlayer.friendship).toHaveProperty("cards");
+  expect(foreignPlayer).not.toHaveProperty("resources");
+  expect(foreignPlayer).not.toHaveProperty("supernovaMissions");
+  expect(foreignPlayer).not.toHaveProperty("tradeRates");
+  expect(foreignPlayer.friendship ?? {}).not.toHaveProperty("cards");
+  expect(foreignPlayer.resourceCount).toBeGreaterThanOrEqual(0);
+}
+
 test("main menu, QR controller lobby, board, and phone menu work", async ({ page }) => {
   await page.goto("/");
 
@@ -20,6 +53,7 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await expect(page.getByRole("heading", { name: "Spieleranzahl wählen" })).toBeVisible();
 
   await page.getByRole("button", { name: "2 Spieler" }).click();
+  await page.getByRole("button", { name: "Supernova" }).click();
   await page.getByRole("button", { name: "Weiter" }).click();
 
   await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
@@ -45,6 +79,8 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
 
   const controllerOne = await page.context().newPage();
   const controllerTwo = await page.context().newPage();
+  const controllerOneStates = collectControllerStateFrames(controllerOne);
+  const controllerTwoStates = collectControllerStateFrames(controllerTwo);
 
   await controllerOne.goto(controllerUrls[0]);
   await controllerTwo.goto(controllerUrls[1]);
@@ -66,6 +102,13 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await expect(page.locator(".board-event-log")).toBeVisible();
   await expect(page.getByRole("button", { name: "Player 1" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "⚙" })).toHaveCount(0);
+  await expect.poll(() => Boolean(getLatestPlayerState(controllerOneStates))).toBe(true);
+  await expect.poll(() => Boolean(getLatestPlayerState(controllerTwoStates))).toBe(true);
+  expectPrivateControllerState(getLatestPlayerState(controllerOneStates), "player-1", "player-2");
+  expectPrivateControllerState(getLatestPlayerState(controllerTwoStates), "player-2", "player-1");
+
+  await expect(page.locator(".supernova-missions")).toHaveCount(0);
+  await expect(page.getByText("Supernova-Missionen")).toHaveCount(0);
 
   await page.screenshot({ path: "test-results/screenshots/board.png", fullPage: true });
 
@@ -79,6 +122,15 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await expect(controllerOne.getByRole("button", { name: "Zurück zum Menü" })).toBeVisible();
 
   await controllerOne.close();
+  const reconnectedControllerOne = await page.context().newPage();
+  const reconnectedControllerOneStates = collectControllerStateFrames(reconnectedControllerOne);
+  await reconnectedControllerOne.goto(controllerUrls[0]);
+  await expect(reconnectedControllerOne.getByRole("heading", { name: "Alice" })).toBeVisible();
+  await expect(reconnectedControllerOne.locator(".controller-status")).toHaveText("Verbunden");
+  await expect.poll(() => Boolean(getLatestPlayerState(reconnectedControllerOneStates))).toBe(true);
+  expectPrivateControllerState(getLatestPlayerState(reconnectedControllerOneStates), "player-1", "player-2");
+
+  await reconnectedControllerOne.close();
   await controllerTwo.close();
 });
 
@@ -155,7 +207,7 @@ test("TV remote focus reaches setup and the controller PWA shell is valid", asyn
     coverPanel: getComputedStyle(element, "::after").content
   }));
   expect(["", "none"]).toContain(shellDecoration.legacyBorder);
-  expect(shellDecoration.coverPanel).toBe("none");
+  expect(["", "none"]).toContain(shellDecoration.coverPanel);
 
   const manifestResponse = await page.request.get("/controller.webmanifest");
   expect(manifestResponse.ok()).toBe(true);

@@ -105,6 +105,7 @@ import {
   useRichHelpsPoor,
 } from "./game/gameState.js";
 import { defaultLanguage, getText, languages } from "./i18n.js";
+import { createControllerStatesByPlayerId } from "./remote/controllerState.js";
 
 const languageStorageKey = "star-odyssey-language";
 const savesStorageKey = "star-odyssey-saves";
@@ -2806,41 +2807,6 @@ function renderPlayerOverview(player = getActivePlayer()) {
     list.append(label, value);
   }
 
-  wrapper.append(title, list);
-  if (isSupernovaGame(state.gameState) && player) {
-    wrapper.append(renderSupernovaMissionSummary(player));
-  }
-  return wrapper;
-}
-
-function renderSupernovaMissionSummary(player) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "friendship-summary supernova-missions";
-  const title = document.createElement("strong");
-  title.textContent = t("supernovaMissions");
-  const list = document.createElement("div");
-  list.className = "friendship-card-list";
-  for (const mission of getSupernovaMissionsForPlayer(state.gameState, player.id)) {
-    const item = document.createElement("article");
-    item.className = "friendship-card";
-    const heading = document.createElement("strong");
-    heading.textContent = mission.title;
-    const text = document.createElement("p");
-    text.textContent = mission.originalText;
-    const status = document.createElement("small");
-    status.textContent = mission.fulfilled ? t("missionFulfilled") : t("missionOpen");
-    const button = createButton(
-      mission.fulfilled ? t("missionMarkOpen") : t("missionMarkFulfilled"),
-      () => {
-        state.gameState = toggleSupernovaMissionFulfilled(state.gameState, player.id, mission.id);
-        saveCurrentGameState();
-        render();
-      },
-      "small-button"
-    );
-    item.append(heading, text, status, button);
-    list.append(item);
-  }
   wrapper.append(title, list);
   return wrapper;
 }
@@ -7686,20 +7652,28 @@ function handleRemoteHostMessage(rawData) {
 }
 
 function publishRemoteHostState() {
-  const controllerState = getRemoteControllerState();
-  const stateJson = JSON.stringify(controllerState);
+  const controllerStatesByPlayerId = createControllerStatesByPlayerId(getRemoteControllerState());
+  const stateJson = JSON.stringify(controllerStatesByPlayerId);
   if (stateJson === remoteHost.lastStateJson) return;
   remoteHost.lastStateJson = stateJson;
   const message = {
     type: "state",
     sessionId: remoteHost.sessionId,
-    state: controllerState
+    statesByPlayerId: controllerStatesByPlayerId
   };
   if (remoteHost.connected && remoteHost.socket?.readyState === WebSocket.OPEN) {
     remoteHost.socket.send(JSON.stringify(message));
   }
   if (remoteHost.localControllers.size > 0) {
-    sendLocalControllerMessage(message);
+    for (const controller of remoteHost.localControllers.values()) {
+      const controllerState = controllerStatesByPlayerId[controller.playerId];
+      if (!controllerState) continue;
+      sendLocalPrivateControllerMessage(controller.controllerId, {
+        type: "state",
+        sessionId: remoteHost.sessionId,
+        state: controllerState
+      });
+    }
   }
 }
 
@@ -7796,12 +7770,42 @@ function sendLocalControllerMessage(message) {
   }
 }
 
+function sendLocalPrivateControllerMessage(controllerId, message) {
+  const payload = {
+    ...message,
+    source: "host",
+    targetControllerId: controllerId,
+    sentAt: Date.now()
+  };
+  if (remoteHost.localTransport === "broadcast") {
+    const channel = new BroadcastChannel(getLocalControllerPrivateChannelName(controllerId));
+    channel.postMessage(payload);
+    setTimeout(() => channel.close(), 0);
+    return;
+  }
+  if (remoteHost.localTransport === "storage") {
+    try {
+      localStorage.setItem(getLocalControllerPrivateStorageKey(controllerId), JSON.stringify(payload));
+    } catch {
+      // Local test transport is best-effort.
+    }
+  }
+}
+
 function getLocalControllerChannelName() {
   return `${localControllerStoragePrefix}:${remoteHost.sessionId}`;
 }
 
 function getLocalControllerStorageKey(direction) {
   return `${localControllerStoragePrefix}:${remoteHost.sessionId}:${direction}`;
+}
+
+function getLocalControllerPrivateChannelName(controllerId) {
+  return `${getLocalControllerChannelName()}:host:${controllerId}`;
+}
+
+function getLocalControllerPrivateStorageKey(controllerId) {
+  return `${getLocalControllerStorageKey("host")}:${controllerId}`;
 }
 
 function getRemoteControllerState() {

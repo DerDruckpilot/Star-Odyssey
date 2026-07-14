@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import QRCode from "qrcode";
 import { WebSocketServer } from "ws";
+import { createControllerStatesByPlayerId } from "../src/remote/controllerState.js";
 
 const port = Number.parseInt(process.env.PORT || "5173", 10);
 const host = process.env.HOST || "0.0.0.0";
@@ -32,7 +33,7 @@ function getSession(sessionId) {
     sessions.set(safeSessionId, {
       controllers: new Map(),
       host: null,
-      lastState: null
+      lastStatesByPlayerId: {}
     });
   }
   return sessions.get(safeSessionId);
@@ -43,9 +44,10 @@ function sendJson(socket, data) {
   socket.send(JSON.stringify(data));
 }
 
-function broadcastControllers(session, data) {
+function broadcastControllerStates(session) {
   for (const controller of session.controllers.values()) {
-    sendJson(controller.socket, data);
+    const state = session.lastStatesByPlayerId[controller.playerId];
+    if (state) sendJson(controller.socket, { type: "state", state });
   }
 }
 
@@ -151,9 +153,8 @@ function handleSocketMessage(socket, rawMessage) {
       controllerId,
       playerId
     });
-    if (session.lastState) {
-      sendJson(socket, { type: "state", state: session.lastState });
-    }
+    const controllerState = session.lastStatesByPlayerId[playerId];
+    if (controllerState) sendJson(socket, { type: "state", state: controllerState });
     notifyHost(session);
     return;
   }
@@ -165,8 +166,10 @@ function handleSocketMessage(socket, rawMessage) {
   }
 
   if (message.type === "state" && socket.starOdysseyRole === "host") {
-    session.lastState = message.state || null;
-    broadcastControllers(session, { type: "state", state: session.lastState });
+    session.lastStatesByPlayerId = message.statesByPlayerId && typeof message.statesByPlayerId === "object"
+      ? message.statesByPlayerId
+      : createControllerStatesByPlayerId(message.state || {});
+    broadcastControllerStates(session);
     return;
   }
 

@@ -28,6 +28,7 @@ const buildLabels = {
 
 let socket = null;
 let localChannel = null;
+let localPrivateChannel = null;
 let localTransport = "";
 let localFallbackActive = false;
 let webSocketConnectedOnce = false;
@@ -165,12 +166,17 @@ function initializeLocalControllerChannel() {
   if ("BroadcastChannel" in window) {
     localTransport = "broadcast";
     localChannel = new BroadcastChannel(getLocalControllerChannelName());
+    localPrivateChannel = new BroadcastChannel(getLocalControllerPrivateChannelName());
     localChannel.addEventListener("message", (event) => handleLocalHostMessage(event.data));
+    localPrivateChannel.addEventListener("message", (event) => handleLocalHostMessage(event.data));
     return;
   }
   localTransport = "storage";
   window.addEventListener("storage", (event) => {
-    if (event.key !== getLocalControllerStorageKey("host") || !event.newValue) return;
+    if (
+      ![getLocalControllerStorageKey("host"), getLocalControllerPrivateStorageKey()].includes(event.key) ||
+      !event.newValue
+    ) return;
     try {
       handleLocalHostMessage(JSON.parse(event.newValue));
     } catch {
@@ -213,6 +219,14 @@ function getLocalControllerChannelName() {
 
 function getLocalControllerStorageKey(direction) {
   return `${localControllerStoragePrefix}:${sessionId}:${direction}`;
+}
+
+function getLocalControllerPrivateChannelName() {
+  return `${getLocalControllerChannelName()}:host:${controllerId}`;
+}
+
+function getLocalControllerPrivateStorageKey() {
+  return `${getLocalControllerStorageKey("host")}:${controllerId}`;
 }
 
 function handleMessage(rawData) {
@@ -761,6 +775,7 @@ function countSelectedResources(selection = {}) {
 }
 
 function getPlayerResourceTotal(player) {
+  if (Number.isFinite(player?.resourceCount)) return player.resourceCount;
   return Object.values(player?.resources ?? {}).reduce((sum, amount) => sum + (amount ?? 0), 0);
 }
 
