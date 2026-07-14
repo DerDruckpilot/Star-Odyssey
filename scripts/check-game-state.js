@@ -924,6 +924,43 @@ assert(pendingEncounterGame.players[0].halfMedals === 2, "Encounter medal reward
 pendingEncounterGame = finishEncounter(pendingEncounterGame);
 assert(pendingEncounterGame.encounterDiscard.includes("spreadsheet-02"), "Completed pending encounters should also move to the discard pile.");
 
+let cappedUpgradeEncounterGame = {
+  ...encounterBaseState,
+  players: encounterBaseState.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      resources: { ore: 3, fuel: 0, carbon: 0, food: 0, goods: 0 },
+      upgrades: { drive: 6, cargo: 5, cannon: 6 },
+      halfMedals: 0
+    }
+    : player)
+};
+cappedUpgradeEncounterGame = determineFlightSpeed(cappedUpgradeEncounterGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "spreadsheet-02"
+});
+cappedUpgradeEncounterGame = revealPendingFlightEncounter(cappedUpgradeEncounterGame);
+cappedUpgradeEncounterGame = resolveEncounterChoice(cappedUpgradeEncounterGame, { choiceId: "gift-3" });
+cappedUpgradeEncounterGame = updateEncounterResourceSelection(cappedUpgradeEncounterGame, "ore", 1);
+cappedUpgradeEncounterGame = updateEncounterResourceSelection(cappedUpgradeEncounterGame, "ore", 1);
+cappedUpgradeEncounterGame = updateEncounterResourceSelection(cappedUpgradeEncounterGame, "ore", 1);
+cappedUpgradeEncounterGame = submitEncounterPending(cappedUpgradeEncounterGame);
+assert(cappedUpgradeEncounterGame.activeEncounter?.status === "resolved", "A capped mothership must not get stuck on an empty upgrade selection.");
+assert(!cappedUpgradeEncounterGame.activeEncounter?.pendingStep, "A capped mothership should skip the unavailable upgrade selection.");
+assert(
+  cappedUpgradeEncounterGame.activeEncounter?.resultText?.de?.includes("Ausbau entfällt"),
+  "A skipped upgrade reward should explain why the encounter continues."
+);
+assert(cappedUpgradeEncounterGame.players[0].halfMedals === 1, "Effects after a skipped upgrade reward should still run exactly once.");
+const savedCappedUpgradeEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(cappedUpgradeEncounterGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(savedCappedUpgradeEncounterGame.activeEncounter?.status === "resolved", "A skipped upgrade reward should remain resolved after save/load.");
+const repeatedCappedUpgradeSubmit = submitEncounterPending(savedCappedUpgradeEncounterGame);
+assert(repeatedCappedUpgradeSubmit.players[0].halfMedals === 1, "Reloading or resubmitting must not repeat effects after a skipped upgrade reward.");
+
 let tradeLordGiftGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
   language: "de",
   playerCount: 2,
@@ -1296,8 +1333,8 @@ toothEncounterGame = {
   players: toothEncounterGame.players.map((player, index) => ({
     ...player,
     upgrades: index === 0
-      ? { drive: 6, cargo: 3, cannon: 2 }
-      : { drive: 3, cargo: 3, cannon: 1 },
+      ? { drive: 6, cargo: 1, cannon: 2 }
+      : { drive: 4, cargo: 2, cannon: 1 },
     friendshipCards: index === 0 ? ["wise-drive-boost"] : [],
     halfMedals: 0
   }))
@@ -1316,6 +1353,8 @@ assert(getEffectiveUpgradeValue(toothEncounterGame, "player-1", "drive") === 7, 
 toothEncounterGame = submitEncounterPending(toothEncounterGame, { upgrade: "drive" });
 assert(Boolean(toothEncounterGame.activeEncounter?.cardId), "Global follow-up cards should draw a new encounter immediately.");
 assert(toothEncounterGame.activeEncounter?.cardId !== "spreadsheet-32", "Global cards should transition into a new encounter after resolving.");
+assert(toothEncounterGame.players[0].halfMedals === 0, "The Galactic Council should not reward a player with fewer physical cargo rings.");
+assert(toothEncounterGame.players[1].halfMedals === 1, "The Galactic Council should reward the sole leader in physical cargo rings.");
 
 assert(calculateVictoryPoints(game, "player-1") >= 4, "Central scoring should count starting colonies and spaceports.");
 

@@ -39,6 +39,10 @@ const playerFigureLimits = {
   spaceport: 3,
   battleShip: 3
 };
+const encounterNoUpgradeGainText = {
+  de: "Alle physischen Ausbauplätze sind belegt. Der Ausbau entfällt; die Begegnung wird fortgesetzt.",
+  en: "All physical upgrade slots are occupied. The upgrade is skipped and the encounter continues."
+};
 
 export const currentGameStorageKey = "star-odyssey-current-game";
 export const turnPhases = ["placement", "setup", "production", "tradeBuild", "flight", "turnEnd", "gameOver"];
@@ -3784,7 +3788,7 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         playerId: player.id,
         playerName: player.name,
         value: metric === "cargo"
-          ? getCargoValueForPlayer({ ...gameState, players: state.players }, player.id)
+          ? getRealUpgradeValue(player, "cargo")
           : 0
       }));
       const maxValue = Math.max(...metricValues.map((entry) => entry.value), 0);
@@ -3819,7 +3823,19 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
       };
     }
     case "chooseUpgradeGain": {
-      if (isValidUpgradeId(payload.upgrade) && (effect.amount ?? 1) === 1) {
+      const amount = effect.amount ?? 1;
+      const availableUpgradeIds = getAvailablePhysicalUpgradeIds(activePlayer, amount);
+      if (availableUpgradeIds.length === 0) {
+        return {
+          state,
+          resultText: encounterNoUpgradeGainText,
+          logEntries: [createEncounterLog("logEncounterNoUpgradeGain", {
+            player: activePlayer.name
+          })]
+        };
+      }
+
+      if (availableUpgradeIds.includes(payload.upgrade) && amount === 1) {
         const nextState = updateEncounterWorkingPlayer(state, activePlayerId, (player) => withUpgradeDelta(player, payload.upgrade, 1));
         return {
           state: nextState,
@@ -3835,7 +3851,7 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
         pendingStep: {
           type: "upgradeSelection",
           mode: "gain",
-          amount: effect.amount ?? 1,
+          amount,
           selectedUpgrade: null,
           remainingEffects: []
         }
@@ -4202,6 +4218,7 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
     if (!player) return null;
     const hasAnyLossTarget = Object.entries(normalizeUpgrades(player.upgrades))
       .some(([, amount]) => amount > 0);
+    const availableGainTargets = getAvailablePhysicalUpgradeIds(player, pendingStep.amount ?? 1);
 
     if (pendingStep.mode === "loss" && !hasAnyLossTarget) {
       const followUp = runEncounterEffectSequence(gameState, state, activePlayer.id, remainingEffects, card, payload, {});
@@ -4215,8 +4232,23 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
       };
     }
 
+    if (pendingStep.mode === "gain" && availableGainTargets.length === 0) {
+      const followUp = runEncounterEffectSequence(gameState, state, activePlayer.id, remainingEffects, card, payload, {
+        resultText: encounterNoUpgradeGainText
+      });
+      if (!followUp) return null;
+      return {
+        ...followUp,
+        logEntries: [
+          createEncounterLog("logEncounterNoUpgradeGain", { player: activePlayer.name }),
+          ...(followUp.logEntries ?? [])
+        ]
+      };
+    }
+
     if (!isValidUpgradeId(upgradeId)) return null;
     if (pendingStep.mode === "loss" && (player.upgrades?.[upgradeId] ?? 0) <= 0) return null;
+    if (pendingStep.mode === "gain" && !availableGainTargets.includes(upgradeId)) return null;
 
     const nextState = updateEncounterWorkingPlayer(
       state,
@@ -5451,13 +5483,9 @@ function withHalfMedalDelta(player, delta) {
 
 function withUpgradeDelta(player, upgrade, delta) {
   if (!isValidUpgradeId(upgrade)) return player;
-  const limits = {
-    drive: 6,
-    cargo: 5,
-    cannon: 6
-  };
+  const limit = upgradeDefinitions.find((definition) => definition.id === upgrade)?.limit ?? 0;
   const current = player.upgrades?.[upgrade] ?? 0;
-  const next = Math.min(limits[upgrade], Math.max(0, current + delta));
+  const next = Math.min(limit, Math.max(0, current + delta));
 
   return {
     ...player,
@@ -5466,6 +5494,13 @@ function withUpgradeDelta(player, upgrade, delta) {
       [upgrade]: next
     }
   };
+}
+
+function getAvailablePhysicalUpgradeIds(player, amount = 1) {
+  const safeAmount = Number.isInteger(amount) ? Math.max(1, amount) : 1;
+  return upgradeDefinitions
+    .filter((definition) => getRealUpgradeValue(player, definition.id) + safeAmount <= definition.limit)
+    .map((definition) => definition.id);
 }
 
 function isValidUpgradeId(upgrade) {
