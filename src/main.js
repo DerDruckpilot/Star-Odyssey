@@ -350,7 +350,7 @@ function loadCurrentGameState() {
 
     return repairLoadedGameState(normalizeGameState(parsedGameState, {
       language: parsedGameState.language || loadLanguage(),
-      playerCount: parsedGameState.playerCount || 2,
+      playerCount: parsedGameState.playerCount || 3,
       boardLayout
     }));
   } catch {
@@ -388,7 +388,7 @@ function loadAutosaveGameState(fallbackLanguage = defaultLanguage) {
     return {
       gameState: repairLoadedGameState(normalizeGameState(parsedAutosave.gameState, {
         language: parsedAutosave.gameState.language || parsedAutosave.language || fallbackLanguage,
-        playerCount: parsedAutosave.gameState.playerCount || 2,
+        playerCount: parsedAutosave.gameState.playerCount || 3,
         boardLayout
       })),
       controllerMode: Boolean(parsedAutosave.controllerMode)
@@ -885,7 +885,7 @@ function ensurePlayerSetup(playerCount) {
 }
 
 function getSanitizedPlayerSetup() {
-  return ensurePlayerSetup(state.selectedPlayers ?? 2).map((player) => ({
+  return ensurePlayerSetup(state.selectedPlayers ?? 3).map((player) => ({
     name: String(player.name ?? "").trim(),
     color: player.color
   }));
@@ -893,7 +893,7 @@ function getSanitizedPlayerSetup() {
 
 function validatePlayerSetup() {
   const playerCount = state.selectedPlayers ?? 0;
-  if (![2, 3, 4].includes(playerCount)) {
+  if (![3, 4].includes(playerCount)) {
     return { valid: false, messageKey: "selectPlayers" };
   }
 
@@ -1983,7 +1983,7 @@ function renderPlayerSelect() {
   const options = document.createElement("div");
   options.className = "player-options";
 
-  for (const count of [2, 3, 4]) {
+  for (const count of [3, 4]) {
     const button = createButton(String(count), () => {
       state.selectedPlayers = count;
       ensurePlayerSetup(count);
@@ -1992,7 +1992,7 @@ function renderPlayerSelect() {
     button.setAttribute("aria-label", t("playersLabel").replace("{count}", count));
     button.setAttribute("aria-pressed", String(count === state.selectedPlayers));
     button.dataset.remoteId = `players-${count}`;
-    if (count === 2) button.dataset.remoteAutofocus = "true";
+    if (count === 3) button.dataset.remoteAutofocus = "true";
     options.append(button);
   }
 
@@ -7656,7 +7656,7 @@ function saveCurrentGame(name, options = {}) {
   if (!state.gameState) {
     state.gameState = createGameState({
       language: state.language,
-      playerCount: state.selectedPlayers || 2,
+      playerCount: state.selectedPlayers || 3,
       boardLayout,
       gameVariant: state.selectedGameVariant
     });
@@ -7694,12 +7694,12 @@ function loadSave(save) {
     ? save.gameState
     : {
       language: save.language || state.language,
-      playerCount: getSavePlayerCount(save) || 2,
+      playerCount: getSavePlayerCount(save) || 3,
       board: save.boardState
     };
   const restoredGameState = normalizeGameState(sourceGameState, {
     language: save.language || state.language,
-    playerCount: getSavePlayerCount(save) || 2,
+    playerCount: getSavePlayerCount(save) || 3,
     boardLayout
   });
   const language = languages.includes(restoredGameState.language) ? restoredGameState.language : state.language;

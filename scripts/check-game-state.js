@@ -105,6 +105,12 @@ function placeSpaceportAndShip(game) {
 }
 
 let game = createGameState({ language: "de", playerCount: 2, boardLayout });
+const defaultPlayerCountGame = createGameState({ language: "de", boardLayout });
+const restoredLegacyTwoPlayerGame = normalizeGameState(structuredClone(game), {
+  language: "de",
+  playerCount: 3,
+  boardLayout
+});
 const customPlayerGame = createGameState({
   language: "de",
   playerCount: 2,
@@ -116,6 +122,9 @@ const customPlayerGame = createGameState({
 });
 
 assert(game.phase === "placement", "New games should start in placement phase.");
+assert(defaultPlayerCountGame.playerCount === 3, "Fresh games without a player count should default to three players.");
+assert(game.playerCount === 2, "Explicit legacy two-player game states should remain supported internally.");
+assert(restoredLegacyTwoPlayerGame.playerCount === 2, "Loading a legacy two-player save should preserve its player count.");
 assert(customPlayerGame.players[0].name === "Ada" && customPlayerGame.players[0].color === "green", "New games should use configured player names and colors.");
 assert(customPlayerGame.players[1].name === "Ben" && customPlayerGame.players[1].color === "red", "New games should preserve configured player names and colors.");
 assert(Object.keys(shipVfxData.tradeShipVfxAnchors ?? {}).length === 12, "Trade ship VFX data should cover all 12 trade ship variants.");

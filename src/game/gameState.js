@@ -185,7 +185,7 @@ export function getCannonValueForPlayer(gameState, playerId) {
 
 export function createGameState({ language, playerCount, boardLayout, playerSetup = [], gameVariant = gameVariants.classic }) {
   const now = new Date().toISOString();
-  const safePlayerCount = [2, 3, 4].includes(playerCount) ? playerCount : 2;
+  const safePlayerCount = [2, 3, 4].includes(playerCount) ? playerCount : 3;
   const normalizedGameVariant = normalizeGameVariant(gameVariant);
   const boardPlacement = createBoardPlacement(boardLayout);
   const numberTokens = createNumberTokenState(boardLayout, boardPlacement);
