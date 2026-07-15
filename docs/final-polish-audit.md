@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `d742daf`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `64f5c99`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -16,7 +16,7 @@ Der Stand ist trotzdem **nicht final polished**:
 
 - **Classic ist in den konkret auditierten Aufbaupunkten korrigiert.** Neue Partien sind auf 3/4 Spieler begrenzt (`CLS-001`); Drei-Spieler-Partien besitzen die neutralen Teile der vierten Farbe und die Zwei-von-drei-Belegungsgrenze ausserhalb der Startsysteme (`CLS-002`). Die Nachschub-Nachholfrist ist ebenfalls korrigiert (`CLS-003`). Eine reale Vollpartie fehlt weiterhin fuer die abschliessende Regelabnahme.
 - **Die bekannten Encounter-Abweichungen sind behoben.** Ausbau-Belohnungen ohne freien physischen Platz setzen den Flow kontrolliert fort (`ENC-001`), Hehlerei-/Piraten-Sonderwuerfe warten auf die aktive Controlleraktion (`ENC-002`), physische Ausbauten bleiben korrekt getrennt (`ENC-003`) und die Karten 31/32 zeigen ihre persistierten Rat-/Neumisch-Schritte vor der Folgekarte (`ENC-004`).
-- **Die kritischen Supernova-Systeme sind umgesetzt.** Alle 25 Missionen werden aus dem echten Spielzustand geprueft (`SN-001`); Fabriken (`SN-003`) und die interaktiven, save/load-faehigen Schlachtschiffkaempfe samt drei getrennten Folgepfaden (`SN-004`, `SN-005`) sind ebenfalls vervollstaendigt. Eine reale Vollpartie verhindert weiterhin die abschliessende Regelabnahme.
+- **Die Supernova-Systeme einschliesslich Profivariante sind umgesetzt.** Alle 25 Missionen werden aus dem echten Spielzustand geprueft (`SN-001`); Fabriken (`SN-003`) und die interaktiven, save/load-faehigen Schlachtschiffkaempfe samt drei getrennten Folgepfaden (`SN-004`, `SN-005`) sind ebenfalls vervollstaendigt. Die optionale Profivariante zieht zwei statt drei verschiedenfarbige Missionen und bleibt ueber Save/Load, private Controllerdaten und Wiederverbindung erhalten (`SN-006`). Eine reale Vollpartie verhindert weiterhin die abschliessende Regelabnahme.
 - **Private Controllerdaten sind inzwischen getrennt.** Der Host erzeugt player-spezifische View-States; fremde Ressourcenarten, Freundschaftskarten, Missionen und private Auswahlentwuerfe werden nicht mehr serialisiert (`SN-002`).
 - **Controllerzuordnung und Relay-Wiederanlauf sind abgesichert.** Pro Spieler ausgestellte Zugriffstoken binden QR-Link, Slot und Aktionen; ein zweiter Tab ersetzt den aktiven Controller nicht. Host und Controller registrieren dieselbe persistierte Sitzung nach einem Relay-Neustart erneut und erhalten den player-spezifischen Pending-State (`NET-001`, `NET-002`).
 - **Das visuelle Niveau ist in den simulierten Zielviewports zusammenhaengender.** Hauptmenue-Titel und Controls skalieren zwischen 1080p und 4K proportional; im schmalen Smartphone-Querformat bleibt der Buttonblock innerhalb des Rahmens. Controller-Panels lassen den Space-Hintergrund sichtbar, waehrend lokale Textflaechen abgedunkelt bleiben. Reale 4K-TV-, iOS- und Android-Hardwareabnahmen fehlen weiterhin.
@@ -24,7 +24,7 @@ Der Stand ist trotzdem **nicht final polished**:
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 24 von 31 IDs erledigt (1 P0, 11 P1, 8 P2, 4 P3); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 25 von 31 IDs erledigt (1 P0, 11 P1, 8 P2, 4 P3, 1 P4). Offen bzw. nur teilweise erledigt bleiben 4 P2- und 2 P4-IDs; Details stehen im Fortschrittsabschnitt.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -139,7 +139,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 | Schlachtschiffbewegung | Wie Schiffe; darf besetzten Raumpunkt angreifen | UMGESETZT | Bewegungs-/Kampftrigger und persistierter Kampfzustand in `src/game/gameState.js`; Board-/Controller-Smokes in `scripts/check-game-state.js` und `tests/e2e/smoke.spec.js` | - |
 | Schlachtschiffkampf | Interaktive Wuerfe, Gleichstand erneut, zieltypspezifische Folgen | UMGESETZT | Teilnehmergebundene Controlleraktionen, Host-Auswertung und drei getrennte Folgepfade in `src/game/gameState.js`, `src/main.js`, `src/controller.js`; Regressionen in `scripts/check-game-state.js` und `tests/e2e/smoke.spec.js` | - |
 | Supernova-Sieg | 15 SP und mindestens eine erfuellte Mission im eigenen Zug | UMGESETZT | Siegpruefung und automatische Missionsauswertung in `src/game/gameState.js`; Legacy-Manuellflags werden verworfen; Regression in `scripts/check-game-state.js` | - |
-| Profivariante | Optional zwei statt drei Missionen | FEHLT, optional | Keine Setup-/State-Option vorhanden | `SN-006` |
+| Profivariante | Optional zwei statt drei Missionen | UMGESETZT | Setupoption, persistierte Missionsanzahl, getrennte Kategorien, private Controllerzustellung und Save/Load in `src/main.js`, `src/game/gameState.js`, `src/data/supernova.js`; Regressionen in State-/E2E-Smokes | - |
 | Classic-Isolation | Keine Supernova-Systeme im Classic-Modus | UMGESETZT | Variantengates in Bau-, Produktions- und Sieglogik | - |
 
 ## 6. Bestandsmatrix der Spielobjekte
@@ -717,23 +717,24 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 
 ## 11. Optionale P4-Verbesserungen
 
-### SN-006 - Optionale Supernova-Profivariante mit zwei Missionen fehlt
+### SN-006 - Optionale Supernova-Profivariante mit zwei Missionen
 
 - **Bereich:** Supernova / Setupoption
-- **Status:** FEHLT
+- **Status:** UMGESETZT
 - **Prioritaet:** P4 - Optional
 - **Aufwand:** S
 - **Betroffene Spielvariante:** Supernova
 - **Quelle bzw. Sollverhalten:** Das Supernova-Regelwerk beschreibt optional eine Profivariante mit nur zwei statt drei Missionen.
-- **Aktuelles Istverhalten:** Supernova weist immer drei verschiedenfarbige Missionen zu; es gibt keine Setupoption oder gespeicherte Missionsanzahl.
-- **Konkrete Abweichung:** Optionaler Regelmodus ist nicht verfuegbar; die normale Supernova-Variante ist davon nicht blockiert.
-- **Beleg:** `src/game/gameState.js:2779-2811`; Setup `src/main.js:1901-1951`.
+- **Urspruengliches Istverhalten:** Supernova wies immer drei verschiedenfarbige Missionen zu; es gab keine Setupoption oder gespeicherte Missionsanzahl.
+- **Konkrete Abweichung:** Optionaler Regelmodus war nicht verfuegbar; die normale Supernova-Variante war davon nicht blockiert.
+- **Beleg:** Missionszaehlung und Datenquelle in `src/data/supernova.js`; Initialisierung/Normalisierung in `src/game/gameState.js`; Setup-, Lobby-, Lade- und Reconnectpfad in `src/main.js`; private Controllerzustellung in `src/remote/controllerState.js`.
 - **Auswirkung:** Erfahrene Gruppen koennen die optionale Variante nicht digital auswaehlen.
-- **Reproduktionsschritte:** Supernova-Setup oeffnen; keine Profivariantenoption vorhanden.
-- **Empfohlene spaetere Massnahme:** Nach Abschluss aller Missionsbedingungen eine explizite Setupoption mit persistierter Missionsanzahl ergaenzen.
+- **Urspruengliche Reproduktionsschritte:** Supernova-Setup oeffnen; keine Profivariantenoption war vorhanden.
+- **Empfohlene spaetere Massnahme:** Erledigt; keine weitere Massnahme fuer diesen Befund.
 - **Abhaengigkeiten:** `SN-001`, Setup-UI, Save-Migration.
 - **Akzeptanzkriterien:** Option ist klar als Profi/optional bezeichnet; zieht zwei verschiedene Kategorien; Sieg-/Privacy-/Save-Logik funktioniert; Default bleibt drei.
-- **Verifikationsstatus:** Vollstaendig verifiziert.
+- **Resolution (`64f5c99`):** **ERLEDIGT.** Das Supernova-Setup bietet jetzt klar getrennt `Standard · 3 Missionen` und `Profi (optional) · 2 Missionen`. Die Missionsanzahl wird zentral normalisiert, im Supernova-State gespeichert und durch Lobby, Spielstart, Save/Load und Reconnect weitergereicht. Die Ziehung behaelt unterschiedliche Kategorien bei; Classic ignoriert die Supernovaoption. Player-spezifische Controllerpayloads enthalten im Profimodus exakt die zwei eigenen Missionen und keine fremden Missionen.
+- **Verifikationsstatus:** **ERLEDIGT und automatisiert verifiziert.** `npm run check`, `npm test`, `npm run test:e2e` (15/15) und `git diff --check` liefen gruen. State-Smokes pruefen Default drei, Profi zwei, unterschiedliche Kategorien, Classic-Isolation, Legacy-Fallback, Save/Load und Siegbedingung. E2E prueft Mausauswahl, D-Pad-Pfad, drei private Controller, Boardstart und Reconnect im Profimodus.
 
 ### AUDIO-001 - Kein zusammenhaengendes Audio- und Lautstaerkesystem vorhanden
 
@@ -965,6 +966,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
    - Erledigt: `SN-003` begrenzt den Fabrikbestand und rendert Fabriken auf TV und Controller.
    - Erledigt: `SN-004` implementiert den interaktiven, persistierten Schlachtschiffkampf mit beiden Controllern und sichtbarer Host-Auswertung.
    - Erledigt: `SN-005` trennt die drei Kampffolgen, Entscheidungen und Endpositionen.
+   - Erledigt: `SN-006` ergaenzt die optionale Profivariante mit zwei verschiedenfarbigen Missionen samt Setup-, Privacy-, Save-/Load- und Reconnect-Pfad.
 
 4. **State, Save/Load und Privatsphaere**
    - Erledigt: `SN-002` verteilt player-spezifische Controllerpayloads und prueft rohe WebSocket-Frames samt Reconnect.
@@ -994,7 +996,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
    - `TECH-001`: Debuglogs entfernen.
 
 9. **Optionale Erweiterungen nach Release-Reife**
-   - `SN-006`: Profivariantenoption.
+   - Erledigt: `SN-006` stellt die Profivariantenoption bereit.
    - `AUDIO-001`: Audiosystem.
    - `OPS-001`: Saveexport/-import.
 
@@ -1022,7 +1024,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - [x] Schlachtschiffbaukosten, Maximum und Kanonenvoraussetzung sind vorhanden.
 - [x] Schlachtschiffkaempfe sind interaktiv, gleichstands- und folgenkorrekt (`SN-004`, `SN-005`).
 - [x] Siegbedingung 15 SP plus real erfuellte Mission ist technisch und per Regression geprueft.
-- [ ] Optionale Profivariante ist vorhanden (`SN-006`, optional).
+- [x] Optionale Profivariante ist vorhanden, zieht zwei verschiedenfarbige Missionen und bleibt ueber Save/Load sowie private Controllerdaten erhalten (`SN-006`).
 
 ### State und Save/Load
 
@@ -1118,12 +1120,11 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### 9. Welche Punkte sind nur optionaler Zusatzkomfort?
 
-- Supernova-Profivariante mit zwei Missionen (`SN-006`).
 - Audio-/Lautstaerkesystem (`AUDIO-001`).
 - Portabler Saveexport/-import (`OPS-001`).
-- Die optionale Profivariante, Audio und portabler Saveexport/-import bleiben Zusatzkomfort.
+- Audio und portabler Saveexport/-import bleiben Zusatzkomfort; die optionale Profivariante ist umgesetzt.
 
-**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde, acht P2-Befunde sowie alle vier P3-Befunde einschliesslich Encounter-, Speicherfehler-, Controller-Lokalisierungs-, Quellen-, Session-, responsiven UI- und Assethygiene-Problemen sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, reale Mehrgeraete- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
+**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde, acht P2-Befunde, alle vier P3-Befunde sowie die optionale Profivariante `SN-006` sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, reale Mehrgeraete- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
 
 ## Implementation Progress
 
@@ -1157,3 +1158,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `TECH-001` | P3 | ERLEDIGT | `b4ca742` | `npm run check`, `npm test`, `git diff --check`; statische Produktionsquellen-Pruefung und gezielte Konsolensuche | keiner |
 | `UI-003` | P3 | ERLEDIGT | `59ec00c` | `npm run check`, `npm test`, Hauptmenue-E2E (2/2), `git diff --check`; alle vier PNGs geladen, 1080p visuell und 4K-Geometrie geprueft | reale 4K-Fire-TV-Hardware bleibt unter `TEST-001` |
 | `ASSET-001` | P3 | ERLEDIGT | `d742daf` | Assetpipeline aus `assets/source`, Manifest mit 29 vorhandenen Quellen/Zielen, Server-200/404-Grenztest, `npm run check`, `npm test`, `npm run test:e2e` (15/15), `git diff --check` | keiner |
+| `SN-006` | P4 | ERLEDIGT | `64f5c99` | `npm run check`, `npm test`, `npm run test:e2e` (15/15), `git diff --check`; Default/Profi, Kategorien, Classic-Isolation, Save/Load, Legacy-Fallback, Sieg, private Drei-Controller-Payloads, Reconnect und D-Pad | keiner |
