@@ -121,6 +121,13 @@ import {
 } from "./game/gameState.js";
 import { defaultLanguage, getText, languages } from "./i18n.js";
 import { createControllerStatesByPlayerId } from "./remote/controllerState.js";
+import {
+  createSaveBackup,
+  getSaveBackupFilename,
+  parseSaveBackup,
+  saveBackupErrorCodes,
+  saveBackupMaxBytes
+} from "./save-portability.js";
 
 const languageStorageKey = "star-odyssey-language";
 const savesStorageKey = "star-odyssey-saves";
@@ -8008,6 +8015,25 @@ function renderLoadDialog() {
   const title = document.createElement("h2");
   title.textContent = t("loadGame");
 
+  const modalNotice = document.createElement("p");
+  modalNotice.className = "modal-notice";
+  modalNotice.textContent = state.notice;
+  modalNotice.hidden = state.notice.length === 0;
+
+  const importInput = document.createElement("input");
+  importInput.className = "visually-hidden";
+  importInput.type = "file";
+  importInput.accept = ".json,application/json";
+  importInput.dataset.saveImportInput = "true";
+  importInput.setAttribute("aria-label", t("importSave"));
+  importInput.addEventListener("change", () => {
+    const file = importInput.files?.[0];
+    if (file) void importSaveBackup(file);
+  });
+
+  const importButton = createButton(t("importSave"), () => importInput.click(), "secondary-button");
+  importButton.dataset.remoteId = "load-import";
+
   const saves = readSaves().sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
   const list = document.createElement("div");
   list.className = "save-list";
@@ -8032,7 +8058,7 @@ function renderLoadDialog() {
   closeButton.dataset.remoteId = "load-close";
   actions.append(backButton, closeButton);
 
-  wrapper.append(title, list, actions);
+  wrapper.append(title, modalNotice, importButton, importInput, list, actions);
   return wrapper;
 }
 
@@ -8060,9 +8086,11 @@ function renderSaveItem(save) {
   const loadButton = createButton(t("load"), () => loadSave(save), "small-button");
   loadButton.dataset.remoteId = `load-${save.id}`;
   loadButton.dataset.remoteAutofocus = "true";
+  const exportButton = createButton(t("exportSave"), () => exportSaveBackup(save), "small-button secondary-small-button");
+  exportButton.dataset.remoteId = `export-${save.id}`;
   const deleteButton = createButton(t("delete"), () => deleteSave(save.id), "small-button secondary-small-button");
   deleteButton.dataset.remoteId = `delete-${save.id}`;
-  actions.append(loadButton, deleteButton);
+  actions.append(loadButton, exportButton, deleteButton);
 
   item.append(details, actions);
   return item;
@@ -8108,6 +8136,92 @@ function saveCurrentGame(name, options = {}) {
     state.modal = "settings";
   }
   render();
+}
+
+function exportSaveBackup(save) {
+  try {
+    const backup = createSaveBackup(save);
+    const blob = new Blob([`${JSON.stringify(backup, null, 2)}\n`], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = getSaveBackupFilename(save);
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch {
+    state.notice = t("saveExportFailed");
+    render();
+  }
+}
+
+async function importSaveBackup(file) {
+  try {
+    if (file.size > saveBackupMaxBytes) {
+      state.notice = t("saveImportTooLarge");
+      render();
+      return;
+    }
+
+    const backup = parseSaveBackup(await file.text());
+    const importedSave = normalizeImportedSave(backup.save);
+    if (!writeSaves([importedSave, ...readSaves()])) {
+      state.notice = t("saveImportFailed");
+      render();
+      return;
+    }
+
+    state.notice = t("saveImportSuccess").replace("{name}", importedSave.name);
+    render();
+  } catch (error) {
+    if (error?.code === saveBackupErrorCodes.unsupportedVersion) {
+      state.notice = t("saveImportUnsupportedVersion");
+    } else if (error?.code === saveBackupErrorCodes.tooLarge) {
+      state.notice = t("saveImportTooLarge");
+    } else {
+      state.notice = t("saveImportInvalid");
+    }
+    render();
+  }
+}
+
+function normalizeImportedSave(save) {
+  const fallbackLanguage = languages.includes(save.gameState.language)
+    ? save.gameState.language
+    : languages.includes(save.language) ? save.language : state.language;
+  const fallbackPlayerCount = getSavePlayerCount(save) || 3;
+  const restoredGameState = repairLoadedGameState(normalizeGameState(save.gameState, {
+    language: fallbackLanguage,
+    playerCount: fallbackPlayerCount,
+    boardLayout
+  }));
+  const existingIds = new Set(readSaves().map((existingSave) => existingSave.id));
+  const idBase = `save-import-${Date.now()}`;
+  let id = idBase;
+  let suffix = 1;
+  while (existingIds.has(id)) {
+    id = `${idBase}-${suffix}`;
+    suffix += 1;
+  }
+  const sourceSavedAt = new Date(save.savedAt);
+  const savedAt = Number.isNaN(sourceSavedAt.getTime()) ? new Date().toISOString() : sourceSavedAt.toISOString();
+  const name = typeof save.name === "string" && save.name.trim()
+    ? save.name.trim().slice(0, 48)
+    : t("defaultSaveName");
+
+  return {
+    id,
+    name,
+    savedAt,
+    displayDate: formatSavedAt(savedAt),
+    language: restoredGameState.language,
+    playerCount: restoredGameState.playerCount,
+    view: "board",
+    boardState: restoredGameState.board,
+    gameState: restoredGameState
+  };
 }
 
 function loadSave(save) {

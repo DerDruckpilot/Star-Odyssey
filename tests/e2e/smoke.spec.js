@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 function collectControllerStateFrames(page) {
   const states = [];
@@ -639,6 +640,133 @@ test("storage failures stay visible and retry without a false save success", asy
   }));
   expect(stored.autosave?.gameState?.gameVariant).toBe("classic");
   expect(stored.saves.some((save) => save.name === "Quota-Test" && save.gameState?.gameVariant === "classic")).toBe(true);
+});
+
+test("save backups preserve Supernova pending state and reject unsupported versions", async ({ page }) => {
+  await page.goto("/");
+  const expectedPendingType = await page.evaluate(async () => {
+    const [{
+      advanceToFlightPhase,
+      createGameState,
+      determineFlightSpeed,
+      resolveEncounterChoice,
+      startPendingFlightEncounter,
+      submitEncounterPending,
+      updateEncounterResourceSelection
+    }, { boardLayout }, { gameVariants, supernovaMissionCounts }] = await Promise.all([
+      import("/src/game/gameState.js"),
+      import("/src/data/boardLayout.js"),
+      import("/src/data/supernova.js")
+    ]);
+    let gameState = createGameState({
+      language: "de",
+      playerCount: 3,
+      boardLayout,
+      gameVariant: gameVariants.supernova,
+      supernovaMissionCount: supernovaMissionCounts.professional
+    });
+    gameState = {
+      ...gameState,
+      players: gameState.players.map((player, index) => index === 0
+        ? {
+          ...player,
+          resources: { ore: 1, fuel: 0, carbon: 0, food: 0, goods: 0 },
+          halfMedals: 2
+        }
+        : player),
+      board: {
+        ...gameState.board,
+        ships: [{
+          id: "portable-save-ship",
+          ownerPlayerId: "player-1",
+          type: "colonyShip",
+          locationId: boardLayout.points[0].id,
+          status: "active"
+        }]
+      }
+    };
+    gameState = advanceToFlightPhase(gameState);
+    gameState = determineFlightSpeed(gameState, {
+      balls: ["black", "yellow"],
+      encounterCardId: "spreadsheet-14"
+    });
+    gameState = startPendingFlightEncounter(gameState);
+    gameState = resolveEncounterChoice(gameState, { choiceId: "accept" });
+    gameState = updateEncounterResourceSelection(gameState, "ore", 1);
+    gameState = submitEncounterPending(gameState);
+
+    const savedAt = "2026-07-14T20:00:00.000Z";
+    localStorage.setItem("star-odyssey-saves", JSON.stringify([{
+      id: "save-portability-e2e",
+      name: "Supernova Pending",
+      savedAt,
+      displayDate: savedAt,
+      language: "de",
+      playerCount: gameState.playerCount,
+      view: "board",
+      boardState: gameState.board,
+      gameState
+    }]));
+    localStorage.setItem("star-odyssey-controller-session", "portable-session-sentinel");
+    localStorage.setItem(
+      "star-odyssey-controller-access-v1:portable-session-sentinel",
+      JSON.stringify({ "player-1": "portable-token-sentinel" })
+    );
+    return gameState.activeEncounter?.pendingStep?.type;
+  });
+
+  await page.getByRole("button", { name: "Spiel laden" }).click();
+  await expect(page.getByRole("heading", { name: "Spiel laden" })).toBeVisible();
+  await expect(page.getByText("Supernova Pending")).toBeVisible();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Exportieren" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("star-odyssey-supernova-pending.json");
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+  const backupText = await readFile(downloadPath, "utf8");
+  const backup = JSON.parse(backupText);
+  expect(backup.format).toBe("star-odyssey-save-backup");
+  expect(backup.version).toBe(1);
+  expect(backup.save.gameState.gameVariant).toBe("supernova");
+  expect(backup.save.gameState.supernova.missionCount).toBe(2);
+  expect(backup.save.gameState.activeEncounter.pendingStep.type).toBe(expectedPendingType);
+  expect(backupText).not.toContain("portable-session-sentinel");
+  expect(backupText).not.toContain("portable-token-sentinel");
+
+  await page.evaluate(() => localStorage.setItem("star-odyssey-saves", "[]"));
+  await page.locator('[data-save-import-input="true"]').setInputFiles(downloadPath);
+  await expect(page.getByRole("dialog").getByText("Spielstand „Supernova Pending“ importiert.")).toBeVisible();
+  const imported = await page.evaluate(() => ({
+    currentGame: localStorage.getItem("star-odyssey-current-game"),
+    saves: JSON.parse(localStorage.getItem("star-odyssey-saves") ?? "[]"),
+    session: localStorage.getItem("star-odyssey-controller-session"),
+    access: localStorage.getItem("star-odyssey-controller-access-v1:portable-session-sentinel")
+  }));
+  expect(imported.currentGame).toBeNull();
+  expect(imported.saves).toHaveLength(1);
+  expect(imported.saves[0].id).not.toBe("save-portability-e2e");
+  expect(imported.saves[0].gameState.gameVariant).toBe("supernova");
+  expect(imported.saves[0].gameState.supernova.missionCount).toBe(2);
+  expect(imported.saves[0].gameState.activeEncounter.pendingStep.type).toBe(expectedPendingType);
+  expect(imported.session).toBe("portable-session-sentinel");
+  expect(JSON.parse(imported.access)).toEqual({ "player-1": "portable-token-sentinel" });
+
+  const unsupportedBackup = {
+    ...backup,
+    version: 999
+  };
+  await page.locator('[data-save-import-input="true"]').setInputFiles({
+    name: "unsupported-save.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(unsupportedBackup))
+  });
+  await expect(page.getByRole("dialog").getByText("Diese Backup-Version wird nicht unterstützt.")).toBeVisible();
+  const saveCountAfterRejection = await page.evaluate(() => (
+    JSON.parse(localStorage.getItem("star-odyssey-saves") ?? "[]").length
+  ));
+  expect(saveCountAfterRejection).toBe(1);
 });
 
 test("Supernova factories render on the board", async ({ page }) => {
