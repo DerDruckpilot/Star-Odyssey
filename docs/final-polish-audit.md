@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `59ec00c`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `d742daf`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -20,11 +20,11 @@ Der Stand ist trotzdem **nicht final polished**:
 - **Private Controllerdaten sind inzwischen getrennt.** Der Host erzeugt player-spezifische View-States; fremde Ressourcenarten, Freundschaftskarten, Missionen und private Auswahlentwuerfe werden nicht mehr serialisiert (`SN-002`).
 - **Controllerzuordnung und Relay-Wiederanlauf sind abgesichert.** Pro Spieler ausgestellte Zugriffstoken binden QR-Link, Slot und Aktionen; ein zweiter Tab ersetzt den aktiven Controller nicht. Host und Controller registrieren dieselbe persistierte Sitzung nach einem Relay-Neustart erneut und erhalten den player-spezifischen Pending-State (`NET-001`, `NET-002`).
 - **Das visuelle Niveau ist in den simulierten Zielviewports zusammenhaengender.** Hauptmenue-Titel und Controls skalieren zwischen 1080p und 4K proportional; im schmalen Smartphone-Querformat bleibt der Buttonblock innerhalb des Rahmens. Controller-Panels lassen den Space-Hintergrund sichtbar, waehrend lokale Textflaechen abgedunkelt bleiben. Reale 4K-TV-, iOS- und Android-Hardwareabnahmen fehlen weiterhin.
-- **Deployment und reale Hardware bleiben Risikobereiche.** Der veraltete Assetcache ist korrigiert (`PWA-001`); die LAN-Auslieferung erfolgt aber weiterhin ueber HTTP, und echte Fire-TV-, PWA- und Langzeit-Performance wurden nicht vollstaendig auf Hardware verifiziert.
+- **Deployment und reale Hardware bleiben Risikobereiche.** Der veraltete Assetcache ist korrigiert (`PWA-001`); Roh- und Reviewassets werden nicht mehr ausgeliefert (`ASSET-001`). Die LAN-Auslieferung erfolgt aber weiterhin ueber HTTP, und echte Fire-TV-, PWA- und Langzeit-Performance wurden nicht vollstaendig auf Hardware verifiziert.
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 23 von 31 IDs erledigt (1 P0, 11 P1, 8 P2, 3 P3); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 24 von 31 IDs erledigt (1 P0, 11 P1, 8 P2, 4 P3); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -699,7 +699,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### ASSET-001 - Alte Raw-/Legacy-Menueassets bleiben unbereinigt im Webbestand
 
 - **Bereich:** Assets / Wartbarkeit und Downloadhygiene
-- **Status:** VISUELL VERBESSERUNGSWÜRDIG
+- **Status:** UMGESETZT
 - **Prioritaet:** P3 - Polish
 - **Aufwand:** S
 - **Betroffene Spielvariante:** ausserhalb des Spiels/UI
@@ -712,7 +712,8 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Nach Lizenz-/Reproduzierbarkeitspruefung Rohquellen ausserhalb des Webroots archivieren, aktive Produktionsassets manifestieren und ungenutzte Zwischenvarianten entfernen.
 - **Abhaengigkeiten:** Assetmanifest und Reproduktionsskripte.
 - **Akzeptanzkriterien:** Jeder ausgelieferte Menueassetpfad hat einen aktiven Verbraucher oder begruendeten Fallback; Rohquellen werden nicht vom Webserver ausgeliefert; keine Referenz bricht.
-- **Verifikationsstatus:** Dateibestand und aktive Hauptreferenzen verifiziert; vollstaendige Bundlegroessenanalyse nicht ausgefuehrt.
+- **Resolution (`d742daf`):** **ERLEDIGT.** Die 28 Menue-Rohquellen liegen reproduzierbar unter `assets/source/ui/menu/raw`, Kontaktbogen und Zielrendering unter `assets/source/ui/menu/review`. Die Asset-Pipeline liest ausschliesslich dort und manifestiert aktive Produktionsdateien getrennt. GitHub Pages schliesst `assets/source`/`assets/incoming` aus; der TV-/Standard-Entwicklungsserver liefert Quell- und Legacy-Rohpfade mit 404 aus. Das unreferenzierte Legacy-Frame-PNG wurde entfernt.
+- **Verifikationsstatus:** **ERLEDIGT und automatisiert verifiziert.** Manifestpruefung bestaetigt 29 vorhandene Quellen/Ziele; der echte Server-Smoke prueft verarbeitetes Asset 200 sowie beide Rohpfade 404. `npm run check`, `npm test`, `npm run test:e2e` (15/15) und `git diff --check` liefen gruen; aktive Browserreferenzen blieben intakt.
 
 ## 11. Optionale P4-Verbesserungen
 
@@ -786,7 +787,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 | Karten | Encounter-, Freundschafts- und Missionsdaten vorhanden; Texte werden als UI-Text gerendert. Die Missionspruefung und alle im Audit konkret gefundenen Encounter-Flows sind umgesetzt und automatisiert geprueft. | UMGESETZT; reale Vollpartie NICHT VERIFIZIERT | `TEST-001` |
 | Blaupausen | Mutterschiff-/Schiffs-/Supernova-Assets und Baumenuepfade sind vorhanden; nicht alle Blaupausen wurden in jeder Farbe/Variante und auf Mobil visuell geprueft. | NICHT VERIFIZIERT als Vollsatz | `TEST-001` |
 | Icons | Ressourcen-/Spielicons vorhanden; das Hauptmenue verwendet fuer alle vier Aktionen dieselbe vorab geladene, hochaufgeloeste PNG-Iconfamilie. | UMGESETZT | `UI-003` erledigt; reale 4K-Hardware unter `TEST-001` |
-| Rahmen/Ornamente | Hauptmenue, Setup und Lobby wirken im 1080p-Screenshot verwandt; keine sichtbaren weissen Saeume im aktiven Pfad. Raw-/Legacyvarianten bleiben im Webbestand. | UMGESETZT mit Assethygiene-Restpunkt | `ASSET-001` |
+| Rahmen/Ornamente | Hauptmenue, Setup und Lobby wirken im 1080p-Screenshot verwandt; keine sichtbaren weissen Saeume im aktiven Pfad. Roh-/Reviewvarianten liegen reproduzierbar ausserhalb des Webroots und werden weder lokal noch ueber Pages ausgeliefert. | UMGESETZT | `ASSET-001` erledigt |
 
 ### Assetpfade und Aufloesung
 
@@ -979,7 +980,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
 
 6. **Performance und Assets**
    - `PERF-001`: priorisierter, begrenzter Preload und Hardwareprofiling.
-   - `ASSET-001`: danach ungenutzte Webassets bereinigen.
+   - Erledigt: `ASSET-001` trennt Roh-/Reviewassets vom Webroot und entfernt die ungenutzte Legacy-Rahmengrafik.
 
 7. **Finales UI-/VFX-Polishing**
    - Erledigt: `UI-001` skaliert die Hauptmenue-Komposition proportional auf 4K und haelt Mobile-Landscape innerhalb des Rahmens.
@@ -1060,7 +1061,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - [x] Setup und QR-Lobby verwenden dieselbe Designfamilie.
 - [x] Controller macht den Space-Hintergrund im geprueften Landscape-Viewport deutlich sichtbar (`UI-002`).
 - [x] Hauptmenueicons sind plattformunabhaengig und assetkonsistent (`UI-003`).
-- [~] Aktive Assets laden ohne beobachtete Fehler; Legacy-/Rawbestand bleibt (`ASSET-001`).
+- [x] Aktive Assets laden ohne beobachtete Fehler; Roh-/Reviewassets bleiben reproduzierbar, werden aber nicht ausgeliefert (`ASSET-001`).
 - [~] VFX-Daten fuer 12 Kolonie-, 12 Handels- und 12 Schlachtschiffe sind vorhanden und technisch angebunden.
 - [-] Alle Schiffvarianten/VFX sind im normalen Spiel auf TV und Smartphone visuell abgenommen (`TEST-001`).
 - [ ] Assetpreload bleibt innerhalb gemessener Fire-TV-/Smartphone-Budgets (`PERF-001`).
@@ -1120,9 +1121,9 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - Supernova-Profivariante mit zwei Missionen (`SN-006`).
 - Audio-/Lautstaerkesystem (`AUDIO-001`).
 - Portabler Saveexport/-import (`OPS-001`).
-- Legacy-Assetbereinigung (`ASSET-001`) ist Polish/Wartbarkeit und kein Spielblocker.
+- Die optionale Profivariante, Audio und portabler Saveexport/-import bleiben Zusatzkomfort.
 
-**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde, acht P2-Befunde sowie drei P3-Befunde einschliesslich Encounter-, Speicherfehler-, Controller-Lokalisierungs-, Quellen-, Session- und responsiven UI-Problemen sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, reale Mehrgeraete- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
+**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde, acht P2-Befunde sowie alle vier P3-Befunde einschliesslich Encounter-, Speicherfehler-, Controller-Lokalisierungs-, Quellen-, Session-, responsiven UI- und Assethygiene-Problemen sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, reale Mehrgeraete- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
 
 ## Implementation Progress
 
@@ -1155,3 +1156,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `PERF-001` | P2 | TEILWEISE ERLEDIGT | `ed298a6` | `npm run check`, `npm test`, `npm run test:e2e` (15/15), `git diff --check`; Drei-Worker-Grenze, Farbauswahl, Classic-/Supernova-Trennung und Boardstart | reale RAM-/Frametime-Budgets und Nachladeruckel auf Fire TV/Smartphone nicht verifiziert |
 | `TECH-001` | P3 | ERLEDIGT | `b4ca742` | `npm run check`, `npm test`, `git diff --check`; statische Produktionsquellen-Pruefung und gezielte Konsolensuche | keiner |
 | `UI-003` | P3 | ERLEDIGT | `59ec00c` | `npm run check`, `npm test`, Hauptmenue-E2E (2/2), `git diff --check`; alle vier PNGs geladen, 1080p visuell und 4K-Geometrie geprueft | reale 4K-Fire-TV-Hardware bleibt unter `TEST-001` |
+| `ASSET-001` | P3 | ERLEDIGT | `d742daf` | Assetpipeline aus `assets/source`, Manifest mit 29 vorhandenen Quellen/Zielen, Server-200/404-Grenztest, `npm run check`, `npm test`, `npm run test:e2e` (15/15), `git diff --check` | keiner |
