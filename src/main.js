@@ -1149,7 +1149,7 @@ function getSanitizedPlayerSetup() {
 
 function validatePlayerSetup() {
   const playerCount = state.selectedPlayers ?? 0;
-  if (![3, 4].includes(playerCount)) {
+  if (![2, 3, 4].includes(playerCount)) {
     return { valid: false, messageKey: "selectPlayers" };
   }
 
@@ -2236,7 +2236,7 @@ function renderPlayerSelect() {
   const options = document.createElement("div");
   options.className = "player-options";
 
-  for (const count of [3, 4]) {
+  for (const count of [2, 3, 4]) {
     const button = createButton(String(count), () => {
       state.selectedPlayers = count;
       ensurePlayerSetup(count);
@@ -2245,7 +2245,7 @@ function renderPlayerSelect() {
     button.setAttribute("aria-label", t("playersLabel").replace("{count}", count));
     button.setAttribute("aria-pressed", String(count === state.selectedPlayers));
     button.dataset.remoteId = `players-${count}`;
-    if (count === 3) button.dataset.remoteAutofocus = "true";
+    if (count === 2) button.dataset.remoteAutofocus = "true";
     options.append(button);
   }
 

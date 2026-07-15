@@ -68,6 +68,30 @@ assert.deepEqual(
   classicSave
 );
 
+const twoPlayerSave = {
+  id: "save-two-player-supernova",
+  name: "Zwei Spieler Supernova",
+  savedAt: exportedAt,
+  playerCount: 2,
+  gameState: {
+    playerCount: 2,
+    gameVariant: "supernova",
+    phase: "tradeBuild",
+    currentPlayerIndex: 1,
+    supernova: {
+      missionsByPlayerId: {
+        "player-1": ["mission-explorer"],
+        "player-2": ["mission-builder"]
+      },
+      factories: []
+    }
+  }
+};
+assert.deepEqual(
+  parseSaveBackup(JSON.stringify(createSaveBackup(twoPlayerSave, exportedAt))).save,
+  twoPlayerSave
+);
+
 assert.throws(
   () => parseSaveBackup("not json"),
   (error) => error.code === saveBackupErrorCodes.invalidJson

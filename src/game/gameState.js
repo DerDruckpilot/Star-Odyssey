@@ -1607,7 +1607,7 @@ export function canFoundColonyWithShip(gameState, boardLayout, shipId) {
     isSystemExplored(gameState, boardLayout, colonySite.systemId) &&
     !isColonySiteBlockedBySpecial(gameState, colonySite) &&
     !isStructureAtLocation(structures, colonySite.nodeId) &&
-    !isThreePlayerColonyLimitReached(gameState, boardLayout, colonySite.systemId, structures)
+    !isColonyLimitReached(gameState, boardLayout, colonySite.systemId, structures, activePlayer.id)
   );
 }
 
@@ -1989,7 +1989,7 @@ export function getShipDestinationState(gameState, boardLayout, shipId, targetNo
   if (
     ship.type === "colonyShip" &&
     colonySite &&
-    isThreePlayerColonyLimitReached(gameState, boardLayout, colonySite.systemId, structures)
+    isColonyLimitReached(gameState, boardLayout, colonySite.systemId, structures, ship.ownerPlayerId)
   ) {
     return {
       validDestination: false,
@@ -7016,9 +7016,10 @@ function isColonySiteBlockedBySpecial(gameState, colonySite) {
     .some((planetId) => isActiveSpecialToken(getPlanetToken(gameState.board?.numberTokens, planetId)));
 }
 
-function isThreePlayerColonyLimitReached(gameState, boardLayout, systemId, structures) {
-  if (gameState.playerCount !== 3 || !systemId) return false;
+function isColonyLimitReached(gameState, boardLayout, systemId, structures, playerId) {
+  if (!systemId || ![2, 3].includes(gameState.playerCount)) return false;
   if ((boardLayout.startSystems ?? []).some((system) => system.id === systemId)) return false;
+  if (gameState.playerCount === 2 && isSupernovaGame(gameState)) return false;
 
   const colonySites = getGameColonySites(gameState, boardLayout);
   const sitesByLocation = new Map(colonySites.flatMap((site) => [
@@ -7031,7 +7032,10 @@ function isThreePlayerColonyLimitReached(gameState, boardLayout, systemId, struc
     return structureSystemId === systemId;
   });
 
-  return occupiedColonySites.length >= 2;
+  if (occupiedColonySites.length >= 2) return true;
+  if (gameState.playerCount !== 2 || !playerId) return false;
+
+  return occupiedColonySites.some((structure) => structure.ownerPlayerId === playerId);
 }
 
 function getShortestPathCost(boardLayout, fromNodeId, toNodeId, blockedNodeIds = new Set()) {

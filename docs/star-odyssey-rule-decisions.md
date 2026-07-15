@@ -1,7 +1,7 @@
 # Bewusste Star-Odyssey-Regelentscheidungen
 
 **Status:** MASSGEBLICH
-**Stand:** 2026-07-14
+**Stand:** 2026-07-15
 
 Diese Datei dokumentiert bestaetigte digitale Anpassungen. Sie ergaenzt die Quellenrangfolge in `docs/rule-sources.md`, ersetzt aber weder Anleitung noch Almanach oder Supernova-Regelwerk.
 
@@ -29,5 +29,13 @@ Diese Datei dokumentiert bestaetigte digitale Anpassungen. Sie ergaenzt die Quel
 - Sternennebel-Felder sehen wie normale Hexfelder aus; ihre Sternennebel-Eigenschaft bleibt intern erhalten.
 - TV-/Host-Ansicht und Smartphone-Controller sind getrennte Oberflaechen mit unterschiedlichen Bedienaufgaben.
 - Das Spiel ist primaer fuer TV/Querformat und Smartphone-Controller im Querformat ausgelegt.
+
+## Spielerzahl
+
+- Star Odyssey bietet zusaetzlich zur offiziellen Drei-/Vier-Spieler-Belegung eine dokumentierte Zwei-Spieler-Variante an.
+- Die verbindlichen Zusatzregeln stehen in `docs/two-player-variant.md`.
+- Die Variante verwendet das vollstaendige Brett ohne Bots oder neutrale KI.
+- Im klassischen Zwei-Spieler-Spiel gelten ausserhalb der Startgalaxien in Drei-Planeten-Systemen hoechstens zwei besiedelte Planeten insgesamt und hoechstens ein eigener besiedelter Planet je Spieler.
+- Supernova uebernimmt diese Classic-Zusatzbegrenzung nicht.
 
 Neue bewusste Abweichungen muessen vor ihrer Implementierung hier oder in einer gleichrangig verlinkten Entscheidungsdatei dokumentiert werden.

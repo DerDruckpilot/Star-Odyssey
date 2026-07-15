@@ -14,7 +14,7 @@ Star Odyssey besitzt einen umfangreichen, lauffaehigen Classic-Kern, 32 datenget
 
 Der Stand ist trotzdem **nicht final polished**:
 
-- **Classic ist in den konkret auditierten Aufbaupunkten korrigiert.** Neue Partien sind auf 3/4 Spieler begrenzt (`CLS-001`); Drei-Spieler-Partien besitzen die neutralen Teile der vierten Farbe und die Zwei-von-drei-Belegungsgrenze ausserhalb der Startsysteme (`CLS-002`). Die Nachschub-Nachholfrist ist ebenfalls korrigiert (`CLS-003`). Eine reale Vollpartie fehlt weiterhin fuer die abschliessende Regelabnahme.
+- **Classic ist in den konkret auditierten Aufbaupunkten korrigiert.** Neben 3/4 Spielern existiert nun eine dokumentierte, bewusst abweichende Zwei-Spieler-Variante (`CLS-001`, `docs/two-player-variant.md`). Drei-Spieler-Partien besitzen weiterhin die neutralen Teile der vierten Farbe und die Zwei-von-drei-Belegungsgrenze ausserhalb der Startsysteme (`CLS-002`). Die Nachschub-Nachholfrist ist ebenfalls korrigiert (`CLS-003`). Eine reale Vollpartie fehlt weiterhin fuer die abschliessende Regelabnahme.
 - **Die bekannten Encounter-Abweichungen sind behoben.** Ausbau-Belohnungen ohne freien physischen Platz setzen den Flow kontrolliert fort (`ENC-001`), Hehlerei-/Piraten-Sonderwuerfe warten auf die aktive Controlleraktion (`ENC-002`), physische Ausbauten bleiben korrekt getrennt (`ENC-003`) und die Karten 31/32 zeigen ihre persistierten Rat-/Neumisch-Schritte vor der Folgekarte (`ENC-004`).
 - **Die Supernova-Systeme einschliesslich Profivariante sind umgesetzt.** Alle 25 Missionen werden aus dem echten Spielzustand geprueft (`SN-001`); Fabriken (`SN-003`) und die interaktiven, save/load-faehigen Schlachtschiffkaempfe samt drei getrennten Folgepfaden (`SN-004`, `SN-005`) sind ebenfalls vervollstaendigt. Die optionale Profivariante zieht zwei statt drei verschiedenfarbige Missionen und bleibt ueber Save/Load, private Controllerdaten und Wiederverbindung erhalten (`SN-006`). Eine reale Vollpartie verhindert weiterhin die abschliessende Regelabnahme.
 - **Private Controllerdaten sind inzwischen getrennt.** Der Host erzeugt player-spezifische View-States; fremde Ressourcenarten, Freundschaftskarten, Missionen und private Auswahlentwuerfe werden nicht mehr serialisiert (`SN-002`).
@@ -107,15 +107,15 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 7. **Encounter-Raumsprung als digitale Board-Auswahl.** Der Controller waehlt eigenes Schiff und Ziel auf dem Board; verdeckte Mittelpunkte besitzen einen Fallback auf einen gueltigen Punkt. Diese digitale Aufloesung ist in den Encounter-Spezifikationen bewusst beschrieben.
 8. **Encounter-Informationen sind rollenbezogen.** Aktiver, betroffener passiver und unbeteiligter Spieler erhalten unterschiedliche Texte/Aktionen.
 9. **Landscape-first.** TV und Smartphone-Controller sind fuer Querformat ausgelegt; Hochformat zeigt einen Drehhinweis.
-10. **Zwei-Spieler-Nachbar-Fallback in Begegnungen.** Links/rechts/zweiter Nachbar kann in geladenen Legacy-/Testzustaenden mit zwei vorhandenen Spielern auf den jeweils anderen Spieler fallen. Neue Partien bieten ausschliesslich die belegten Spielerzahlen 3 und 4 an (`CLS-001`, erledigt).
+10. **Dokumentierte Zwei-Spieler-Variante.** Star Odyssey bietet bewusst Zwei-Spieler-Partien an. Nachbarrollen fallen auf den jeweils anderen Spieler. Classic begrenzt Drei-Planeten-Systeme ausserhalb der Startgalaxien auf zwei Besiedlungen insgesamt und eine je Spieler; Supernova uebernimmt die Zusatzbegrenzung nicht (`docs/two-player-variant.md`).
 
 ## 4. Vollstaendigkeitsmatrix der klassischen Regeln
 
 | Regelbereich | Soll laut Quelle | Implementierungsstatus | Beleg | Offene Audit-IDs |
 |---|---|---|---|---|
-| Spielerzahl | Offiziell 3 oder 4 Spieler | UMGESETZT: Neue Partien bieten 3 oder 4; explizite alte 2-Spieler-Saves bleiben ladbar | `src/main.js` (`renderPlayerSelect`, `validatePlayerSetup`); `src/game/gameState.js` (`createGameState`, `normalizeGameState`); E2E-/State-Smokes | - |
+| Spielerzahl | Offiziell 3 oder 4 Spieler; Star Odyssey ergaenzt bewusst 2 Spieler | BEWUSSTE ABWEICHUNG: Neue Partien bieten 2, 3 oder 4; die Zwei-Spieler-Regeln sind separat dokumentiert und getestet | `docs/two-player-variant.md`; `src/main.js` (`renderPlayerSelect`, `validatePlayerSetup`); `src/game/gameState.js` (`createGameState`, `normalizeGameState`); E2E-/State-Smokes | - |
 | Startaufbau | 2 Kolonien, 1 Raumhafen, Startschiff, Ressourcen/halbe Medaille/Antrieb; bei 3 Spielern neutrale Teile der vierten Farbe | UMGESETZT | `src/game/gameState.js` (`createGameState`, `createNeutralStartingStructures`); State- und Browser-Smokes | - |
-| 3-Spieler-Sondergrenze | Ausserhalb der Startsysteme hoechstens 2 belegte Kolonieplaetze je Planetensystem | UMGESETZT | Zentrale Ziel-/Gruendungsvalidierung in `src/game/gameState.js` (`canFoundColonyWithShip`, `isThreePlayerColonyLimitReached`); State-Smokes fuer 3/4 Spieler | - |
+| Besiedlungsgrenzen fuer 2/3 Spieler | 3 Spieler: ausserhalb der Startsysteme hoechstens 2 belegte Kolonieplaetze je System; Classic 2 Spieler: zusaetzlich hoechstens 1 je Spieler | UMGESETZT / BEWUSSTE ABWEICHUNG | Zentrale Ziel-/Gruendungsvalidierung in `src/game/gameState.js` (`canFoundColonyWithShip`, `isColonyLimitReached`); State-Smokes fuer Classic 2/3/4 und Supernova 2 | - |
 | Spielfeld/Systeme | Startsysteme, Wilder Weltraum, leere Felder, Aussenposten, Zahlenchips | UMGESETZT | `src/data/board.js`; `src/data/boardPoints.js`; `src/data/boardNumberChips.js` | - |
 | Zugphasen | Produktion, Handel/Bau, Flug, Zugende; nur aktiver Spieler handelt | UMGESETZT | Phasenmaschine in `src/game/gameState.js`; Controller-Gating in `src/main.js` | - |
 | Produktion und Sieben | Planetenertrag; bei 7 Handlimit/Abwurf, Zufallsdiebstahl und Nachschub fuer Mitspieler | UMGESETZT | Produktions-/Siebenlogik `src/game/gameState.js:6336-6572`; Smoke-Tests | - |
@@ -192,23 +192,24 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### CLS-001 - Nicht dokumentierter 2-Spieler-Modus weicht von der offiziellen Spielerzahl ab
 
 - **Bereich:** Classic / Spielsetup
-- **Status:** UMGESETZT
+- **Status:** BEWUSSTE ABWEICHUNG
 - **Prioritaet:** P1 - Kritisch
 - **Aufwand:** M
 - **Betroffene Spielvariante:** Classic
 - **Quelle bzw. Sollverhalten:** Anleitung und Almanach definieren das Grundspiel fuer 3 oder 4 Spieler. Eine 2-Spieler-Variante mit eigenem Aufbau, Zug- und Mehrheitenregelwerk ist nicht Bestandteil der geprueften Quellen.
-- **Urspruengliches Istverhalten:** Setup und `createGameState` akzeptierten 2, 3 oder 4 Spieler; 2 war zudem der technische Default. Nur einzelne Encounter-Nachbarrollen besassen einen dokumentierten 2-Spieler-Fallback.
-- **Konkrete Abweichung:** Das Gesamtspiel bietet eine nicht spezifizierte Variante als gleichwertige Classic-Auswahl an, obwohl Aufbau, Aussenpostenmehrheiten, Handel und Balance dafuer nicht belegt sind.
+- **Aktuelles Istverhalten:** Setup und `createGameState` akzeptieren 2, 3 oder 4 Spieler. Die Zwei-Spieler-Variante ist in `docs/two-player-variant.md` spezifiziert; Classic besitzt eine eigene Besiedlungsbegrenzung, Supernova bleibt davon ausgenommen.
+- **Konkrete Abweichung:** Die Spielerzahl 2 bleibt eine bewusste Abweichung von Anleitung und Almanach, ist aber nicht mehr undokumentiert.
 - **Beleg:** `src/game/gameState.js:181-227`; `src/main.js:1901-1951`; Encounter-Nachbar-Fallback in der Encounter-Logik.
-- **Auswirkung:** Eine als "Klassisches Spiel" bezeichnete 2-Spieler-Partie kann regelwidrige oder unbalancierte Ergebnisse liefern; Regelkonformitaet ist nicht zusicherbar.
+- **Auswirkung:** Zwei Personen koennen ohne Bots eine vollstaendige Partie spielen. Die konservative Classic-Besiedlungsgrenze verhindert die vollstaendige Kontrolle eines Drei-Planeten-Systems durch einen Spieler.
 - **Reproduktionsschritte:** Hauptmenue -> Neues Spiel -> 2 Spieler -> Klassisches Spiel -> Weiter.
 - **Empfohlene spaetere Massnahme:** Entweder 2 Spieler aus dem Classic-Setup entfernen oder eine explizite, vollstaendig dokumentierte und getestete Star-Odyssey-2-Spieler-Variante definieren und als bewusste Abweichung kennzeichnen.
 - **Abhaengigkeiten:** Setup-UI, Boardaufbau, Nachbarrollen, Aussenposten-/Mehrheitenlogik und Tests.
 - **Akzeptanzkriterien:** Classic bietet nur 3/4 Spieler oder eine separat benannte, dokumentierte 2-Spieler-Variante; alle davon abhaengigen Regeln besitzen Tests; bestehende 2-Spieler-Saves werden kontrolliert behandelt.
 - **Verifikationsstatus:** Vollstaendig dynamisch verifiziert.
-- **Resolution (`7a267f2`):** Der Neuspielpfad bietet nur noch 3 und 4 Spieler; 3 ist Standard und Initialfokus. Validierung und frische Fallbacks verhindern neue 2-Spieler-Partien. Die Engine behaelt explizite 2-Spieler-Zustaende ausschliesslich fuer bestehende Saves und interne Tests bei, und `normalizeGameState` erhaelt deren Spielerzahl kontrolliert.
-- **Geaenderte Dateien:** `src/main.js`, `src/game/gameState.js`, `scripts/check-game-state.js`, `tests/e2e/smoke.spec.js`.
-- **Verifikation:** `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; Drei-Controller-Lobby bis zum Brett, Fire-TV-Setupnavigation, fehlende 2-Spieler-Neuanlage sowie Erhalt eines geladenen 2-Spieler-Legacyzustands.
+- **Fruehere Resolution (`7a267f2`):** Der Neuspielpfad wurde zunaechst auf 3 und 4 Spieler begrenzt.
+- **Aktuelle Resolution (2026-07-15):** Die vom Projektinhaber beschlossene Zwei-Spieler-Variante ist dokumentiert und wieder freigeschaltet. Classic-Zielauswahl und Gruendung pruefen die Gesamt- und Pro-Spieler-Grenze; Supernova bleibt ausgenommen. Start-/Zugfolge, zwei Controller-Slots, Reconnect sowie Save-/Backup-Pfade besitzen Regressionstests.
+- **Geaenderte Dateien:** `docs/two-player-variant.md`, `docs/star-odyssey-rule-decisions.md`, `src/main.js`, `src/game/gameState.js`, `scripts/check-game-state.js`, `scripts/check-save-portability.js`, `tests/e2e/smoke.spec.js`.
+- **Verifikation:** `npm run check`, `npm test`, `npm run test:e2e`, `git diff --check`; Zwei-Controller-Lobby und Spielstart fuer Classic/Supernova, Fire-TV-Setupnavigation, Turn-Rotation, Save-/Backup-Roundtrip und Varianten-spezifische Besiedlungsgrenze.
 
 ### CLS-002 - 3-Spieler-Aufbau und Koloniegrenze sind unvollstaendig
 
@@ -959,7 +960,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
    - Erledigt: `ENC-001` besitzt Null-Optionen-Fallback und Save/Load-Test.
 
 2. **Classic-Regelkorrekturen**
-   - Erledigt: `CLS-001` begrenzt neue Partien auf 3/4 Spieler und erhaelt alte 2-Spieler-Saves kontrolliert.
+   - Erledigt: `CLS-001` ist als bewusste Zwei-Spieler-Variante dokumentiert; neue Classic-/Supernova-Partien, zwei Controller, Save/Backup und die Classic-Besiedlungsgrenze sind geprueft.
    - Erledigt: `CLS-002` erzeugt die neutralen Teile der vierten Farbe und erzwingt ausserhalb der Startsysteme die Zwei-von-drei-Belegungsgrenze.
    - Erledigt: `CLS-003` haelt den Nachschubanspruch bis zum normalen Mutterschiffwurf.
    - Erledigt: `ENC-002` wartet auf den aktiven Controller und zeigt den reinen Kugelwurf auf dem Host; `ENC-003` wertet nur physische Frachtringe.
@@ -1143,7 +1144,7 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `SN-002` | P1 | ERLEDIGT | `1943a2d` | `npm run check`, `npm test`, `npm run test:e2e` (8/8), `git diff --check`; rohe WebSocket-Payloads beider Spieler, Host-Darstellung und Reconnect | Controller-Authentisierung/Doppelverbindung wurden anschliessend unter `NET-001`/`NET-002` erledigt |
 | `SN-003` | P1 | ERLEDIGT | `d8fabc6` | `npm run check`, `npm test`, `npm run test:e2e` (9/9), `git diff --check`; Fabriklimit, unveraenderter State, Save/Load, Classic-Isolation sowie identische TV-/Controllerdarstellung | keiner |
 | `ENC-002` | P1 | ERLEDIGT | `38a5b35` | `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; aktive Einzelausloesung, sichtbare Hostanimation, Save/Load, reine Kugelwertung und Wiederholungsschutz | keiner |
-| `CLS-001` | P1 | ERLEDIGT | `7a267f2` | `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; nur 3/4 im Neuspielpfad, Drei-Controller-Lobby, Fire-TV-Fokus und Erhalt expliziter 2-Spieler-Legacy-Saves | keiner |
+| `CLS-001` | P1 | BEWUSSTE ABWEICHUNG | 2026-07-15 Zwei-Spieler-Feature-Commit | `npm run check`, `npm test`, gezielte E2E-Smokes; Classic/Supernova mit zwei Controllern, Reconnect, Fire-TV-Fokus, Turn-Rotation, Save/Backup und Besiedlungsgrenzen | Reale Vollpartie weiterhin unter `TEST-001` offen |
 | `CLS-002` | P1 | ERLEDIGT | `18f6973` | `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; Neutralteile, Blockade, ausbleibende Produktion/Punkte, Save/Load, 3-/4-Spieler-Grenze und TV-Rendering | keiner |
 | `SN-004` | P1 | ERLEDIGT | `323f519` | `npm run check`, `npm test`, `npm run test:e2e` (11/11), `git diff --check`; beide Controllerwuerfe, Host-Reveal, sieben Gleichstaende, Teilnehmerbindung, Save/Load und Reconnect | reale Fire-TV-Hardwaredarstellung bleibt unter `TEST-001` |
 | `SN-005` | P1 | ERLEDIGT | `323f519` | `npm run check`, `npm test`, `npm run test:e2e` (11/11), `git diff --check`; Angreifer-/Verteidigersieg aller drei Zieltypen, Ein-Rohstoff-Fall, Ausbauwahl und eindeutige Feldbelegung | keiner |

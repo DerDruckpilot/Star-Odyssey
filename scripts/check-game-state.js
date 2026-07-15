@@ -268,6 +268,40 @@ function createColonyLimitGame(playerCount) {
   return { limitGame, targetSite };
 }
 
+function createTwoPlayerColonyLimitGame(gameVariant) {
+  const limitGame = createGameState({ language: "de", playerCount: 2, boardLayout, gameVariant });
+  const limitSystem = limitGame.board.placedSystems.find((system) => (system.colonySites ?? []).length === 3);
+  const [firstSite, targetSite] = limitSystem.colonySites;
+  limitGame.phase = "flight";
+  limitGame.currentPlayerIndex = 0;
+  limitGame.board.exploredSystems = [...new Set([...limitGame.board.exploredSystems, limitSystem.id])];
+  limitGame.board.structures = [{
+    id: "two-player-colony-limit-one",
+    ownerPlayerId: limitGame.players[0].id,
+    type: "colony",
+    locationId: firstSite.nodeId,
+    systemId: limitSystem.id,
+    adjacentPlanetIds: firstSite.adjacentPlanetIds
+  }];
+  limitGame.board.ships = [{
+    id: "two-player-colony-limit-ship",
+    ownerPlayerId: limitGame.players[0].id,
+    type: "colonyShip",
+    shipVariant: 1,
+    locationId: targetSite.nodeId,
+    status: "active"
+  }];
+  for (const planet of limitSystem.planets ?? []) {
+    limitGame.board.numberTokens.planetTokensById[planet.id] = {
+      ...(limitGame.board.numberTokens.planetTokensById[planet.id] ?? {}),
+      type: "number",
+      value: 6,
+      revealed: true
+    };
+  }
+  return { limitGame, targetSite };
+}
+
 {
   const { limitGame: threePlayerColonyLimitGame, targetSite } = createColonyLimitGame(3);
   const threePlayerDestinationGame = structuredClone(threePlayerColonyLimitGame);
@@ -287,6 +321,24 @@ function createColonyLimitGame(playerCount) {
   assert(
     foundColony(fourPlayerColonyLimitGame, boardLayout, "colony-limit-ship").board.structures.length === 3,
     "The three-player colony limit must not affect four-player games."
+  );
+
+  const { limitGame: twoPlayerClassicLimitGame, targetSite: twoPlayerClassicTarget } = createTwoPlayerColonyLimitGame(gameVariants.classic);
+  const twoPlayerClassicDestinationGame = structuredClone(twoPlayerClassicLimitGame);
+  twoPlayerClassicDestinationGame.board.ships[0].locationId = twoPlayerClassicTarget.launchNodeIds[0];
+  assert(
+    !canFoundColonyWithShip(twoPlayerClassicLimitGame, boardLayout, "two-player-colony-limit-ship"),
+    "Classic two-player games should allow only one colony or spaceport per player in a three-planet system."
+  );
+  assert(
+    getShipDestinationState(twoPlayerClassicDestinationGame, boardLayout, "two-player-colony-limit-ship", twoPlayerClassicTarget.nodeId).reason === "colonyLimit",
+    "The board destination state should expose the Classic two-player colony limit."
+  );
+
+  const { limitGame: twoPlayerSupernovaLimitGame } = createTwoPlayerColonyLimitGame(gameVariants.supernova);
+  assert(
+    canFoundColonyWithShip(twoPlayerSupernovaLimitGame, boardLayout, "two-player-colony-limit-ship"),
+    "Supernova two-player games should not inherit the Classic one-colony-per-player limit."
   );
 }
 
@@ -476,6 +528,8 @@ const playerTwoAfterSupply = getResourceTotal(game.players[1]);
 
 assert(game.currentPlayerIndex === 1, "Player 2 should be active after Player 1 ends the turn.");
 assert(playerTwoAfterSupply - playerTwoBeforeSupply === 2, "Player 2 should draw supply on their own turn.");
+game = endCurrentTurn({ ...game, phase: "flight" });
+assert(game.currentPlayerIndex === 0, "Two-player turn rotation should continue from Player 2 back to Player 1.");
 
 game = {
   ...game,
@@ -2088,6 +2142,31 @@ for (const player of supernovaStartGame.players) {
 assert(
   supernovaStartGame.supernova.missionCount === supernovaMissionCounts.standard,
   "Standard Supernova games should persist the default 3-mission mode."
+);
+
+const twoPlayerSupernovaStartGame = createGameState({
+  language: "de",
+  playerCount: 2,
+  boardLayout,
+  gameVariant: gameVariants.supernova
+});
+assert(twoPlayerSupernovaStartGame.players.length === 2, "Supernova should initialize exactly two human players in two-player games.");
+for (const player of twoPlayerSupernovaStartGame.players) {
+  const missions = getSupernovaMissionsForPlayer(twoPlayerSupernovaStartGame, player.id);
+  assert(missions.length === 3, "Each two-player Supernova player should receive 3 mission cards.");
+  assert(new Set(missions.map((mission) => mission.category)).size === missions.length, "Two-player Supernova missions should use different categories.");
+  assert(missions.every((mission) => supernovaMissionCards.some((candidate) => candidate.id === mission.id)), "Two-player Supernova should draw only from the complete mission deck.");
+}
+const restoredTwoPlayerSupernovaGame = normalizeGameState(JSON.parse(JSON.stringify(twoPlayerSupernovaStartGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(
+  restoredTwoPlayerSupernovaGame.playerCount === 2
+    && restoredTwoPlayerSupernovaGame.gameVariant === gameVariants.supernova
+    && restoredTwoPlayerSupernovaGame.players.length === 2,
+  "Two-player Supernova setup and missions should survive save/load normalization."
 );
 
 const professionalSupernovaGame = createGameState({
