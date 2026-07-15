@@ -588,7 +588,7 @@ function commitSetupNameDraft(slot, name) {
 }
 
 function renderActiveTab(player) {
-  if (gameState?.encounter?.active) return renderTurnTab(player);
+  if (gameState?.encounter?.active || gameState?.supernovaBattle?.active) return renderTurnTab(player);
   if (activeTab === "settings") return renderSettingsTab();
   if (activeTab === "overview") return renderOverviewTab(player);
   if (activeTab === "build") return renderBuildTab(player);
@@ -611,6 +611,10 @@ function renderTurnTab(player) {
     section.append(title, renderTurnHint(player), renderEncounterPanel());
     return section;
   }
+  if (gameState?.supernovaBattle?.active) {
+    section.append(title, renderSupernovaBattlePanel(player));
+    return section;
+  }
   const actions = getTurnActions();
   const placementHint = getPlacementTurnHint();
   const flightHint = getFlightTurnHint();
@@ -630,6 +634,68 @@ function renderTurnTab(player) {
   }
   section.append(renderActionGrid(actions));
   return section;
+}
+
+function renderSupernovaBattlePanel(player) {
+  const battle = gameState?.supernovaBattle;
+  const panel = document.createElement("div");
+  panel.className = "selection-panel controller-encounter-panel controller-supernova-battle-panel";
+  const title = document.createElement("strong");
+  title.textContent = "Schlachtschiffkampf";
+  panel.append(title);
+  if (!battle) return panel;
+
+  const isAttacker = selectedPlayerId === battle.attackerPlayerId;
+  const isDefender = selectedPlayerId === battle.defenderPlayerId;
+  const isParticipant = isAttacker || isDefender;
+  const description = document.createElement("p");
+  description.className = "encounter-prompt";
+  description.textContent = `${battle.attackerName} greift ${battle.defenderName} an.`;
+  panel.append(description);
+
+  if (!isParticipant) {
+    const waiting = document.createElement("p");
+    waiting.textContent = `${battle.attackerName} ist gerade in einem Schlachtschiffkampf.`;
+    panel.append(waiting);
+    return panel;
+  }
+
+  if (battle.stage === "rolling") {
+    const alreadyRolled = isAttacker ? battle.attackerRolled : battle.defenderRolled;
+    const status = document.createElement("p");
+    status.textContent = alreadyRolled
+      ? "Du hast gewürfelt. Warte auf den anderen Spieler."
+      : `Würfelrunde ${battle.round}: Bestimme deine Kampfkraft.`;
+    panel.append(status);
+    if (!alreadyRolled) {
+      const rollAction = findAction("supernova.battle.roll");
+      if (rollAction) panel.append(renderActionGrid([rollAction]));
+    }
+    return panel;
+  }
+
+  if (battle.stage === "reveal") {
+    const status = document.createElement("p");
+    status.textContent = battle.winnerPlayerId
+      ? `Auswertung auf dem Spielfeld: ${battle.attackerStrength} zu ${battle.defenderStrength}.`
+      : `Gleichstand ${battle.attackerStrength} zu ${battle.defenderStrength}. Danach wird erneut gewürfelt.`;
+    panel.append(status);
+    return panel;
+  }
+
+  if (battle.stage === "upgradeLoss") {
+    const mustChoose = selectedPlayerId === battle.pendingUpgradePlayerId;
+    const status = document.createElement("p");
+    status.textContent = mustChoose
+      ? "Du hast den Kampf verloren. Wähle einen realen Mutterschiff-Ausbau, den du entfernst."
+      : "Warte, bis der Verlierer einen Mutterschiff-Ausbau gewählt hat.";
+    panel.append(status);
+    if (mustChoose) {
+      const actions = getFilteredActions().filter((action) => action.id === "supernova.battle.chooseUpgrade");
+      panel.append(renderActionGrid(actions));
+    }
+  }
+  return panel;
 }
 
 function renderSevenResolutionPanel(player) {
@@ -1821,6 +1887,7 @@ function renderActionGrid(actions) {
 function getFilteredActions() {
   return (gameState?.actions ?? []).filter((action) => {
     if (action.adminOnly && !isSelectedPlayerAdmin()) return false;
+    if (action.forPlayerId && action.forPlayerId !== selectedPlayerId) return false;
     if (action.requiresActivePlayer && !isSelectedPlayerActive()) return false;
     return true;
   });

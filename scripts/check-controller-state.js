@@ -46,6 +46,11 @@ const remoteState = {
     requestedResources: { food: 1 },
     activeTradeOffer: null
   },
+  actions: [
+    { id: "public.action", label: "Public" },
+    { id: "battle.roll", label: "Alice roll", forPlayerId: "player-1" },
+    { id: "battle.roll", label: "Bob roll", forPlayerId: "player-2" }
+  ],
   saves: [{ id: "private-save" }]
 };
 
@@ -64,12 +69,18 @@ assert(!Object.hasOwn(foreignPlayer, "upgradeBonuses"), "Foreign friendship upgr
 assert(foreignPlayer.resourceCount === 6, "Foreign players should expose only their public resource count.");
 assert(Object.keys(playerOneView.sevenResolution.discardSelections).join() === "player-1", "Discard selections must be private per controller.");
 assert(playerOneView.trade.offeredResources.ore === 1, "The active player should retain the private trade draft.");
+assert(playerOneView.actions.length === 2, "A controller should receive public actions and only its own targeted actions.");
+assert(playerOneView.actions.some((action) => action.label === "Alice roll"), "Player one should receive its targeted battle action.");
+assert(!playerOneView.actions.some((action) => action.label === "Bob roll"), "Player one must not receive another player's targeted battle action.");
 assert(playerOneView.saves.length === 1, "The admin controller should retain the save list.");
 
 const playerTwoView = createControllerViewState(remoteState, "player-2");
 assert(Object.keys(playerTwoView.trade.offeredResources).length === 0, "Other players must not receive a private trade draft.");
 assert(playerTwoView.saves.length === 0, "Non-admin controllers must not receive the save list.");
 assert(Object.keys(playerTwoView.sevenResolution.discardSelections).join() === "player-2", "Each controller should receive only its own discard selection.");
+assert(playerTwoView.actions.length === 2, "Player two should receive public actions and only its targeted battle action.");
+assert(playerTwoView.actions.some((action) => action.label === "Bob roll"), "Player two should receive its targeted battle action.");
+assert(!playerTwoView.actions.some((action) => action.label === "Alice roll"), "Player two must not receive another player's targeted battle action.");
 
 const statesByPlayerId = createControllerStatesByPlayerId(remoteState);
 assert(statesByPlayerId["player-1"].viewerPlayerId === "player-1", "Player one should receive its personalized state.");

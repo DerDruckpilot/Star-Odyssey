@@ -527,6 +527,144 @@ test("active controller starts a visible single-player encounter roll", async ({
   await controller.close();
 });
 
+test("both controllers must roll before a Supernova ship battle is shown", async ({ page }) => {
+  await page.goto("/");
+  const initialFlightSpeed = await page.evaluate(async () => {
+    const [{ createGameState }, { boardLayout }, { gameVariants }] = await Promise.all([
+      import("/src/game/gameState.js"),
+      import("/src/data/boardLayout.js"),
+      import("/src/data/supernova.js")
+    ]);
+    const gameState = createGameState({
+      language: "de",
+      playerCount: 2,
+      boardLayout,
+      gameVariant: gameVariants.supernova
+    });
+    const attackerNodeId = boardLayout.points[0].id;
+    const defenderNodeId = boardLayout.points[1].id;
+    const ships = [
+      {
+        id: "battle-e2e-attacker",
+        ownerPlayerId: "player-1",
+        type: "battleShip",
+        variant: 1,
+        locationId: attackerNodeId,
+        status: "active"
+      },
+      {
+        id: "battle-e2e-support-2",
+        ownerPlayerId: "player-1",
+        type: "battleShip",
+        variant: 2,
+        locationId: boardLayout.points[2].id,
+        status: "active"
+      },
+      {
+        id: "battle-e2e-support-3",
+        ownerPlayerId: "player-1",
+        type: "battleShip",
+        variant: 3,
+        locationId: boardLayout.points[3].id,
+        status: "active"
+      },
+      {
+        id: "battle-e2e-defender",
+        ownerPlayerId: "player-2",
+        type: "tradeShip",
+        variant: 1,
+        locationId: defenderNodeId,
+        status: "active"
+      }
+    ];
+    gameState.phase = "flight";
+    gameState.currentPlayerIndex = 0;
+    gameState.hasRolledFlightSpeed = true;
+    gameState.flightSpeedBase = 7;
+    gameState.flightSpeedTotal = 7;
+    gameState.flightRoll = { balls: ["red", "yellow"], baseSpeed: 7, encounterTriggered: false };
+    gameState.players = gameState.players.map((player, index) => ({
+      ...player,
+      upgrades: index === 0 ? { ...player.upgrades, cannon: 6 } : player.upgrades,
+      ships: ships.filter((ship) => ship.ownerPlayerId === player.id)
+    }));
+    gameState.board = {
+      ...gameState.board,
+      selectedElement: { type: "ship", id: "battle-e2e-attacker" },
+      ships
+    };
+    gameState.remainingMovementByShipId = Object.fromEntries(ships.map((ship) => [ship.id, 5]));
+    gameState.supernova = {
+      ...gameState.supernova,
+      shipBattle: {
+        id: "battle-e2e",
+        stage: "rolling",
+        round: 1,
+        attackerPlayerId: "player-1",
+        defenderPlayerId: "player-2",
+        attackerShipId: "battle-e2e-attacker",
+        defenderShipId: "battle-e2e-defender",
+        defenderShipType: "tradeShip",
+        attackerOriginNodeId: attackerNodeId,
+        targetNodeId: defenderNodeId,
+        pathCost: 1,
+        attackerRoll: null,
+        defenderRoll: null,
+        attackerStrength: null,
+        defenderStrength: null,
+        winnerPlayerId: null,
+        loserPlayerId: null,
+        pendingUpgradePlayerId: null,
+        removableUpgradeIds: []
+      }
+    };
+    localStorage.removeItem("starOdyssey.autosave.v1");
+    localStorage.setItem("star-odyssey-current-game", JSON.stringify(gameState));
+    return gameState.flightSpeedTotal;
+  });
+
+  await page.reload();
+  await expect(page.locator(".board-screen")).toBeVisible();
+  await expect(page.locator(".supernova-battle-overlay")).toHaveCount(0);
+
+  const sessionId = await page.evaluate(() => sessionStorage.getItem("star-odyssey-controller-session"));
+  const attackerController = await page.context().newPage();
+  const defenderController = await page.context().newPage();
+  await attackerController.goto(`/controller.html?session=${sessionId}&player=1`);
+  await defenderController.goto(`/controller.html?session=${sessionId}&player=2`);
+
+  const attackerRoll = attackerController.getByRole("button", { name: "Mit Mutterschiff würfeln" });
+  const defenderRoll = defenderController.getByRole("button", { name: "Mit Mutterschiff würfeln" });
+  await expect(attackerRoll).toBeVisible();
+  await expect(defenderRoll).toBeVisible();
+  await attackerRoll.click();
+  await expect(attackerController.getByText("Du hast gewürfelt. Warte auf den anderen Spieler.")).toBeVisible();
+  await expect(page.locator(".supernova-battle-overlay")).toHaveCount(0);
+  await expect(defenderRoll).toBeVisible();
+
+  await attackerController.close();
+  const reconnectedAttacker = await page.context().newPage();
+  await reconnectedAttacker.goto(`/controller.html?session=${sessionId}&player=1`);
+  await expect(reconnectedAttacker.getByText("Du hast gewürfelt. Warte auf den anderen Spieler.")).toBeVisible();
+  await expect(reconnectedAttacker.getByRole("button", { name: "Mit Mutterschiff würfeln" })).toHaveCount(0);
+
+  await defenderRoll.click();
+  await expect(page.locator(".supernova-battle-overlay")).toBeVisible();
+  await expect(page.locator(".supernova-battle-player")).toHaveCount(2);
+  await expect(page.locator(".supernova-battle-ball-pocket")).toHaveCount(2);
+  await expect.poll(async () => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null");
+    return state?.supernova?.shipBattle ?? null;
+  }), { timeout: 10000 }).toBeNull();
+
+  const resolvedState = await page.evaluate(() => JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null"));
+  expect(resolvedState.flightSpeedTotal).toBe(initialFlightSpeed);
+  expect(resolvedState.supernova.blockedShipIds).toContain("battle-e2e-defender");
+  expect(new Set(resolvedState.board.ships.map((ship) => ship.locationId)).size).toBe(resolvedState.board.ships.length);
+  await reconnectedAttacker.close();
+  await defenderController.close();
+});
+
 test("outpost debug page loads and exports layout", async ({ page }) => {
   await page.goto("/debug-outposts.html");
 

@@ -62,6 +62,12 @@ function getTradeView(trade, viewerPlayerId, activePlayerId) {
   };
 }
 
+function getActionView(actions, viewerPlayerId) {
+  return Array.isArray(actions)
+    ? actions.filter((action) => !action?.forPlayerId || action.forPlayerId === viewerPlayerId)
+    : [];
+}
+
 export function createControllerViewState(remoteState, viewerPlayerId) {
   const players = Array.isArray(remoteState?.players) ? remoteState.players : [];
   const adminPlayerId = players[0]?.id ?? null;
@@ -72,6 +78,7 @@ export function createControllerViewState(remoteState, viewerPlayerId) {
     players: players.map((player) => getPlayerView(player, viewerPlayerId)),
     sevenResolution: getSevenResolutionView(remoteState?.sevenResolution, viewerPlayerId),
     trade: getTradeView(remoteState?.trade, viewerPlayerId, remoteState?.activePlayerId),
+    actions: getActionView(remoteState?.actions, viewerPlayerId),
     saves: viewerPlayerId === adminPlayerId ? remoteState?.saves ?? [] : []
   };
 }

@@ -10,6 +10,7 @@ import {
   cancelPendingSpaceportUpgrade,
   cancelTradeOffer,
   confirmPendingSpaceportUpgrade,
+  completeSupernovaShipBattleReveal,
   createTradeOffer,
   createGameState,
   determineFlightSpeed,
@@ -43,6 +44,7 @@ import {
   getSupplyDrawCount,
   getRealUpgradeValue,
   submitEncounterPending,
+  submitSupernovaShipBattleRoll,
   toggleSupernovaMissionFulfilled,
   tradeWithSupply,
   useBoughtFame,
@@ -51,7 +53,8 @@ import {
   startPendingFlightEncounter,
   submitSevenDiscard,
   updateEncounterResourceSelection,
-  updateSevenDiscardSelection
+  updateSevenDiscardSelection,
+  chooseSupernovaShipBattleUpgrade
 } from "../src/game/gameState.js";
 import { getEncounterCardById, getEncounterDeckIds } from "../src/data/encounterCards.js";
 import { isActiveSpecialToken } from "../src/data/numberTokens.js";
@@ -2141,6 +2144,186 @@ assert(supernovaBattleShipGame.board.ships.some((ship) => ship.type === "battleS
 assert(getPlayerInventory(supernovaBattleShipGame, "player-1").battleShip.inUse === 1, "Battleships should use the separate battleship stock.");
 assert(getPlayerInventory(supernovaBattleShipGame, "player-1").transporter.inUse === 0, "Battleships should not consume the transporter stock.");
 
+let colonyBattleGame = createSupernovaBattleMovementState("colonyShip", {
+  attackerUpgrades: { cannon: 1 },
+  attackerFriendshipCards: ["wise-cannon-boost"],
+  defenderUpgrades: { cargo: 1 }
+});
+const colonyBattleStartNode = colonyBattleGame.board.ships.find((ship) => ship.id === "battle-attacker")?.locationId;
+const colonyBattleTargetNode = colonyBattleGame.board.ships.find((ship) => ship.id === "battle-defender")?.locationId;
+const colonyBattleFlightSpeed = colonyBattleGame.flightSpeedTotal;
+colonyBattleGame = moveShip(colonyBattleGame, boardLayout, "battle-attacker", colonyBattleTargetNode);
+assert(colonyBattleGame.supernova?.shipBattle?.stage === "rolling", "A battleship attack should enter a persistent two-player roll state.");
+assert(
+  colonyBattleGame.board.ships.find((ship) => ship.id === "battle-attacker")?.locationId === colonyBattleStartNode,
+  "The attacking battleship should remain at its origin until combat is resolved."
+);
+assert(endCurrentTurn(colonyBattleGame) === colonyBattleGame, "A turn must not end while a Supernova ship battle is pending.");
+const savedColonyBattle = normalizeGameState(JSON.parse(JSON.stringify(colonyBattleGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(savedColonyBattle.supernova?.shipBattle?.stage === "rolling", "A waiting Supernova battle should survive save/load normalization.");
+const foreignBattleRoll = submitSupernovaShipBattleRoll(colonyBattleGame, {
+  playerId: "player-unknown",
+  forcedRoll: { balls: ["red", "yellow"] }
+});
+assert(foreignBattleRoll === colonyBattleGame, "Players outside a Supernova battle must not submit a roll.");
+colonyBattleGame = submitSupernovaShipBattleRoll(colonyBattleGame, {
+  playerId: "player-1",
+  forcedRoll: { balls: ["red", "yellow"] }
+});
+assert(
+  colonyBattleGame.supernova?.shipBattle?.stage === "rolling" &&
+    Boolean(colonyBattleGame.supernova.shipBattle.attackerRoll) &&
+    !colonyBattleGame.supernova.shipBattle.defenderRoll,
+  "The attack must remain pending after only the active player rolls."
+);
+colonyBattleGame = submitSupernovaShipBattleRoll(colonyBattleGame, {
+  playerId: "player-2",
+  forcedRoll: { balls: ["black", "blue"] }
+});
+assert(colonyBattleGame.supernova?.shipBattle?.stage === "reveal", "The battle should enter the board reveal only after both players roll.");
+assert(
+  colonyBattleGame.supernova.shipBattle.attackerStrength === 9,
+  "Combat strength should include ball points, physical cannons, friendship cannon bonuses and owned battleships."
+);
+assert(colonyBattleGame.flightSpeedTotal === colonyBattleFlightSpeed, "Supernova combat rolls must not overwrite normal flight speed.");
+colonyBattleGame = completeSupernovaShipBattleReveal(colonyBattleGame);
+assert(
+  colonyBattleGame.supernova?.shipBattle?.stage === "upgradeLoss" &&
+    colonyBattleGame.supernova.shipBattle.pendingUpgradePlayerId === "player-2",
+  "A colony-ship battle loser with physical upgrades should choose the lost upgrade."
+);
+const savedUpgradeChoiceBattle = normalizeGameState(JSON.parse(JSON.stringify(colonyBattleGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(savedUpgradeChoiceBattle.supernova?.shipBattle?.stage === "upgradeLoss", "A pending battle upgrade choice should survive save/load.");
+assert(
+  chooseSupernovaShipBattleUpgrade(colonyBattleGame, { playerId: "player-1", upgrade: "cargo" }) === colonyBattleGame,
+  "Only the battle loser may choose the physical upgrade to remove."
+);
+colonyBattleGame = chooseSupernovaShipBattleUpgrade(colonyBattleGame, { playerId: "player-2", upgrade: "cargo" });
+assert(!colonyBattleGame.supernova?.shipBattle, "A valid physical upgrade choice should finish the colony-ship battle.");
+assert(colonyBattleGame.players[1].upgrades.cargo === 0, "The selected physical upgrade should be removed from the loser.");
+assert(colonyBattleGame.supernova.blockedShipIds.includes("battle-defender"), "A defeated defending colony ship should be blocked for its next turn.");
+assert(
+  colonyBattleGame.board.ships.find((ship) => ship.id === "battle-attacker")?.locationId === colonyBattleStartNode &&
+    colonyBattleGame.board.ships.find((ship) => ship.id === "battle-defender")?.locationId === colonyBattleTargetNode,
+  "A colony-ship battle must not leave attacker and defender on the same node."
+);
+
+let defenderWinsColonyBattle = createSupernovaBattleMovementState("colonyShip", {
+  attackerUpgrades: { cannon: 1 },
+  defenderUpgrades: { cannon: 3 }
+});
+const defenderWinsTargetNode = defenderWinsColonyBattle.board.ships.find((ship) => ship.id === "battle-defender")?.locationId;
+defenderWinsColonyBattle = moveShip(defenderWinsColonyBattle, boardLayout, "battle-attacker", defenderWinsTargetNode);
+defenderWinsColonyBattle = submitSupernovaShipBattleRoll(defenderWinsColonyBattle, {
+  playerId: "player-1",
+  forcedRoll: { balls: ["black", "blue"] }
+});
+defenderWinsColonyBattle = submitSupernovaShipBattleRoll(defenderWinsColonyBattle, {
+  playerId: "player-2",
+  forcedRoll: { balls: ["red", "yellow"] }
+});
+defenderWinsColonyBattle = completeSupernovaShipBattleReveal(defenderWinsColonyBattle);
+defenderWinsColonyBattle = chooseSupernovaShipBattleUpgrade(defenderWinsColonyBattle, {
+  playerId: "player-1",
+  upgrade: "cannon"
+});
+assert(defenderWinsColonyBattle.players[1].halfMedals === 1, "A defending colony-ship player should gain a half medal after winning.");
+assert(!defenderWinsColonyBattle.supernova.blockedShipIds.includes("battle-defender"), "A winning defending colony ship must not be blocked.");
+
+let tradeBattleGame = createSupernovaBattleMovementState("tradeShip", {
+  attackerUpgrades: { cannon: 2 },
+  defenderUpgrades: { cargo: 2 },
+  attackerResources: { ore: 0, fuel: 0, carbon: 0, food: 0, goods: 0 },
+  defenderResources: { ore: 1, fuel: 1, carbon: 0, food: 0, goods: 0 }
+});
+const tradeBattleTargetNode = tradeBattleGame.board.ships.find((ship) => ship.id === "battle-defender")?.locationId;
+tradeBattleGame = moveShip(tradeBattleGame, boardLayout, "battle-attacker", tradeBattleTargetNode);
+tradeBattleGame = submitSupernovaShipBattleRoll(tradeBattleGame, { playerId: "player-1", forcedRoll: { balls: ["red", "yellow"] } });
+tradeBattleGame = submitSupernovaShipBattleRoll(tradeBattleGame, { playerId: "player-2", forcedRoll: { balls: ["black", "blue"] } });
+tradeBattleGame = completeSupernovaShipBattleReveal(tradeBattleGame);
+assert(!tradeBattleGame.supernova?.shipBattle, "Trade-ship combat should resolve after the board reveal without an upgrade choice.");
+assert(tradeBattleGame.players[1].upgrades.cargo === 2, "Trade-ship combat must not remove a mothership upgrade.");
+assert(getResourceTotal(tradeBattleGame.players[0]) === 2 && getResourceTotal(tradeBattleGame.players[1]) === 0, "The trade-ship battle winner should draw up to two available resources.");
+assert(tradeBattleGame.supernova.blockedShipIds.includes("battle-defender"), "A defeated defending trade ship should be blocked for its next turn.");
+
+let defenderWinsTradeBattle = createSupernovaBattleMovementState("tradeShip", {
+  attackerResources: { ore: 1, fuel: 0, carbon: 0, food: 0, goods: 0 },
+  defenderResources: { ore: 0, fuel: 0, carbon: 0, food: 0, goods: 0 },
+  defenderUpgrades: { cannon: 3 }
+});
+const defenderWinsTradeTargetNode = defenderWinsTradeBattle.board.ships.find((ship) => ship.id === "battle-defender")?.locationId;
+defenderWinsTradeBattle = moveShip(defenderWinsTradeBattle, boardLayout, "battle-attacker", defenderWinsTradeTargetNode);
+defenderWinsTradeBattle = submitSupernovaShipBattleRoll(defenderWinsTradeBattle, {
+  playerId: "player-1",
+  forcedRoll: { balls: ["black", "black"] }
+});
+defenderWinsTradeBattle = submitSupernovaShipBattleRoll(defenderWinsTradeBattle, {
+  playerId: "player-2",
+  forcedRoll: { balls: ["red", "red"] }
+});
+defenderWinsTradeBattle = completeSupernovaShipBattleReveal(defenderWinsTradeBattle);
+assert(defenderWinsTradeBattle.players[1].halfMedals === 1, "A defending trade-ship player should gain a half medal after winning.");
+assert(getResourceTotal(defenderWinsTradeBattle.players[0]) === 0, "A trade-ship winner should draw the loser's only available resource without requiring two cards.");
+assert(getResourceTotal(defenderWinsTradeBattle.players[1]) === 1, "A trade-ship winner should receive every available resource up to the two-card limit.");
+assert(!defenderWinsTradeBattle.supernova.blockedShipIds.includes("battle-defender"), "A winning defending trade ship must not be blocked.");
+
+let tiedBattleShipGame = createSupernovaBattleMovementState("battleShip");
+const tiedBattleTargetNode = tiedBattleShipGame.board.ships.find((ship) => ship.id === "battle-defender")?.locationId;
+tiedBattleShipGame = moveShip(tiedBattleShipGame, boardLayout, "battle-attacker", tiedBattleTargetNode);
+for (let tieRound = 1; tieRound <= 7; tieRound += 1) {
+  tiedBattleShipGame = submitSupernovaShipBattleRoll(tiedBattleShipGame, { playerId: "player-1", forcedRoll: { balls: ["blue", "yellow"] } });
+  tiedBattleShipGame = submitSupernovaShipBattleRoll(tiedBattleShipGame, { playerId: "player-2", forcedRoll: { balls: ["blue", "yellow"] } });
+  assert(!tiedBattleShipGame.supernova.shipBattle.winnerPlayerId, "Equal combat values should remain a tie.");
+  tiedBattleShipGame = completeSupernovaShipBattleReveal(tiedBattleShipGame);
+  assert(
+    tiedBattleShipGame.supernova?.shipBattle?.stage === "rolling" &&
+      tiedBattleShipGame.supernova.shipBattle.round === tieRound + 1,
+    "Every tied battleship round should request another pair of player rolls without a hard retry limit."
+  );
+}
+tiedBattleShipGame = submitSupernovaShipBattleRoll(tiedBattleShipGame, { playerId: "player-1", forcedRoll: { balls: ["red", "yellow"] } });
+tiedBattleShipGame = submitSupernovaShipBattleRoll(tiedBattleShipGame, { playerId: "player-2", forcedRoll: { balls: ["black", "blue"] } });
+tiedBattleShipGame = completeSupernovaShipBattleReveal(tiedBattleShipGame);
+assert(!tiedBattleShipGame.board.ships.some((ship) => ship.id === "battle-defender"), "The losing defending battleship should be removed completely.");
+assert(
+  tiedBattleShipGame.board.ships.find((ship) => ship.id === "battle-attacker")?.locationId === tiedBattleTargetNode,
+  "A winning attacking battleship should occupy the vacated target node."
+);
+assert(tiedBattleShipGame.players[0].halfMedals === 1, "The battleship-combat winner should receive one half medal.");
+assert(
+  new Set(tiedBattleShipGame.board.ships.map((ship) => ship.locationId)).size === tiedBattleShipGame.board.ships.length,
+  "Resolved battleship combat must not leave two ships on the same node."
+);
+
+let defenderWinsBattleShipGame = createSupernovaBattleMovementState("battleShip", {
+  defenderUpgrades: { cannon: 3 }
+});
+const defenderWinsBattleTargetNode = defenderWinsBattleShipGame.board.ships.find((ship) => ship.id === "battle-defender")?.locationId;
+defenderWinsBattleShipGame = moveShip(defenderWinsBattleShipGame, boardLayout, "battle-attacker", defenderWinsBattleTargetNode);
+defenderWinsBattleShipGame = submitSupernovaShipBattleRoll(defenderWinsBattleShipGame, {
+  playerId: "player-1",
+  forcedRoll: { balls: ["black", "black"] }
+});
+defenderWinsBattleShipGame = submitSupernovaShipBattleRoll(defenderWinsBattleShipGame, {
+  playerId: "player-2",
+  forcedRoll: { balls: ["red", "red"] }
+});
+defenderWinsBattleShipGame = completeSupernovaShipBattleReveal(defenderWinsBattleShipGame);
+assert(!defenderWinsBattleShipGame.board.ships.some((ship) => ship.id === "battle-attacker"), "A losing attacking battleship should be removed completely.");
+assert(
+  defenderWinsBattleShipGame.board.ships.find((ship) => ship.id === "battle-defender")?.locationId === defenderWinsBattleTargetNode,
+  "A winning defending battleship should remain on its original target node."
+);
+assert(defenderWinsBattleShipGame.players[1].halfMedals === 1, "A defending battleship winner should receive one half medal.");
+
 let supernovaMissionWinGame = createGameState({
   language: "de",
   playerCount: 2,
@@ -2236,6 +2419,56 @@ function findFreeLaunchPoint(gameState, playerId) {
 
   return (boardLayout.spaceportLaunchPoints ?? [])
     .find((point) => spaceportLocations.has(point.spaceportLocationId) && !occupied.has(point.id));
+}
+
+function createSupernovaBattleMovementState(defenderShipType, options = {}) {
+  const baseGame = createGameState({
+    language: "de",
+    playerCount: 2,
+    boardLayout,
+    gameVariant: gameVariants.supernova
+  });
+  const path = findPlainMovementTriplet(baseGame);
+  if (!path) throw new Error("Supernova battle tests require two connected open space points.");
+  const ships = [
+    {
+      id: "battle-attacker",
+      ownerPlayerId: "player-1",
+      type: "battleShip",
+      variant: 1,
+      locationId: path.start,
+      status: "active"
+    },
+    {
+      id: "battle-defender",
+      ownerPlayerId: "player-2",
+      type: defenderShipType,
+      variant: 1,
+      locationId: path.middle,
+      status: "active"
+    }
+  ];
+
+  return createMovementTestState(baseGame, {
+    ships,
+    remainingMovementByShipId: {
+      "battle-attacker": 5,
+      "battle-defender": 5
+    },
+    playerMutator: (player, index) => index === 0
+      ? {
+        ...player,
+        resources: { ...player.resources, ...(options.attackerResources ?? {}) },
+        upgrades: { ...player.upgrades, ...(options.attackerUpgrades ?? {}) },
+        friendshipCards: options.attackerFriendshipCards ?? player.friendshipCards
+      }
+      : {
+        ...player,
+        resources: { ...player.resources, ...(options.defenderResources ?? {}) },
+        upgrades: { ...player.upgrades, ...(options.defenderUpgrades ?? {}) },
+        friendshipCards: options.defenderFriendshipCards ?? player.friendshipCards
+      }
+  });
 }
 
 function createMovementTestState(baseGame, {

@@ -2265,6 +2265,84 @@ h1 {
   padding: 1.1rem;
 }
 
+.supernova-battle-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 11;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.76);
+  pointer-events: none;
+}
+
+.supernova-battle-panel {
+  width: min(92vw, 64rem);
+  padding: 1.1rem;
+  border: 1px solid rgba(125, 211, 252, 0.56);
+  background: rgba(8, 17, 36, 0.95);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.58), inset 0 0 36px rgba(56, 189, 248, 0.08);
+  text-align: center;
+}
+
+.supernova-battle-panel h2 {
+  margin: 0 0 0.8rem;
+}
+
+.supernova-battle-player-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.supernova-battle-player {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: center;
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.supernova-battle-role {
+  color: #7dd3fc;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.supernova-battle-mothership {
+  position: relative;
+  width: min(100%, 24rem);
+}
+
+.supernova-battle-overlay--reveal .supernova-battle-mothership {
+  animation: supernova-battle-shake 0.54s ease-in-out 3;
+}
+
+.supernova-battle-ball-pocket {
+  opacity: 1;
+}
+
+.supernova-battle-value,
+.supernova-battle-status {
+  color: #e0f2fe;
+  font-weight: 700;
+}
+
+@keyframes supernova-battle-shake {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(-5px, 2px) rotate(-0.7deg); }
+  50% { transform: translate(5px, -2px) rotate(0.7deg); }
+  75% { transform: translate(-3px, -1px) rotate(-0.35deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .supernova-battle-overlay--reveal .supernova-battle-mothership {
+    animation: none;
+  }
+}
+
 .encounter-prompt,
 .encounter-step-result {
   white-space: pre-line;

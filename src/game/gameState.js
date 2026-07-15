@@ -1111,7 +1111,12 @@ export function finishEncounter(gameState) {
 
 export function moveShip(gameState, boardLayout, shipId, targetNodeId, options = {}) {
   if (isGameOverState(gameState)) return gameState;
-  if (gameState.phase !== "flight" || !gameState.hasRolledFlightSpeed || gameState.activeEncounter) return gameState;
+  if (
+    gameState.phase !== "flight" ||
+    !gameState.hasRolledFlightSpeed ||
+    gameState.activeEncounter ||
+    gameState.supernova?.shipBattle
+  ) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const ships = normalizeShips(gameState.board?.ships);
@@ -1132,6 +1137,10 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId, options =
     !destinationState?.validDestination
   ) {
     return gameState;
+  }
+
+  if (defenderShip && ship.type === "battleShip") {
+    return startSupernovaShipBattle(gameState, ship, defenderShip, pathCost, remainingMovement - pathCost);
   }
 
   const updatedShip = {
@@ -1166,102 +1175,262 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId, options =
       },
     }
   });
-  if (defenderShip && ship.type === "battleShip") {
-    return resolveSupernovaShipBattle(movedState, boardLayout, shipId, defenderShip.id);
-  }
   return options.deferExploration ? movedState : completeShipExploration(movedState, boardLayout, shipId);
 }
 
-function resolveSupernovaShipBattle(gameState, boardLayout, attackerShipId, defenderShipId) {
-  if (!isSupernovaGame(gameState)) return gameState;
-  const ships = normalizeShips(gameState.board?.ships);
-  const attackerShip = ships.find((ship) => ship.id === attackerShipId);
-  const defenderShip = ships.find((ship) => ship.id === defenderShipId);
-  const attacker = getPlayerById(gameState, attackerShip?.ownerPlayerId);
-  const defender = getPlayerById(gameState, defenderShip?.ownerPlayerId);
-  if (!attackerShip || !defenderShip || !attacker || !defender) return gameState;
+function startSupernovaShipBattle(gameState, attackerShip, defenderShip, pathCost, remainingMovement) {
+  if (!isSupernovaGame(gameState) || gameState.supernova?.shipBattle) return gameState;
+  const attacker = getPlayerById(gameState, attackerShip.ownerPlayerId);
+  const defender = getPlayerById(gameState, defenderShip.ownerPlayerId);
+  if (!attacker || !defender || attacker.id === defender.id) return gameState;
 
-  let attackerRoll = createCombatRoll();
-  let defenderRoll = createCombatRoll();
-  let attackerStrength = attackerRoll.total + getPlayerCombatBonus(gameState, attacker.id);
-  let defenderStrength = defenderRoll.total + getPlayerCombatBonus(gameState, defender.id);
-  let rerolls = 0;
-  while (attackerStrength === defenderStrength && rerolls < 6) {
-    attackerRoll = createCombatRoll();
-    defenderRoll = createCombatRoll();
-    attackerStrength = attackerRoll.total + getPlayerCombatBonus(gameState, attacker.id);
-    defenderStrength = defenderRoll.total + getPlayerCombatBonus(gameState, defender.id);
-    rerolls += 1;
+  return updateGameState(gameState, {
+    remainingMovementByShipId: {
+      ...(gameState.remainingMovementByShipId ?? {}),
+      [attackerShip.id]: Math.max(0, remainingMovement)
+    },
+    supernova: {
+      ...gameState.supernova,
+      shipBattle: {
+        id: createId("supernova-ship-battle"),
+        stage: "rolling",
+        round: 1,
+        attackerPlayerId: attacker.id,
+        defenderPlayerId: defender.id,
+        attackerShipId: attackerShip.id,
+        defenderShipId: defenderShip.id,
+        defenderShipType: defenderShip.type,
+        attackerOriginNodeId: attackerShip.locationId,
+        targetNodeId: defenderShip.locationId,
+        pathCost,
+        attackerRoll: null,
+        defenderRoll: null,
+        attackerStrength: null,
+        defenderStrength: null,
+        winnerPlayerId: null,
+        loserPlayerId: null,
+        pendingUpgradePlayerId: null,
+        removableUpgradeIds: []
+      }
+    },
+    board: {
+      ...gameState.board,
+      selectedElement: { type: "ship", id: attackerShip.id }
+    },
+    logEntry: {
+      type: "combat",
+      messageKey: "logSupernovaBattleStarted",
+      messageParams: {
+        attacker: attacker.name,
+        defender: defender.name
+      }
+    }
+  });
+}
+
+export function submitSupernovaShipBattleRoll(gameState, { playerId, forcedRoll = null } = {}) {
+  const battle = gameState.supernova?.shipBattle;
+  if (!isSupernovaGame(gameState) || battle?.stage !== "rolling") return gameState;
+  const isAttacker = playerId === battle.attackerPlayerId;
+  const isDefender = playerId === battle.defenderPlayerId;
+  if (!isAttacker && !isDefender) return gameState;
+
+  const rollKey = isAttacker ? "attackerRoll" : "defenderRoll";
+  if (battle[rollKey]) return gameState;
+  const nextBattle = {
+    ...battle,
+    [rollKey]: createCombatRoll(forcedRoll)
+  };
+  if (!nextBattle.attackerRoll || !nextBattle.defenderRoll) {
+    return updateGameState(gameState, {
+      supernova: {
+        ...gameState.supernova,
+        shipBattle: nextBattle
+      }
+    });
   }
-  const attackerWins = attackerStrength >= defenderStrength;
-  const winner = attackerWins ? attacker : defender;
-  const loser = attackerWins ? defender : attacker;
-  const loserShip = attackerWins ? defenderShip : attackerShip;
-  const defenderWins = !attackerWins;
+
+  const attackerStrength = nextBattle.attackerRoll.total + getPlayerCombatBonus(gameState, nextBattle.attackerPlayerId);
+  const defenderStrength = nextBattle.defenderRoll.total + getPlayerCombatBonus(gameState, nextBattle.defenderPlayerId);
+  const winnerPlayerId = attackerStrength === defenderStrength
+    ? null
+    : attackerStrength > defenderStrength
+      ? nextBattle.attackerPlayerId
+      : nextBattle.defenderPlayerId;
+
+  return updateGameState(gameState, {
+    supernova: {
+      ...gameState.supernova,
+      shipBattle: {
+        ...nextBattle,
+        stage: "reveal",
+        attackerStrength,
+        defenderStrength,
+        winnerPlayerId,
+        loserPlayerId: winnerPlayerId
+          ? (winnerPlayerId === nextBattle.attackerPlayerId ? nextBattle.defenderPlayerId : nextBattle.attackerPlayerId)
+          : null
+      }
+    }
+  });
+}
+
+export function completeSupernovaShipBattleReveal(gameState) {
+  const battle = gameState.supernova?.shipBattle;
+  if (!isSupernovaGame(gameState) || battle?.stage !== "reveal") return gameState;
+
+  if (!battle.winnerPlayerId) {
+    return updateGameState(gameState, {
+      supernova: {
+        ...gameState.supernova,
+        shipBattle: {
+          ...battle,
+          stage: "rolling",
+          round: (battle.round ?? 1) + 1,
+          attackerRoll: null,
+          defenderRoll: null,
+          attackerStrength: null,
+          defenderStrength: null,
+          loserPlayerId: null
+        }
+      },
+      logEntry: {
+        type: "combat",
+        messageKey: "logSupernovaBattleTie",
+        messageParams: {
+          attack: battle.attackerStrength,
+          defense: battle.defenderStrength
+        }
+      }
+    });
+  }
+
+  if (battle.defenderShipType === "colonyShip") {
+    const loser = getPlayerById(gameState, battle.loserPlayerId);
+    const removableUpgradeIds = upgradeDefinitions
+      .filter((upgrade) => getRealUpgradeValue(loser, upgrade.id) > 0)
+      .map((upgrade) => upgrade.id);
+    if (removableUpgradeIds.length > 0) {
+      return updateGameState(gameState, {
+        supernova: {
+          ...gameState.supernova,
+          shipBattle: {
+            ...battle,
+            stage: "upgradeLoss",
+            pendingUpgradePlayerId: loser.id,
+            removableUpgradeIds
+          }
+        }
+      });
+    }
+  }
+
+  return finalizeSupernovaShipBattle(gameState);
+}
+
+export function chooseSupernovaShipBattleUpgrade(gameState, { playerId, upgrade } = {}) {
+  const battle = gameState.supernova?.shipBattle;
+  if (
+    !isSupernovaGame(gameState) ||
+    battle?.stage !== "upgradeLoss" ||
+    battle.pendingUpgradePlayerId !== playerId ||
+    !battle.removableUpgradeIds?.includes(upgrade)
+  ) return gameState;
+  const player = getPlayerById(gameState, playerId);
+  if (getRealUpgradeValue(player, upgrade) <= 0) return gameState;
+
+  const players = updatePlayerById(gameState.players, playerId, (candidate) => withUpgradeDelta(candidate, upgrade, -1));
+  return finalizeSupernovaShipBattle(gameState, players, upgrade);
+}
+
+function finalizeSupernovaShipBattle(gameState, playersOverride = gameState.players, lostUpgrade = null) {
+  const battle = gameState.supernova?.shipBattle;
+  if (!battle?.winnerPlayerId || !battle.loserPlayerId) return gameState;
+  const ships = normalizeShips(gameState.board?.ships);
+  const attackerShip = ships.find((ship) => ship.id === battle.attackerShipId);
+  const defenderShip = ships.find((ship) => ship.id === battle.defenderShipId);
+  const attacker = getPlayerById(gameState, battle.attackerPlayerId);
+  const defender = getPlayerById(gameState, battle.defenderPlayerId);
+  const winner = getPlayerById({ ...gameState, players: playersOverride }, battle.winnerPlayerId);
+  const attackerWins = battle.winnerPlayerId === battle.attackerPlayerId;
+  if (!attackerShip || !defenderShip || !attacker || !defender || !winner) return gameState;
+
   let nextShips = ships;
-  let nextPlayers = gameState.players;
+  let nextPlayers = playersOverride;
   const blockedShipIds = new Set(gameState.supernova?.blockedShipIds ?? []);
   const remainingMovementByShipId = { ...(gameState.remainingMovementByShipId ?? {}) };
 
-  if (defenderShip.type === "battleShip") {
-    nextShips = nextShips.filter((ship) => ship.id !== loserShip.id);
-    delete remainingMovementByShipId[loserShip.id];
+  if (battle.defenderShipType === "battleShip") {
+    const loserShipId = attackerWins ? defenderShip.id : attackerShip.id;
+    nextShips = nextShips.filter((ship) => ship.id !== loserShipId);
+    delete remainingMovementByShipId[loserShipId];
+    if (attackerWins) {
+      nextShips = nextShips.map((ship) => ship.id === attackerShip.id
+        ? { ...ship, locationId: battle.targetNodeId, status: "active" }
+        : ship);
+    }
     nextPlayers = addHalfMedalToPlayer(nextPlayers, winner.id, 1);
   } else {
-    nextPlayers = removeFirstAvailableUpgrade(nextPlayers, loser.id);
-    if (defenderWins) {
+    if (!attackerWins) {
       nextPlayers = addHalfMedalToPlayer(nextPlayers, defender.id, 1);
     } else {
       blockedShipIds.add(defenderShip.id);
       remainingMovementByShipId[defenderShip.id] = 0;
     }
-    if (defenderShip.type === "tradeShip") {
-      const transfer = drawRandomResourcesBetweenPlayers(nextPlayers, loser.id, winner.id, 2);
-      nextPlayers = transfer.players;
+    if (battle.defenderShipType === "tradeShip") {
+      nextPlayers = drawRandomResourcesBetweenPlayers(nextPlayers, battle.loserPlayerId, battle.winnerPlayerId, 2).players;
     }
   }
 
   nextPlayers = syncPlayersWithBoardAssets(nextPlayers, gameState.board?.structures ?? [], nextShips);
+  const selectedShipId = attackerWins && battle.defenderShipType === "battleShip"
+    ? attackerShip.id
+    : attackerWins
+      ? attackerShip.id
+      : defenderShip.id;
+  const logEntries = [{
+    type: "combat",
+    messageKey: "logSupernovaBattleResolved",
+    messageParams: {
+      attacker: attacker.name,
+      defender: defender.name,
+      winner: winner.name,
+      attack: battle.attackerStrength,
+      defense: battle.defenderStrength
+    }
+  }];
+  if (lostUpgrade) {
+    logEntries.push({
+      type: "combat",
+      messageKey: "logSupernovaBattleUpgradeLost",
+      messageParams: {
+        player: getPlayerById(gameState, battle.loserPlayerId)?.name ?? "",
+        upgrade: lostUpgrade
+      }
+    });
+  }
 
   return updateGameState(gameState, {
     players: nextPlayers,
     remainingMovementByShipId,
     supernova: {
       ...gameState.supernova,
-      blockedShipIds: [...blockedShipIds]
+      blockedShipIds: [...blockedShipIds],
+      shipBattle: null
     },
     board: {
       ...gameState.board,
-      selectedElement: { type: "ship", id: attackerWins ? attackerShip.id : defenderShip.id },
+      selectedElement: nextShips.some((ship) => ship.id === selectedShipId)
+        ? { type: "ship", id: selectedShipId }
+        : null,
       ships: nextShips
     },
-    logEntries: [
-      {
-        type: "combat",
-        messageKey: "logSupernovaBattleResolved",
-        messageParams: {
-          attacker: attacker.name,
-          defender: defender.name,
-          winner: winner.name,
-          attack: attackerStrength,
-          defense: defenderStrength
-        }
-      }
-    ]
+    logEntries
   });
 }
 
 function addHalfMedalToPlayer(players, playerId, amount = 1) {
   return updatePlayerById(players, playerId, (player) => withHalfMedalDelta(player, amount));
-}
-
-function removeFirstAvailableUpgrade(players, playerId) {
-  return updatePlayerById(players, playerId, (player) => {
-    const upgrades = normalizeUpgrades(player.upgrades);
-    const removableUpgrade = ["cannon", "drive", "cargo"].find((upgrade) => (upgrades[upgrade] ?? 0) > 0);
-    if (!removableUpgrade) return player;
-    return withUpgradeDelta(player, removableUpgrade, -1);
-  });
 }
 
 function drawRandomResourcesBetweenPlayers(players, fromPlayerId, toPlayerId, amount = 1) {
@@ -2497,6 +2666,7 @@ export function cancelPendingSpaceportUpgrade(gameState) {
 export function endCurrentTurn(gameState) {
   if (isGameOverState(gameState)) return gameState;
   if (gameState.board?.pendingFriendshipCardSelection) return gameState;
+  if (gameState.supernova?.shipBattle) return gameState;
   const endingPlayer = gameState.players?.[gameState.currentPlayerIndex];
   const nextPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.playerCount;
   const nextTurnNumber = nextPlayerIndex === 0 ? gameState.turnNumber + 1 : gameState.turnNumber;
@@ -2638,7 +2808,7 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     sevenResolution: normalizeSevenResolution(gameState.sevenResolution, normalizedPlayers),
     placement: normalizePlacementState(gameState.placement, normalizedPlayerCount),
     supernova: normalizedGameVariant === gameVariants.supernova
-      ? normalizeSupernovaState(gameState.supernova, normalizedPlayers)
+      ? normalizeSupernovaState(gameState.supernova, normalizedPlayers, normalizedShips)
       : null,
     board: {
       ...fallback.board,
@@ -2825,7 +2995,8 @@ function createInitialSupernovaState(players) {
     factories: [],
     factoryMajorityCards: Object.fromEntries(supernovaFactoryVictoryCards.map((card) => [card.id, null])),
     pendingFactoryPlacement: null,
-    blockedShipIds: []
+    blockedShipIds: [],
+    shipBattle: null
   };
 }
 
@@ -2850,7 +3021,7 @@ function drawInitialSupernovaMissions(playerIndex = 0) {
   return selected;
 }
 
-function normalizeSupernovaState(supernova, players = []) {
+function normalizeSupernovaState(supernova, players = [], ships = []) {
   const fallback = createInitialSupernovaState(players);
   if (!supernova || typeof supernova !== "object") return fallback;
   const playerIds = new Set(players.map((player) => player.id));
@@ -2886,6 +3057,50 @@ function normalizeSupernovaState(supernova, players = []) {
     pendingFactoryPlacement: normalizePendingFactoryPlacement(supernova.pendingFactoryPlacement, playerIds, validFactoryTypes),
     blockedShipIds: Array.isArray(supernova.blockedShipIds)
       ? supernova.blockedShipIds.filter((shipId) => typeof shipId === "string")
+      : [],
+    shipBattle: normalizeSupernovaShipBattle(supernova.shipBattle, players, ships)
+  };
+}
+
+function normalizeSupernovaShipBattle(shipBattle, players = [], ships = []) {
+  if (!shipBattle || typeof shipBattle !== "object") return null;
+  const playerIds = new Set(players.map((player) => player.id));
+  const shipIds = new Set(normalizeShips(ships).map((ship) => ship.id));
+  if (
+    !playerIds.has(shipBattle.attackerPlayerId) ||
+    !playerIds.has(shipBattle.defenderPlayerId) ||
+    !shipIds.has(shipBattle.attackerShipId) ||
+    !shipIds.has(shipBattle.defenderShipId)
+  ) return null;
+
+  const stage = ["rolling", "reveal", "upgradeLoss"].includes(shipBattle.stage)
+    ? shipBattle.stage
+    : "rolling";
+  const attackerRoll = normalizeEncounterRollResult(shipBattle.attackerRoll);
+  const defenderRoll = normalizeEncounterRollResult(shipBattle.defenderRoll);
+  return {
+    id: typeof shipBattle.id === "string" ? shipBattle.id : createId("supernova-ship-battle"),
+    stage,
+    round: Number.isInteger(shipBattle.round) ? Math.max(1, shipBattle.round) : 1,
+    attackerPlayerId: shipBattle.attackerPlayerId,
+    defenderPlayerId: shipBattle.defenderPlayerId,
+    attackerShipId: shipBattle.attackerShipId,
+    defenderShipId: shipBattle.defenderShipId,
+    defenderShipType: ["colonyShip", "tradeShip", "battleShip"].includes(shipBattle.defenderShipType)
+      ? shipBattle.defenderShipType
+      : "colonyShip",
+    attackerOriginNodeId: typeof shipBattle.attackerOriginNodeId === "string" ? shipBattle.attackerOriginNodeId : null,
+    targetNodeId: typeof shipBattle.targetNodeId === "string" ? shipBattle.targetNodeId : null,
+    pathCost: Number.isInteger(shipBattle.pathCost) ? Math.max(0, shipBattle.pathCost) : 0,
+    attackerRoll,
+    defenderRoll,
+    attackerStrength: Number.isInteger(shipBattle.attackerStrength) ? shipBattle.attackerStrength : null,
+    defenderStrength: Number.isInteger(shipBattle.defenderStrength) ? shipBattle.defenderStrength : null,
+    winnerPlayerId: playerIds.has(shipBattle.winnerPlayerId) ? shipBattle.winnerPlayerId : null,
+    loserPlayerId: playerIds.has(shipBattle.loserPlayerId) ? shipBattle.loserPlayerId : null,
+    pendingUpgradePlayerId: playerIds.has(shipBattle.pendingUpgradePlayerId) ? shipBattle.pendingUpgradePlayerId : null,
+    removableUpgradeIds: Array.isArray(shipBattle.removableUpgradeIds)
+      ? shipBattle.removableUpgradeIds.filter(isValidUpgradeId)
       : []
   };
 }
@@ -2901,7 +3116,7 @@ function normalizePendingFactoryPlacement(pendingFactoryPlacement, playerIds, va
 
 function recalculateSupernovaState(gameState) {
   if (!isSupernovaGame(gameState)) return null;
-  const supernova = normalizeSupernovaState(gameState.supernova, gameState.players ?? []);
+  const supernova = normalizeSupernovaState(gameState.supernova, gameState.players ?? [], gameState.board?.ships ?? []);
   return {
     ...supernova,
     factoryMajorityCards: calculateFactoryMajorityCards(supernova.factories, gameState.players ?? [])

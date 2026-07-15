@@ -56,6 +56,7 @@ import {
   cancelTradeOffer,
   confirmPendingTradeStationPlacement,
   confirmPendingSpaceportUpgrade,
+  completeSupernovaShipBattleReveal,
   completeShipExploration,
   createTradeOffer,
   createGameState,
@@ -89,6 +90,7 @@ import {
   resolvePendingFriendshipAction,
   resolveEncounterChoice,
   submitEncounterPending,
+  submitSupernovaShipBattleRoll,
   resolveSevenSteal,
   rollProduction,
   rollPlacementStart,
@@ -102,6 +104,7 @@ import {
   tradeWithSupply,
   updateSevenDiscardSelection,
   updateEncounterResourceSelection,
+  chooseSupernovaShipBattleUpgrade,
   useBoughtFame,
   useRichHelpsPoor,
 } from "./game/gameState.js";
@@ -148,6 +151,7 @@ const initialLanguage = loadLanguage();
 const startupAutosaveReset = consumeAutosaveResetUrlParam();
 const initialGame = loadInitialGameState(initialLanguage);
 const DRIVE_COMPARISON_PREVIEW_MS = 2000;
+const SUPERNOVA_BATTLE_REVEAL_MS = 3200;
 
 const state = {
   language: initialGame.language,
@@ -176,7 +180,8 @@ const state = {
   loadingProgress: 0,
   driveComparisonPreviewKey: null,
   driveComparisonPreviewStartedAt: 0,
-  singleMothershipRollAnimationKey: null
+  singleMothershipRollAnimationKey: null,
+  supernovaBattleRevealKey: null
 };
 
 const remoteHost = {
@@ -2356,6 +2361,7 @@ function renderBoardShell() {
     renderBoardEventLog(),
     state.controllerMode ? document.createDocumentFragment() : renderPlayerHudButtons(),
     renderPlayerHudModal(),
+    renderSupernovaShipBattleModal(),
     renderEncounterModal(),
     renderGameOverOverlay(),
     controls,
@@ -2506,6 +2512,78 @@ function renderGameOverOverlay() {
   panel.append(content);
   overlay.append(panel);
   return overlay;
+}
+
+function renderSupernovaShipBattleModal() {
+  const battle = state.gameState?.supernova?.shipBattle;
+  if (state.view !== "board" || !battle || battle.stage === "rolling") {
+    return document.createDocumentFragment();
+  }
+
+  const overlay = document.createElement("div");
+  overlay.className = `supernova-battle-overlay supernova-battle-overlay--${battle.stage}`;
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+
+  const panel = document.createElement("section");
+  panel.className = "supernova-battle-panel";
+  const title = document.createElement("h2");
+  title.textContent = t("supernovaBattleTitle");
+  panel.append(title);
+
+  const players = document.createElement("div");
+  players.className = "supernova-battle-player-grid";
+  players.append(
+    renderSupernovaBattlePlayer(battle.attackerPlayerId, battle.attackerRoll, battle.attackerStrength, t("supernovaBattleAttacker")),
+    renderSupernovaBattlePlayer(battle.defenderPlayerId, battle.defenderRoll, battle.defenderStrength, t("supernovaBattleDefender"))
+  );
+  panel.append(players);
+
+  const status = document.createElement("p");
+  status.className = "supernova-battle-status";
+  if (battle.stage === "upgradeLoss") {
+    const pendingPlayer = state.gameState.players.find((player) => player.id === battle.pendingUpgradePlayerId);
+    status.textContent = t("supernovaBattleWaitingForUpgrade")
+      .replace("{player}", pendingPlayer?.name ?? "");
+  } else if (!battle.winnerPlayerId) {
+    status.textContent = t("supernovaBattleTie");
+  } else {
+    const winner = state.gameState.players.find((player) => player.id === battle.winnerPlayerId);
+    status.textContent = t("supernovaBattleWinner")
+      .replace("{player}", winner?.name ?? "")
+      .replace("{attack}", battle.attackerStrength ?? "-")
+      .replace("{defense}", battle.defenderStrength ?? "-");
+  }
+  panel.append(status);
+  overlay.append(panel);
+  return overlay;
+}
+
+function renderSupernovaBattlePlayer(playerId, roll, strength, roleLabel) {
+  const player = state.gameState?.players?.find((candidate) => candidate.id === playerId);
+  const card = document.createElement("article");
+  card.className = "supernova-battle-player";
+  const role = document.createElement("span");
+  role.className = "supernova-battle-role";
+  role.textContent = roleLabel;
+  const name = document.createElement("strong");
+  name.textContent = player?.name ?? "";
+  const visual = player ? renderMothershipUpgradeVisual(player) : document.createElement("div");
+  visual.classList.add("supernova-battle-mothership");
+  if (roll?.balls?.length === 2) {
+    const pocket = document.createElement("div");
+    pocket.className = "mothership-speed-ball-pocket supernova-battle-ball-pocket";
+    applyMothershipSpeedSlotStyle(pocket);
+    roll.balls.forEach((ball, index) => pocket.append(renderMothershipSpeedBall(ball, index, 1)));
+    visual.append(pocket);
+  }
+  const value = document.createElement("span");
+  value.className = "supernova-battle-value";
+  value.textContent = strength === null || strength === undefined
+    ? (roll ? t("supernovaBattleRollReady") : t("supernovaBattleRollPending"))
+    : t("supernovaBattleStrength").replace("{value}", strength);
+  card.append(role, name, visual, value);
+  return card;
 }
 
 function renderEncounterModal() {
@@ -5021,6 +5099,38 @@ function ensurePendingSingleMothershipRollAnimation() {
     }
   });
   if (!queued) state.singleMothershipRollAnimationKey = null;
+}
+
+function ensureSupernovaBattleReveal() {
+  const battle = state.gameState?.supernova?.shipBattle;
+  if (state.view !== "board" || battle?.stage !== "reveal") {
+    state.supernovaBattleRevealKey = null;
+    return;
+  }
+  const key = [
+    battle.id ?? "",
+    battle.round ?? 1,
+    battle.attackerRoll?.balls?.join("-") ?? "",
+    battle.defenderRoll?.balls?.join("-") ?? ""
+  ].join(":");
+  if (state.supernovaBattleRevealKey === key) return;
+  state.supernovaBattleRevealKey = key;
+
+  window.setTimeout(() => {
+    const currentBattle = state.gameState?.supernova?.shipBattle;
+    const currentKey = currentBattle?.stage === "reveal"
+      ? [
+        currentBattle.id ?? "",
+        currentBattle.round ?? 1,
+        currentBattle.attackerRoll?.balls?.join("-") ?? "",
+        currentBattle.defenderRoll?.balls?.join("-") ?? ""
+      ].join(":")
+      : "";
+    if (currentKey !== key) return;
+    state.gameState = completeSupernovaShipBattleReveal(state.gameState);
+    saveCurrentGameState();
+    render();
+  }, SUPERNOVA_BATTLE_REVEAL_MS);
 }
 
 function queueMothershipSpeedAnimation(player, flightRoll, options = {}) {
@@ -7999,9 +8109,35 @@ function getRemoteControllerState() {
     players: (state.gameState?.players ?? []).map((player) => getRemotePlayerState(player)),
     trade: getRemoteTradeState(),
     encounter: getRemoteEncounterStateForController(),
+    supernovaBattle: getRemoteSupernovaBattleState(),
     board: getRemoteBoardState(),
     saves: getRemoteSaveList(),
     actions: getRemoteControllerActions()
+  };
+}
+
+function getRemoteSupernovaBattleState() {
+  const battle = state.gameState?.supernova?.shipBattle;
+  if (!battle) return null;
+  const attacker = state.gameState.players.find((player) => player.id === battle.attackerPlayerId);
+  const defender = state.gameState.players.find((player) => player.id === battle.defenderPlayerId);
+  return {
+    active: true,
+    id: battle.id,
+    stage: battle.stage,
+    round: battle.round,
+    attackerPlayerId: battle.attackerPlayerId,
+    attackerName: attacker?.name ?? "",
+    defenderPlayerId: battle.defenderPlayerId,
+    defenderName: defender?.name ?? "",
+    defenderShipType: battle.defenderShipType,
+    attackerRolled: Boolean(battle.attackerRoll),
+    defenderRolled: Boolean(battle.defenderRoll),
+    attackerStrength: battle.attackerStrength,
+    defenderStrength: battle.defenderStrength,
+    winnerPlayerId: battle.winnerPlayerId,
+    pendingUpgradePlayerId: battle.pendingUpgradePlayerId,
+    removableUpgradeIds: battle.removableUpgradeIds ?? []
   };
 }
 
@@ -8275,6 +8411,7 @@ function getRemoteBoardState() {
 }
 
 function getRemoteBoardActionPlayerId() {
+  if (state.gameState?.supernova?.shipBattle) return null;
   const pendingEncounterStep = state.gameState?.activeEncounter?.pendingStep;
   if (
     state.encounterBoardSelectionActive &&
@@ -8325,7 +8462,8 @@ function getMovableShipsForActivePlayer() {
     !activePlayer ||
     state.gameState?.phase !== "flight" ||
     !state.gameState.hasRolledFlightSpeed ||
-    state.gameState.activeEncounter
+    state.gameState.activeEncounter ||
+    state.gameState.supernova?.shipBattle
   ) {
     return [];
   }
@@ -8409,6 +8547,38 @@ function getRemoteControllerActions() {
     createRemoteAction("admin.tvReload", "TV neu laden", {}, { adminOnly: true }),
     createRemoteAction("admin.tvHardReload", "Hard Reload / Cache löschen", {}, { adminOnly: true })
   );
+
+  const shipBattle = state.gameState.supernova?.shipBattle;
+  if (shipBattle) {
+    if (shipBattle.stage === "rolling") {
+      if (!shipBattle.attackerRoll) {
+        actions.push(createRemoteAction(
+          "supernova.battle.roll",
+          t("encounterMothershipRollButton"),
+          {},
+          { forPlayerId: shipBattle.attackerPlayerId }
+        ));
+      }
+      if (!shipBattle.defenderRoll) {
+        actions.push(createRemoteAction(
+          "supernova.battle.roll",
+          t("encounterMothershipRollButton"),
+          {},
+          { forPlayerId: shipBattle.defenderPlayerId }
+        ));
+      }
+    } else if (shipBattle.stage === "upgradeLoss") {
+      for (const upgradeId of shipBattle.removableUpgradeIds ?? []) {
+        actions.push(createRemoteAction(
+          "supernova.battle.chooseUpgrade",
+          `${t("chooseUpgrade")} · ${getUpgradeLabel(upgradeId)}`,
+          { upgrade: upgradeId },
+          { forPlayerId: shipBattle.pendingUpgradePlayerId }
+        ));
+      }
+    }
+    return actions;
+  }
 
   if (state.gameState.activeEncounter) {
     for (const choice of getRemoteEncounterStateForController()?.choices ?? []) {
@@ -8710,6 +8880,27 @@ function executeRemoteAction(actionId, payload = {}) {
         render();
       }
       break;
+    case "supernova.battle.roll": {
+      const nextGameState = submitSupernovaShipBattleRoll(state.gameState, { playerId });
+      if (nextGameState !== state.gameState) {
+        state.gameState = nextGameState;
+        saveCurrentGameState();
+        render();
+      }
+      break;
+    }
+    case "supernova.battle.chooseUpgrade": {
+      const nextGameState = chooseSupernovaShipBattleUpgrade(state.gameState, {
+        playerId,
+        upgrade: payload.upgrade
+      });
+      if (nextGameState !== state.gameState) {
+        state.gameState = nextGameState;
+        saveCurrentGameState();
+        render();
+      }
+      break;
+    }
     case "upgrade.buy":
       if (isRemoteActionPlayerActive(playerId) && payload.upgradeId) buyActivePlayerUpgrade(payload.upgradeId);
       break;
@@ -8857,6 +9048,7 @@ function render() {
   app.classList.toggle("app-shell--main-menu", state.view === "menu");
   app.classList.toggle("app-shell--shell", ["controllers", "loading", "playerSetup", "players"].includes(state.view));
   ensurePendingSingleMothershipRollAnimation();
+  ensureSupernovaBattleReveal();
 
   const views = {
     board: renderBoardShell,
