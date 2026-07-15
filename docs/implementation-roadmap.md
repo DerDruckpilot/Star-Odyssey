@@ -1,5 +1,7 @@
 # Implementation Roadmap
 
+> **Status: HISTORISCH / ABGESCHLOSSENE FRUEHPLANUNG / NICHT NORMATIV (2026-07-14).** Diese PR-Reihenfolge ist nicht mehr die aktuelle Roadmap und keine Regelquelle. Siehe [Regelquellen und Rangfolge](rule-sources.md) und [Final-Polish-Audit](final-polish-audit.md).
+
 Diese Reihenfolge ist die empfohlene Planung fuer die naechsten PRs. Bugfixes und kleinere Korrekturen koennen jederzeit dazwischen liegen.
 
 1. PR 1: Dokumentation/Projektdefinition, dieser PR.

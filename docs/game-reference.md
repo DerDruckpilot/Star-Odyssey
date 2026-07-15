@@ -1,5 +1,7 @@
 # Game Reference
 
+> **Status: ABGELEITETE KURZREFERENZ / NICHT NORMATIV (2026-07-14).** Bei Abweichungen gelten die in [Regelquellen und Rangfolge](rule-sources.md) genannten Originalquellen und Projektentscheidungen.
+
 Diese Datei fasst die wichtigsten Regel- und Strukturelemente aus der bereitgestellten PDF-Referenz in eigenen Worten zusammen. Sie ist eine interne Designreferenz fuer Star Odyssey und keine UI- oder Markenvorgabe.
 
 ## Grundstruktur

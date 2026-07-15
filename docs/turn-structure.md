@@ -1,5 +1,7 @@
 # Turn Structure
 
+> **Status: HISTORISCHE PLANUNGSREFERENZ / NICHT NORMATIV (2026-07-14).** Die tatsaechliche State Machine liegt im Code; verbindliche Regeln und Quellen sind in [Regelquellen und Rangfolge](rule-sources.md) festgelegt.
+
 Star Odyssey ist rundenbasiert. Es gibt keinen Echtzeitdruck und keine freie Action-Steuerung. Jede relevante Aktion wartet auf eine bewusste Spielerbestaetigung.
 
 ## Geplante State Machine

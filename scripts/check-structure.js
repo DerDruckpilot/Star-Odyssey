@@ -23,7 +23,11 @@ const requiredPaths = [
   "docs",
   "README.md",
   ".gitignore",
-  "docs/project-guidelines.md"
+  "docs/project-guidelines.md",
+  "docs/rule-sources.md",
+  "docs/star-odyssey-rule-decisions.md",
+  "docs/rules/supernova/star_odyssey_supernova_regelwerk.md",
+  "docs/rules/supernova/star_odyssey_supernova_missionskarten.md"
 ];
 
 const missing = [];

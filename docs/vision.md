@@ -1,5 +1,7 @@
 # Vision
 
+> **Status: HISTORISCH / NICHT NORMATIV (2026-07-14).** Das Dokument beschreibt das fruehe Browser-Zielbild vor TV-, Controller- und Fire-TV-Integration. Siehe [Regelquellen und Rangfolge](rule-sources.md).
+
 Star Odyssey ist eine digitale, browserbasierte Sci-Fi-Brettspielumsetzung. Das Projekt soll ein komplexes Weltraum-Brettspielsystem zugaenglich machen, ohne den ruhigen, taktischen Brettspielcharakter zu verlieren.
 
 ## Zielbild

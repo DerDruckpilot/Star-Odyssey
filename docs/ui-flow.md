@@ -1,5 +1,7 @@
 # UI Flow
 
+> **Status: HISTORISCH / NICHT NORMATIV (2026-07-14).** Dieses Dokument beschreibt den ersten Prototyp. Der aktuelle Regel- und Dokumentstatus steht in [Regelquellen und Rangfolge](rule-sources.md).
+
 Der erste nutzbare Prototyp soll mit einem klaren Hauptmenue beginnen. Die eigentliche Second-Screen-Technik kommt spaeter, aber der UI-Fluss soll bereits darauf vorbereitet sein.
 
 ## Hauptmenue
