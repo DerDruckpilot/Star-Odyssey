@@ -1,4 +1,10 @@
 import { boardLayout } from "./data/boardLayout.js";
+import {
+  GAME_ASSET_PRELOAD_CONCURRENCY,
+  collectAssetUrls,
+  preloadAssetUrls,
+  selectAssetUrlsForColors
+} from "./asset-preloader.js";
 import { buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
 import { getEncounterCardById } from "./data/encounterCards.js";
 import { getFriendshipCardById, getFriendshipCardSummary, getFriendshipCardTitle } from "./data/friendshipCards.js";
@@ -147,6 +153,8 @@ const optionalAssetFailures = new Set();
 let gameAssetsReady = false;
 let gameAssetsStatus = "idle";
 let gameAssetsPreloadPromise = null;
+let gameAssetsPreloadRevision = 0;
+let gameAssetsPreloadRequestKey = "";
 let remoteFocusIndex = 0;
 let remoteFocusContext = "";
 let remoteFocusKey = "";
@@ -653,51 +661,98 @@ function getQrCodeUrl(text) {
   return url.toString();
 }
 
+function getSelectedGameAssetColors() {
+  const colors = state.controllerLobby?.slots?.map((slot) => slot.color)
+    ?? state.gameState?.players?.map((player) => player.color)
+    ?? state.playerSetup?.map((player) => player.color)
+    ?? [];
+  return [...new Set(colors.filter((color) => playerPieceColors.includes(color)))];
+}
+
+function getPreloadGameVariant() {
+  return state.controllerLobby?.gameVariant
+    ?? state.gameState?.gameVariant
+    ?? state.selectedGameVariant
+    ?? gameVariants.classic;
+}
+
 function getGameAssetUrls() {
+  const selectedColors = getSelectedGameAssetColors();
+  const isSupernova = getPreloadGameVariant() === gameVariants.supernova;
+  const playerAssets = [
+    selectAssetUrlsForColors(colonyShipAssetPaths, selectedColors),
+    selectAssetUrlsForColors(tradeShipAssetPaths, selectedColors),
+    selectAssetUrlsForColors(playerColonyAssetPaths, selectedColors),
+    selectAssetUrlsForColors(playerSpaceportAssetPaths, selectedColors)
+  ];
+  if (isSupernova) {
+    playerAssets.push(selectAssetUrlsForColors(battleShipAssetPaths, selectedColors));
+  }
+  const upgradeAssets = collectAssetUrls(upgradeMenuAssetPaths)
+    .filter((url) => isSupernova || url !== upgradeMenuAssetPaths.buildBlueprints.battleShip);
+
   return [...new Set(collectAssetUrls([
     boardBackgroundAssetPath,
     mainMenuAssetPaths,
     planetAssetPaths,
     outpostAssetPaths,
     tradeStationAssetPaths,
-    colonyShipAssetPaths,
-    tradeShipAssetPaths,
-    battleShipAssetPaths,
-    playerColonyAssetPaths,
-    playerSpaceportAssetPaths,
-    upgradeMenuAssetPaths
+    playerAssets,
+    upgradeAssets
   ]).filter(Boolean))];
 }
 
-async function preloadGameAssets({ onProgress = null } = {}) {
-  if (gameAssetsReady) {
-    gameAssetsStatus = "ready";
-    onProgress?.(1);
-    return gameAssetsPreloadPromise ?? Promise.resolve();
-  }
-  if (gameAssetsPreloadPromise) return gameAssetsPreloadPromise;
+function isAssetPreloadComplete(url) {
+  return preloadedAssetUrls.has(url) || optionalAssetFailures.has(url);
+}
 
-  const urls = getGameAssetUrls();
-  if (urls.length === 0) {
+async function preloadGameAssets({ onProgress = null } = {}) {
+  const initialUrls = getGameAssetUrls();
+  const requestKey = initialUrls.join("\n");
+  if (gameAssetsStatus === "loading" && requestKey === gameAssetsPreloadRequestKey) {
+    return gameAssetsPreloadPromise;
+  }
+  if (initialUrls.every(isAssetPreloadComplete)) {
+    gameAssetsPreloadRevision += 1;
     gameAssetsReady = true;
-    gameAssetsStatus = "ready";
+    gameAssetsStatus = optionalAssetFailures.size > 0 ? "error" : "ready";
     onProgress?.(1);
     return;
   }
 
-  let completed = 0;
-  const updateProgress = () => {
-    completed += 1;
-    onProgress?.(completed / urls.length);
-  };
-
+  const revision = ++gameAssetsPreloadRevision;
+  const previousPreload = gameAssetsPreloadPromise;
+  gameAssetsPreloadRequestKey = requestKey;
+  gameAssetsReady = false;
   gameAssetsStatus = "loading";
-  gameAssetsPreloadPromise = Promise.all(urls.map((url) => preloadImageAsset(url).then(updateProgress)))
-    .then(() => {
-      gameAssetsReady = true;
+  const preloadPromise = (async () => {
+    await previousPreload;
+    if (revision !== gameAssetsPreloadRevision) return;
+
+    while (revision === gameAssetsPreloadRevision) {
+      const urls = getGameAssetUrls();
+      const pendingUrls = urls.filter((url) => !isAssetPreloadComplete(url));
+      let completed = urls.length - pendingUrls.length;
+      onProgress?.(urls.length === 0 ? 1 : completed / urls.length);
+      if (pendingUrls.length === 0) break;
+
+      await preloadAssetUrls(pendingUrls, preloadImageAsset, {
+        concurrency: GAME_ASSET_PRELOAD_CONCURRENCY,
+        onAssetComplete: () => {
+          completed += 1;
+          onProgress?.(completed / urls.length);
+        }
+      });
+    }
+
+    if (revision === gameAssetsPreloadRevision) {
+      gameAssetsReady = getGameAssetUrls().every(isAssetPreloadComplete);
       gameAssetsStatus = optionalAssetFailures.size > 0 ? "error" : "ready";
-    });
-  await gameAssetsPreloadPromise;
+      onProgress?.(1);
+    }
+  })();
+  gameAssetsPreloadPromise = preloadPromise;
+  await preloadPromise;
 }
 
 function preloadImageAsset(url) {
@@ -732,20 +787,6 @@ function preloadImageAsset(url) {
   });
   assetPreloadPromises.set(url, promise);
   return promise;
-}
-
-function collectAssetUrls(values) {
-  const urls = [];
-  for (const value of values) {
-    if (typeof value === "string") {
-      urls.push(value);
-    } else if (Array.isArray(value)) {
-      urls.push(...collectAssetUrls(value));
-    } else if (value && typeof value === "object") {
-      urls.push(...collectAssetUrls(Object.values(value)));
-    }
-  }
-  return urls;
 }
 
 function saveLanguage(language) {
@@ -976,6 +1017,7 @@ function updateControllerLobbySlot(playerId, changes) {
     })
   };
   updateControllerLobbyConnections();
+  if (changes.color !== undefined) startControllerLobbyAssetPreload();
   maybeStartControllerGame();
   render();
   return true;
@@ -989,17 +1031,16 @@ function areControllerLobbySlotsReady(slots = state.controllerLobby?.slots ?? []
 }
 
 function startControllerLobbyAssetPreload() {
-  if (gameAssetsReady || gameAssetsStatus === "loading") return;
-  state.loadingProgress = 0;
+  state.loadingProgress = gameAssetsReady ? 1 : 0;
   void preloadGameAssets({
     onProgress: (progress) => {
       state.loadingProgress = progress;
       if (state.view === "controllers" || state.modal === "controllers") render();
     }
   }).then(() => {
-    state.loadingProgress = 1;
+    if (gameAssetsReady) state.loadingProgress = 1;
     if (state.view === "controllers" || state.modal === "controllers") render();
-    maybeStartControllerGame();
+    if (gameAssetsReady) maybeStartControllerGame();
   });
 }
 

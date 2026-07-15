@@ -58,6 +58,61 @@ async function getAuthorizedControllerUrl(page, playerNumber) {
   }, playerNumber);
 }
 
+function collectShipAssetRequests(page) {
+  const requests = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.includes("/assets/generated/") && pathname.includes("ship")) requests.push(pathname);
+  });
+  return requests;
+}
+
+async function enterControllerLobby(page, variant) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Neues Spiel" }).click();
+  await page.getByRole("button", { name: "3 Spieler" }).click();
+  if (variant === "supernova") await page.getByRole("button", { name: "Supernova" }).click();
+  await page.getByRole("button", { name: "Weiter" }).click();
+  await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
+}
+
+async function selectFirstControllerColor(page, color) {
+  const controllerUrl = (await page.locator(".qr-url").allTextContents())[0];
+  const controller = await page.context().newPage();
+  await controller.goto(controllerUrl);
+  await expect(controller.getByText("Verbunden als Spieler 1")).toBeVisible();
+  await controller.getByRole("button", { name: color }).click();
+  return controller;
+}
+
+test("lobby preloads only selected colors and only loads battleships for Supernova", async ({ browser }) => {
+  test.setTimeout(90000);
+  const classicContext = await browser.newContext();
+  const classicPage = await classicContext.newPage();
+  const classicRequests = collectShipAssetRequests(classicPage);
+  await enterControllerLobby(classicPage, "classic");
+  const classicController = await selectFirstControllerColor(classicPage, "Rot");
+  await expect(classicPage.locator(".qr-card").first().locator(".qr-status")).toHaveText("Name/Farbe gewählt");
+  await expect.poll(() => classicRequests.filter((url) => url.includes("player-ship-red")).length, { timeout: 30000 }).toBe(3);
+  await expect.poll(() => classicRequests.filter((url) => url.includes("trade-ship-red")).length, { timeout: 30000 }).toBe(3);
+  expect(classicRequests.filter((url) => url.includes("battle-ship"))).toEqual([]);
+  expect(classicRequests.some((url) => /(?:player|trade)-ship-(?:blue|green|yellow)/.test(url))).toBe(false);
+  await classicController.close();
+  await classicContext.close();
+
+  const supernovaContext = await browser.newContext();
+  const supernovaPage = await supernovaContext.newPage();
+  const supernovaRequests = collectShipAssetRequests(supernovaPage);
+  await enterControllerLobby(supernovaPage, "supernova");
+  const supernovaController = await selectFirstControllerColor(supernovaPage, "Blau");
+  await expect.poll(() => supernovaRequests.filter((url) => url.includes("player-ship-blue")).length, { timeout: 30000 }).toBe(3);
+  await expect.poll(() => supernovaRequests.filter((url) => url.includes("trade-ship-blue")).length, { timeout: 30000 }).toBe(3);
+  await expect.poll(() => supernovaRequests.filter((url) => url.includes("battle-ship-blue")).length, { timeout: 30000 }).toBe(3);
+  expect(supernovaRequests.some((url) => /(?:player|trade|battle)-ship-(?:red|green|yellow)/.test(url))).toBe(false);
+  await supernovaController.close();
+  await supernovaContext.close();
+});
+
 test("main menu, QR controller lobby, board, and phone menu work", async ({ page }) => {
   await page.goto("/");
 
