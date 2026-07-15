@@ -620,7 +620,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### FIRE-001 - Fire-TV-Wrapper bleibt mit Debugging, Mixed Content und LAN-Default gehaertet unvollstaendig
 
 - **Bereich:** Fire-TV-Wrapper / Sicherheit und Betrieb
-- **Status:** TECHNISCH RISKANT
+- **Status:** TEILWEISE UMGESETZT
 - **Prioritaet:** P2 - Wichtig
 - **Aufwand:** S
 - **Betroffene Spielvariante:** ausserhalb des Spiels/UI
@@ -633,7 +633,8 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Debugging an BuildConfig koppeln, Mixed Content nur bei nachgewiesenem Bedarf erlauben, URL-Default neutral halten und Cachepolitik mit PWA/Server abstimmen.
 - **Abhaengigkeiten:** HTTPS-/PWA-Strategie `PWA-002`, lokaler URL-Setupflow und Debug-/Release-Buildtypen.
 - **Akzeptanzkriterien:** Releasebuild hat kein WebView-Debugging; URL kommt aus Preference/neutralem Setup; Mixed Content ist begruendet/minimal; Keep-awake, Fullscreen und Remote funktionieren unveraendert; APK-Hardwaretest besteht.
-- **Verifikationsstatus:** Java-Konfiguration statisch verifiziert; APK wurde in diesem Audit nicht gebaut/installiert, Fire-TV-Hardware **NICHT VERIFIZIERT**.
+- **Resolution (`e16743c`):** **TEILWEISE ERLEDIGT.** WebView-Debugging folgt nun dem Android-Flag `FLAG_DEBUGGABLE`, der Release-Build ist damit nicht debuggable. Mixed Content ist gesperrt, der normale WebView-/PWA-Cache wird verwendet und der konkrete private LAN-Platzhalter wurde durch den neutralen mDNS-Beispielhost `mini-pc.local` ersetzt. Preference, GitHub-Pages-Fallback, Keep-awake, Fullscreen und Remoteweitergabe bleiben erhalten.
+- **Verifikationsstatus:** Debug- und Release-APK bauen erfolgreich; `apkanalyzer` meldet `debuggable=true` fuer Debug und `false` fuer Release. Die Debug-APK wurde auf dem verbundenen Fire TV installiert, gestartet und blieb nach DPAD-/Back-Eingaben ohne FATAL EXCEPTION im Vordergrund. Der eigentliche Webinhalt konnte dort nicht abgenommen werden, weil das Geraet den lokalen Host nicht erreichte (Ping 0/2); Fokus, Dialoge und Langzeitbetrieb bleiben deshalb unter `TEST-001`/`FIRE-001` **NICHT VOLLSTAENDIG VERIFIZIERT**.
 
 ## 10. Offene P3-Befunde
 
@@ -970,7 +971,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
 5. **Controller, Fire TV und PWA**
    - Erledigt: `PWA-001` versioniert und revalidiert den Controller-Assetcache.
    - `PWA-002`: realer sicherer PWA-Betrieb.
-   - `FIRE-001`: Release-Wrapper haerten und auf Hardware testen.
+   - Teilweise erledigt: `FIRE-001` haertet Debugging, Mixed Content, Cache und URL-Beispiel; vollstaendiger Fokus-/Dialog-/Langzeittest auf erreichbarer Hardware bleibt offen.
    - Erledigt: `CTRL-001` lokalisiert Controllertexte und strukturierte Supernova-Inhalte vollstaendig und prueft EN mit drei Controllern.
 
 6. **Performance und Assets**
@@ -1043,7 +1044,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - [x] Webcode kann per Pfeiltasten/Enter bis zur QR-Lobby navigiert werden.
 - [x] Wrapper setzt Fullscreen und Keep-screen-on.
 - [-] Tatsaechliche Fire-TV-DPAD-/Back-Events und 4K-Hardwarebetrieb sind abgenommen (`FIRE-001`, `TEST-001`).
-- [ ] Releasewrapper ist ohne dauerhaftes Debugging/permissive Defaults gehaertet (`FIRE-001`).
+- [x] Releasewrapper ist ohne dauerhaftes Debugging/permissive Defaults gehaertet (`FIRE-001`).
 - [x] Manifest, Apple-Metadaten, Fullscreen-Button, iOS-Hinweis und Safe-Area-CSS sind vorhanden.
 - [ ] PWA funktioniert ueber die reale LAN-URL in sicherem Kontext (`PWA-002`).
 - [x] Service-Worker-Updates ersetzen alte gleichnamige Assets und behalten Offline-Fallback (`PWA-001`).
@@ -1147,3 +1148,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `NET-001` | P2 | ERLEDIGT | `56cda42` | `npm run check`, `npm test`, `npm run test:e2e` (14/14), `git diff --check`; falsches Token, Doppel-Tab, unveraenderter Erstcontroller, legitimer Reconnect und serverseitig gebundene Spieler-ID | zwei reale Smartphones bleiben unter `TEST-001` |
 | `NET-002` | P2 | ERLEDIGT | `56cda42` | echter Relay-Prozessneustart auf demselben Port, Host-Neuregistrierung, restaurierter Pending-Encounter-State und genau eine Aktion; volle Check-/Test-/E2E-Suite | realer PC-/Hardware-Neustart bleibt unter `TEST-001` |
 | `STATE-001` | P3 | ERLEDIGT | `9cf989e` | `npm run check`, `npm test`, `git diff --check`; fehlendes Legacy-Feld migriert, explizit leere Liste bleibt leer, normaler Struktur-ID-Satz bleibt unveraendert | keiner |
+| `FIRE-001` | P2 | TEILWEISE ERLEDIGT | `e16743c` | `npm run check`; Debug-/Release-APK gebaut; Manifest `debuggable=true/false`; Debug-APK auf Fire TV installiert und DPAD/Back ohne Absturz | Fire TV erreichte den LAN-Host nicht; sichtbarer Fokus-, Dialog- und Langzeittest bleibt offen |
