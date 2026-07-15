@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `56cda42`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `9cf989e`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -24,7 +24,7 @@ Der Stand ist trotzdem **nicht final polished**:
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 20 von 31 IDs erledigt (1 P0, 11 P1, 8 P2); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 21 von 31 IDs erledigt (1 P0, 11 P1, 8 P2, 1 P3); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -47,9 +47,9 @@ Die Zahlen bilden den Auditstichtag ab. Aktuell sind 20 von 31 IDs erledigt (1 P
 
 ### Groesste Risiken
 
-1. `STATE-001`: Eine Legacy-Normalisierung kann leere Strukturstaende fehlinterpretieren.
-2. `FIRE-001` / `TEST-001`: Reale Fire-TV-, Mehrgeraete- und Vollpartie-Abnahmen fehlen weiterhin.
-3. `PWA-002` / `PERF-001`: Sicherer Smartphone-Installationsweg und reale Geraetebudgets sind noch nicht abgenommen.
+1. `FIRE-001` / `TEST-001`: Reale Fire-TV-, Mehrgeraete- und Vollpartie-Abnahmen fehlen weiterhin.
+2. `PWA-002` / `PERF-001`: Sicherer Smartphone-Installationsweg und reale Geraetebudgets sind noch nicht abgenommen.
+3. `TECH-001`: Produktive Debuglogs koennen private oder umfangreiche Zustandsdaten in Browser-/WebView-Konsolen ausgeben.
 
 ### Verifikationsgrenzen
 
@@ -640,7 +640,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### STATE-001 - Struktur-Normalisierung kann bei leerer Liste Legacy-Startstrukturen erzeugen
 
 - **Bereich:** Game State / Migration
-- **Status:** TECHNISCH RISKANT
+- **Status:** UMGESETZT
 - **Prioritaet:** P3 - Polish
 - **Aufwand:** XS
 - **Betroffene Spielvariante:** beide
@@ -653,7 +653,8 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Schema-/Versionsmerkmal verwenden und nur bei wirklich fehlendem Legacy-Feld migrieren; explizit leere Arrays erhalten.
 - **Abhaengigkeiten:** Save-Schemaversion und Alt-Save-Fixtures.
 - **Akzeptanzkriterien:** Fehlendes Legacy-Feld migriert; explizit leere moderne Liste bleibt leer; normale Saves laden unveraendert.
-- **Verifikationsstatus:** Statisch verifiziert; produktiver Null-Strukturen-Fall nicht beobachtet.
+- **Resolution (`9cf989e`):** **ERLEDIGT.** `normalizeStructures` erzeugt Startstrukturen nur noch, wenn das Strukturenfeld tatsaechlich fehlt bzw. kein Array ist. Ein explizit leeres Array bleibt als gueltiger moderner Zustand erhalten; der bestehende Legacy-Fallback fuer fehlende Felder bleibt unveraendert.
+- **Verifikationsstatus:** **ERLEDIGT und automatisiert verifiziert.** Der Game-State-Smoke prueft fehlendes Legacy-Feld, explizit leere moderne Liste einschliesslich synchronisierter Spielerstrukturen und den unveraenderten ID-Satz eines normalen Saves. `npm run check`, `npm test` und `git diff --check` liefen gruen.
 
 ### UI-003 - Hauptmenue nutzt Unicode-Symbole statt der vorhandenen Icon-Familie
 
@@ -882,7 +883,7 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 
 1. Autosave-/manuelle Schreibfehler werden sichtbar gemeldet und erneut versucht (`SAVE-001`, erledigt).
 2. Relay-Sitzung und Slotberechtigungen werden nach einem Prozessneustart durch Host-Neuregistrierung wiederhergestellt (`NET-002`, erledigt); ein kompletter PC-/Browser-Neustart auf realer Hardware bleibt unter `TEST-001` offen.
-3. Ein leerer moderner Strukturzustand kann als Legacyzustand fehlinterpretiert werden (`STATE-001`).
+3. Fehlende Legacy-Strukturen werden migriert, waehrend explizit leere moderne Listen erhalten bleiben (`STATE-001`, erledigt).
 4. Save/Load des wartenden Schlachtschiffkampfs, der Ausbauwahl, des frueheren `ENC-001`-Pending-Falls und der Karten-31/32-Zwischenphasen ist automatisiert abgedeckt; Fabrikmehrheitswechsel ueber eine lange Partie und weitere passive Controllerketten bleiben unvollstaendig abgedeckt (`TEST-001`).
 5. Browser-/Geraetewechsel besitzt keinen Saveexport (`OPS-001`, optional).
 
@@ -964,7 +965,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
    - Erledigt: `SN-002` verteilt player-spezifische Controllerpayloads und prueft rohe WebSocket-Frames samt Reconnect.
    - Erledigt: `NET-001`, `NET-002` binden QR-Links und Aktionen an player-spezifische Token, verhindern stilles Ersetzen und stellen die Sitzung nach Relay-Neustart wieder her.
    - Erledigt: `SAVE-001` meldet Speicherfehler sichtbar und wiederholt Current-State, Autosave und manuellen Save kontrolliert.
-   - `STATE-001`: eindeutige Strukturmigration.
+   - Erledigt: `STATE-001` unterscheidet fehlende Legacy-Strukturen von explizit leeren modernen Listen.
 
 5. **Controller, Fire TV und PWA**
    - Erledigt: `PWA-001` versioniert und revalidiert den Controller-Assetcache.
@@ -1025,7 +1026,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - [x] Autosave- und manuelle Speicherfehler werden sichtbar behandelt und koennen erneut versucht werden (`SAVE-001`).
 - [ ] Alle kritischen Pending-Zustaende besitzen Save/Resume-Regressionstests (`TEST-001`).
 - [x] Relay-/Controllerzustand wird nach Serverneustart durch Host-Neuregistrierung und erneute State-Publikation kontrolliert wiederhergestellt (`NET-002`).
-- [ ] Strukturmigration unterscheidet fehlend von explizit leer (`STATE-001`).
+- [x] Strukturmigration unterscheidet fehlend von explizit leer (`STATE-001`).
 - [ ] Optionaler Saveexport/-import ist vorhanden (`OPS-001`, optional).
 
 ### Controller und Netzwerk
@@ -1117,7 +1118,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - Portabler Saveexport/-import (`OPS-001`).
 - Legacy-Assetbereinigung (`ASSET-001`) ist Polish/Wartbarkeit und kein Spielblocker.
 
-**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde sowie acht P2-Befunde einschliesslich Encounter-, Speicherfehler-, Controller-Lokalisierungs-, Quellen-, Session- und responsiven UI-Problemen sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, reale Mehrgeraete- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
+**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde, acht P2-Befunde sowie ein P3-Migrationsrisiko einschliesslich Encounter-, Speicherfehler-, Controller-Lokalisierungs-, Quellen-, Session- und responsiven UI-Problemen sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, reale Mehrgeraete- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
 
 ## Implementation Progress
 
@@ -1145,3 +1146,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `DOC-001` | P2 | ERLEDIGT | `2528d83` | `npm run check`, `npm test`, `git diff --check`; Quellenrangfolge, Supernova-Dateihashes, Statusmarker und Required-Path-Struktur | offizielle PDFs bleiben aus Lizenz-/Groessengruenden lokal, sind aber eindeutig referenziert |
 | `NET-001` | P2 | ERLEDIGT | `56cda42` | `npm run check`, `npm test`, `npm run test:e2e` (14/14), `git diff --check`; falsches Token, Doppel-Tab, unveraenderter Erstcontroller, legitimer Reconnect und serverseitig gebundene Spieler-ID | zwei reale Smartphones bleiben unter `TEST-001` |
 | `NET-002` | P2 | ERLEDIGT | `56cda42` | echter Relay-Prozessneustart auf demselben Port, Host-Neuregistrierung, restaurierter Pending-Encounter-State und genau eine Aktion; volle Check-/Test-/E2E-Suite | realer PC-/Hardware-Neustart bleibt unter `TEST-001` |
+| `STATE-001` | P3 | ERLEDIGT | `9cf989e` | `npm run check`, `npm test`, `git diff --check`; fehlendes Legacy-Feld migriert, explizit leere Liste bleibt leer, normaler Struktur-ID-Satz bleibt unveraendert | keiner |
