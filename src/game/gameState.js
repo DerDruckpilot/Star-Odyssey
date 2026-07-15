@@ -6,6 +6,7 @@ import {
   gameVariants,
   getSupernovaFactoryType,
   getSupernovaFactoryVictoryCard,
+  getSupernovaLocalizedTitle,
   supernovaFactoryLimitPerPlayer,
   supernovaFactoryTypes,
   supernovaFactoryVictoryCards,
@@ -2424,7 +2425,7 @@ export function getBuildableSupernovaFactoryOptions(gameState, boardLayout, play
     .filter((planet) => planet.resource === factoryType.resource)
     .map((planet) => ({
       factoryType: factoryType.id,
-      label: factoryType.title,
+      label: getSupernovaLocalizedTitle(factoryType, gameState.language),
       planetId: planet.id,
       systemId: planet.systemId,
       resource: planet.resource,
@@ -2470,7 +2471,7 @@ export function buildSupernovaFactory(gameState, boardLayout, factoryTypeId, pla
       messageKey: "logSupernovaFactoryBuilt",
       messageParams: {
         player: activePlayer.name,
-        factory: factoryType.title
+        factory: getSupernovaLocalizedTitle(factoryType, gameState.language)
       }
     }
   });

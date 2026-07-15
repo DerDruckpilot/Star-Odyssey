@@ -35,7 +35,12 @@ import {
 } from "./data/playerPieceVisuals.js";
 import { getBattleShipVfxAnchors, getShipEngineTemplate, getShipVfxAnchors, getTradeShipVfxAnchors } from "./data/shipVfxData.js";
 import { MOTHERSHIP_SPEED_ANIMATION_CONFIG } from "./data/mothershipSpeedAnimationConfig.js";
-import { gameVariants, supernovaFactoryLimitPerPlayer, supernovaFactoryTypes } from "./data/supernova.js";
+import {
+  gameVariants,
+  getSupernovaLocalizedTitle,
+  supernovaFactoryLimitPerPlayer,
+  supernovaFactoryTypes
+} from "./data/supernova.js";
 import { menuButtonDefinitions } from "./menu-button-utils.js";
 import {
   applyDebugLayoutTransform,
@@ -4042,7 +4047,7 @@ function renderBuildControls(player = getActivePlayer()) {
       body.className = "upgrade-card-body";
       const label = document.createElement("strong");
       label.className = "upgrade-card-title";
-      label.textContent = factoryType.title;
+      label.textContent = getSupernovaLocalizedTitle(factoryType, state.language);
       const cost = document.createElement("small");
       cost.className = "upgrade-card-cost";
       cost.textContent = `${t("cost")}: ${formatCost(factoryType.cost)}`;
@@ -7278,7 +7283,7 @@ function renderFactoriesLayer() {
       transform: `translate(${placement.x} ${placement.y})`
     });
     const title = createSvgElement("title");
-    title.textContent = `${factoryType?.title ?? factory.type} - ${owner?.name ?? factory.ownerPlayerId}`;
+    title.textContent = `${getSupernovaLocalizedTitle(factoryType, state.language) || factory.type} - ${owner?.name ?? factory.ownerPlayerId}`;
     factoryGroup.append(
       title,
       createSvgElement("polygon", {
@@ -8224,6 +8229,7 @@ function getLocalControllerPrivateStorageKey(controllerId) {
 function getRemoteControllerState() {
   const activePlayer = getActivePlayer();
   return {
+    language: state.language,
     view: state.view,
     controllerMode: state.controllerMode,
     controllerLobby: getControllerLobbyStateForRemote(),

@@ -1,4 +1,5 @@
 import { createControllerStatesByPlayerId, createControllerViewState } from "../src/remote/controllerState.js";
+import { getTranslationKeys } from "../src/i18n.js";
 
 function assert(condition, message) {
   if (!condition) {
@@ -8,6 +9,7 @@ function assert(condition, message) {
 }
 
 const remoteState = {
+  language: "en",
   activePlayerId: "player-1",
   players: [
     {
@@ -59,6 +61,7 @@ const ownPlayer = playerOneView.players.find((player) => player.id === "player-1
 const foreignPlayer = playerOneView.players.find((player) => player.id === "player-2");
 
 assert(ownPlayer.resources.ore === 2, "Own controller view should retain private resources.");
+assert(playerOneView.language === "en", "Controller views should retain the selected language.");
 assert(ownPlayer.supernovaMissions.length === 1, "Own controller view should retain private missions.");
 assert(ownPlayer.friendship.cards.length === 1, "Own controller view should retain private cards.");
 assert(ownPlayer.resourceCount === 3, "Own controller view should include the public resource count.");
@@ -85,5 +88,12 @@ assert(!playerTwoView.actions.some((action) => action.label === "Alice roll"), "
 const statesByPlayerId = createControllerStatesByPlayerId(remoteState);
 assert(statesByPlayerId["player-1"].viewerPlayerId === "player-1", "Player one should receive its personalized state.");
 assert(statesByPlayerId["player-2"].viewerPlayerId === "player-2", "Player two should receive its personalized state.");
+
+const germanTranslationKeys = getTranslationKeys("de").sort();
+const englishTranslationKeys = getTranslationKeys("en").sort();
+assert(
+  JSON.stringify(germanTranslationKeys) === JSON.stringify(englishTranslationKeys),
+  "German and English translations should expose identical key sets."
+);
 
 if (!process.exitCode) console.log("Controller privacy checks passed.");

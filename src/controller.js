@@ -1,7 +1,13 @@
 import { buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
 import { getFriendshipCardById, getFriendshipCardSummary, getFriendshipCardTitle } from "./data/friendshipCards.js";
-import { supernovaFactoryLimitPerPlayer, supernovaFactoryTypes } from "./data/supernova.js";
+import {
+  getSupernovaLocalizedText,
+  getSupernovaLocalizedTitle,
+  supernovaFactoryLimitPerPlayer,
+  supernovaFactoryTypes
+} from "./data/supernova.js";
 import { mothershipUpgradeSlots, upgradeMenuAssetPaths, upgradeMenuOrder } from "./data/upgradeVisuals.js";
+import { getText } from "./i18n.js";
 
 const root = document.querySelector("#controller-root");
 const params = new URLSearchParams(window.location.search);
@@ -9,23 +15,6 @@ const sessionId = params.get("session") || "";
 const reconnectDelayMs = 1400;
 const localControllerStoragePrefix = "star-odyssey-controller-channel";
 const iosInstallHintStorageKey = "star-odyssey-ios-install-hint-dismissed";
-const resourceLabels = {
-  ore: "Erz",
-  fuel: "Treibstoff",
-  carbon: "Carbon",
-  food: "Nahrung",
-  goods: "Handelsware"
-};
-const upgradeLabels = {
-  cannon: "Bordkanone",
-  cargo: "Frachtmodul",
-  drive: "Antrieb"
-};
-const buildLabels = {
-  colonyShip: "Kolonieschiff bauen",
-  tradeShip: "Handelsschiff bauen",
-  spaceport: "Kolonie zu Raumhafen ausbauen"
-};
 
 let socket = null;
 let localChannel = null;
@@ -50,6 +39,15 @@ let boardGestureMoved = false;
 const tabScrollPositions = new Map();
 const setupNameDrafts = new Map();
 let saveNameDraft = "";
+
+function t(key, replacements = {}) {
+  const language = gameState?.language === "en" ? "en" : "de";
+  let text = getText(language, key);
+  for (const [name, value] of Object.entries(replacements)) {
+    text = text.split(`{${name}}`).join(String(value));
+  }
+  return text;
+}
 
 function getStoredControllerIdKey(playerId) {
   return `star-odyssey-controller-id-${sessionId || "default"}-${playerId || "unknown"}`;
@@ -324,7 +322,7 @@ function renderIosInstallHint() {
   hint.setAttribute("role", "note");
 
   const text = document.createElement("span");
-  text.textContent = "Für Vollbild: Teilen → Zum Home-Bildschirm";
+  text.textContent = t("controllerIosInstallHint");
   const close = createButton("×", () => {
     try {
       localStorage.setItem(iosInstallHintStorageKey, "true");
@@ -333,7 +331,7 @@ function renderIosInstallHint() {
     }
     hint.remove();
   }, "controller-ios-install-close");
-  close.setAttribute("aria-label", "Vollbild-Hinweis schließen");
+  close.setAttribute("aria-label", t("controllerIosInstallHintClose"));
   hint.append(text, close);
   return hint;
 }
@@ -358,13 +356,14 @@ function renderFullscreenButton() {
   if (!canUseControllerFullscreen()) return null;
   const active = Boolean(document.fullscreenElement);
   const button = createButton(active ? "↙" : "⛶", toggleControllerFullscreen, "small-button controller-fullscreen-button");
-  const label = active ? "Vollbild beenden" : "Vollbild öffnen";
+  const label = t(active ? "controllerFullscreenClose" : "controllerFullscreenOpen");
   button.setAttribute("aria-label", label);
   button.title = label;
   return button;
 }
 
 function render() {
+  document.documentElement.lang = gameState?.language === "en" ? "en" : "de";
   captureControllerScrollPosition();
   const focusedInput = captureFocusedInput();
 
@@ -458,7 +457,7 @@ function renderControllerHeader(player) {
   const statusLabel = document.createElement("span");
   statusLabel.className = "controller-status";
   statusLabel.textContent = getStatusLabel();
-  status.append(statusDot, statusLabel, createButton("Neu verbinden", connect, "small-button controller-reconnect-inline"));
+  status.append(statusDot, statusLabel, createButton(t("controllerReconnect"), connect, "small-button controller-reconnect-inline"));
 
   titleGroup.append(title, status, renderControllerResources(player));
 
@@ -467,7 +466,7 @@ function renderControllerHeader(player) {
   const fullscreenButton = renderFullscreenButton();
   if (fullscreenButton) actions.append(fullscreenButton);
   if (player && gameState?.view === "board") {
-    actions.append(createButton("Schließen", () => {
+    actions.append(createButton(t("close"), () => {
       boardFullscreen = true;
       render();
     }, "small-button controller-close-button"));
@@ -483,7 +482,7 @@ function renderControllerResources(player) {
   const resources = player?.resources ?? {};
   for (const resource of resourceTypes) {
     const term = document.createElement("dt");
-    term.textContent = resourceLabels[resource] ?? resource;
+    term.textContent = getResourceLabel(resource);
     const value = document.createElement("dd");
     value.textContent = String(resources[resource] ?? 0);
     list.append(term, value);
@@ -496,11 +495,13 @@ function renderSetupPanel() {
   section.className = "player-hud-tab-content controller-section controller-setup";
   const slot = getOwnLobbySlot();
   const title = document.createElement("h2");
-  title.textContent = slot ? `Verbunden als Spieler ${slot.slotNumber}` : "Spieler-Setup";
+  title.textContent = slot
+    ? t("controllerConnectedAsPlayer", { number: slot.slotNumber })
+    : t("controllerSetupTitle");
 
   const nameLabel = document.createElement("label");
   nameLabel.className = "controller-field";
-  nameLabel.textContent = "Name";
+  nameLabel.textContent = t("playerSetupName");
   const nameInput = document.createElement("input");
   nameInput.type = "text";
   const draftName = setupNameDrafts.has(selectedPlayerId)
@@ -508,7 +509,7 @@ function renderSetupPanel() {
     : (slot?.name ?? "");
   nameInput.value = draftName;
   nameInput.disabled = Boolean(slot?.ready);
-  nameInput.placeholder = `Spieler ${slot?.slotNumber ?? ""}`;
+  nameInput.placeholder = t("playerNumber", { number: slot?.slotNumber ?? "" });
   nameInput.dataset.controllerInputKey = `setup-name-${selectedPlayerId || "unknown"}`;
   nameInput.addEventListener("input", () => {
     setupNameDrafts.set(selectedPlayerId, nameInput.value);
@@ -527,7 +528,7 @@ function renderSetupPanel() {
       .some((candidate) => candidate.playerId !== selectedPlayerId && candidate.color === color.id);
     const button = createButton(color.label, () => sendNamedAction("player.selectColor", { color: color.id }), `controller-color-button controller-color-button--${color.id}${isOwnColor ? " is-active" : ""}`);
     button.disabled = Boolean(slot?.ready || usedByOther);
-    if (usedByOther) button.title = "Bereits vergeben";
+    if (usedByOther) button.title = t("controllerColorTaken");
     colorGrid.append(button);
   }
 
@@ -535,7 +536,7 @@ function renderSetupPanel() {
   status.className = "controller-empty";
   status.textContent = getSetupStatus(slot);
 
-  const readyButton = createButton(slot?.ready ? "Bearbeiten" : "Bereit", () => {
+  const readyButton = createButton(t(slot?.ready ? "controllerEdit" : "controllerReady"), () => {
     if (!slot?.ready) commitSetupNameDraft(slot, nameInput.value);
     sendNamedAction(slot?.ready ? "player.edit" : "player.ready", { name: nameInput.value });
   });
@@ -549,15 +550,15 @@ function renderTabs() {
   const tabs = document.createElement("nav");
   tabs.className = "player-hud-tabs controller-tabs controller-tabbar";
   const definitions = [
-    ["turn", "Zug"],
-    ["trade", "Handeln"],
-    ["mothership", "Mutterschiff"],
-    ["build", "Bauen"],
-    ["outposts", "Außenposten"],
-    ["overview", "Übersicht"],
-    ["board", "Spielfeld"]
+    ["turn", t("tabTurn")],
+    ["trade", t("tabTrade")],
+    ["mothership", t("tabUpgrades")],
+    ["build", t("tabBuild")],
+    ["outposts", t("tabOutposts")],
+    ["overview", t("tabOverview")],
+    ["board", t("controllerBoard")]
   ];
-  if (isSelectedPlayerAdmin()) definitions.push(["settings", "Einstellungen"]);
+  if (isSelectedPlayerAdmin()) definitions.push(["settings", t("controllerSettings")]);
 
   for (const [tabId, label] of definitions) {
     const button = createButton(label, () => {
@@ -602,7 +603,7 @@ function renderTurnTab(player) {
   const section = document.createElement("section");
   section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
-  title.textContent = gameState?.phaseLabel || "Zug";
+  title.textContent = gameState?.phaseLabel || t("tabTurn");
   if (gameState?.sevenResolution?.active) {
     section.append(title, renderSevenResolutionPanel(player));
     return section;
@@ -641,7 +642,7 @@ function renderSupernovaBattlePanel(player) {
   const panel = document.createElement("div");
   panel.className = "selection-panel controller-encounter-panel controller-supernova-battle-panel";
   const title = document.createElement("strong");
-  title.textContent = "Schlachtschiffkampf";
+  title.textContent = t("supernovaBattleTitle");
   panel.append(title);
   if (!battle) return panel;
 
@@ -650,12 +651,15 @@ function renderSupernovaBattlePanel(player) {
   const isParticipant = isAttacker || isDefender;
   const description = document.createElement("p");
   description.className = "encounter-prompt";
-  description.textContent = `${battle.attackerName} greift ${battle.defenderName} an.`;
+  description.textContent = t("controllerBattleDescription", {
+    attacker: battle.attackerName,
+    defender: battle.defenderName
+  });
   panel.append(description);
 
   if (!isParticipant) {
     const waiting = document.createElement("p");
-    waiting.textContent = `${battle.attackerName} ist gerade in einem Schlachtschiffkampf.`;
+    waiting.textContent = t("controllerBattleObserver", { attacker: battle.attackerName });
     panel.append(waiting);
     return panel;
   }
@@ -664,8 +668,8 @@ function renderSupernovaBattlePanel(player) {
     const alreadyRolled = isAttacker ? battle.attackerRolled : battle.defenderRolled;
     const status = document.createElement("p");
     status.textContent = alreadyRolled
-      ? "Du hast gewürfelt. Warte auf den anderen Spieler."
-      : `Würfelrunde ${battle.round}: Bestimme deine Kampfkraft.`;
+      ? t("controllerBattleRolledWait")
+      : t("controllerBattleRollRound", { round: battle.round });
     panel.append(status);
     if (!alreadyRolled) {
       const rollAction = findAction("supernova.battle.roll");
@@ -676,9 +680,10 @@ function renderSupernovaBattlePanel(player) {
 
   if (battle.stage === "reveal") {
     const status = document.createElement("p");
-    status.textContent = battle.winnerPlayerId
-      ? `Auswertung auf dem Spielfeld: ${battle.attackerStrength} zu ${battle.defenderStrength}.`
-      : `Gleichstand ${battle.attackerStrength} zu ${battle.defenderStrength}. Danach wird erneut gewürfelt.`;
+    status.textContent = t(battle.winnerPlayerId ? "controllerBattleReveal" : "controllerBattleTieReveal", {
+      attack: battle.attackerStrength,
+      defense: battle.defenderStrength
+    });
     panel.append(status);
     return panel;
   }
@@ -686,9 +691,9 @@ function renderSupernovaBattlePanel(player) {
   if (battle.stage === "upgradeLoss") {
     const mustChoose = selectedPlayerId === battle.pendingUpgradePlayerId;
     const status = document.createElement("p");
-    status.textContent = mustChoose
-      ? "Du hast den Kampf verloren. Wähle einen realen Mutterschiff-Ausbau, den du entfernst."
-      : "Warte, bis der Verlierer einen Mutterschiff-Ausbau gewählt hat.";
+    status.textContent = t(mustChoose
+      ? "controllerBattleUpgradeLossChoose"
+      : "controllerBattleUpgradeLossWait");
     panel.append(status);
     if (mustChoose) {
       const actions = getFilteredActions().filter((action) => action.id === "supernova.battle.chooseUpgrade");
@@ -703,9 +708,9 @@ function renderSevenResolutionPanel(player) {
   wrapper.className = "seven-resolution";
   const sevenResolution = gameState?.sevenResolution;
   const heading = document.createElement("strong");
-  heading.textContent = "7 gewürfelt";
+  heading.textContent = t("sevenRolled");
   const step = document.createElement("p");
-  step.textContent = `Aktueller Schritt: ${getSevenStepLabel(sevenResolution?.step)}`;
+  step.textContent = `${t("sevenStep")}: ${getSevenStepLabel(sevenResolution?.step)}`;
   wrapper.append(heading, step);
 
   if (sevenResolution?.step === "discard") {
@@ -728,17 +733,17 @@ function renderSevenDiscardPanel(player, sevenResolution) {
 
   if (required > 0 && !alreadyDone) {
     const instruction = document.createElement("p");
-    instruction.textContent = `Wähle genau ${required} Rohstoffe zum Abgeben.`;
+    instruction.textContent = t("sevenDiscardInstruction", { count: required });
     wrapper.append(instruction, renderSevenDiscardSelectors(player, selection, required));
     const selected = countSelectedResources(selection);
     const selectedInfo = document.createElement("p");
-    selectedInfo.textContent = `Ausgewählt: ${selected}/${required}`;
-    const submit = createButton("Rohstoffe abgeben", () => sendNamedAction("seven.submitDiscard"), "small-button");
+    selectedInfo.textContent = t("sevenDiscardSelected", { selected, count: required });
+    const submit = createButton(t("sevenStepDiscard"), () => sendNamedAction("seven.submitDiscard"), "small-button");
     submit.disabled = selected !== required;
     wrapper.append(selectedInfo, submit);
   } else {
     const info = document.createElement("p");
-    info.textContent = alreadyDone ? "Abgabe abgeschlossen." : "Keine Abgabe nötig.";
+    info.textContent = t(alreadyDone ? "sevenDiscardDone" : "sevenNoDiscardRequired");
     wrapper.append(info);
   }
 
@@ -749,10 +754,10 @@ function renderSevenDiscardPanel(player, sevenResolution) {
     const done = Boolean(sevenResolution?.discardedPlayerIds?.includes(candidate.id));
     const item = document.createElement("li");
     item.textContent = needed <= 0
-      ? `${candidate.name}: Keine Abgabe nötig.`
+      ? `${candidate.name}: ${t("sevenNoDiscardRequired")}`
       : done
-      ? `${candidate.name}: Abgabe abgeschlossen.`
-      : `${candidate.name}: ${needed} Rohstoffe abgeben.`;
+      ? `${candidate.name}: ${t("sevenDiscardDone")}`
+      : `${candidate.name}: ${t("sevenDiscardInstruction", { count: needed })}`;
     statusList.append(item);
   }
   wrapper.append(statusList);
@@ -768,7 +773,7 @@ function renderSevenDiscardSelectors(player, selection, required) {
     const row = document.createElement("div");
     row.className = "seven-discard-row";
     const label = document.createElement("span");
-    label.textContent = `${resourceLabels[resource] ?? resource}: ${selected}/${owned}`;
+    label.textContent = `${getResourceLabel(resource)}: ${selected}/${owned}`;
     const decrease = createButton("-", () => sendNamedAction("seven.discardResource", { resource, delta: -1 }), "small-button secondary-small-button");
     decrease.disabled = selected <= 0;
     const increase = createButton("+", () => sendNamedAction("seven.discardResource", { resource, delta: 1 }), "small-button");
@@ -785,7 +790,7 @@ function renderSevenStealPanel(sevenResolution) {
   const isActive = isSelectedPlayerActive();
   if (!isActive) {
     const waiting = document.createElement("p");
-    waiting.textContent = "Warte auf den aktiven Spieler.";
+    waiting.textContent = t("sevenWaitingForActivePlayer");
     wrapper.append(waiting);
     return wrapper;
   }
@@ -794,13 +799,13 @@ function renderSevenStealPanel(sevenResolution) {
     .filter((player) => player.id !== gameState.activePlayerId && getPlayerResourceTotal(player) > 0);
   if (candidates.length === 0) {
     const hint = document.createElement("p");
-    hint.textContent = "Kein Mitspieler hat Rohstoffe zum Ziehen.";
-    wrapper.append(hint, createButton("Weiter", () => sendNamedAction("seven.resolveSteal"), "small-button"));
+    hint.textContent = t("sevenNoOpponentResources");
+    wrapper.append(hint, createButton(t("continue"), () => sendNamedAction("seven.resolveSteal"), "small-button"));
     return wrapper;
   }
 
   const instruction = document.createElement("p");
-  instruction.textContent = "Wähle einen Mitspieler und ziehe 1 zufällige Rohstoffkarte.";
+  instruction.textContent = t("sevenChooseOpponent");
   const targetList = document.createElement("div");
   targetList.className = "seven-target-list";
   for (const candidate of candidates) {
@@ -808,7 +813,7 @@ function renderSevenStealPanel(sevenResolution) {
     button.setAttribute("aria-pressed", String(sevenResolution?.stealTargetPlayerId === candidate.id));
     targetList.append(button);
   }
-  const draw = createButton("Karte ziehen", () => sendNamedAction("seven.resolveSteal"), "small-button");
+  const draw = createButton(t("drawCard"), () => sendNamedAction("seven.resolveSteal"), "small-button");
   draw.disabled = !sevenResolution?.stealTargetPlayerId;
   wrapper.append(instruction, targetList, draw);
   return wrapper;
@@ -818,22 +823,22 @@ function renderSevenSupplyPanel() {
   const wrapper = document.createElement("div");
   wrapper.className = "seven-step seven-step--supply";
   const hint = document.createElement("p");
-  hint.textContent = "Alle Mitspieler ziehen jetzt 1 Nachschubkarte.";
+  hint.textContent = t("sevenSupplyInstruction");
   wrapper.append(hint);
   if (isSelectedPlayerActive()) {
-    wrapper.append(createButton("Nachschub verteilen", () => sendNamedAction("seven.distributeSupply"), "small-button"));
+    wrapper.append(createButton(t("sevenDistributeSupply"), () => sendNamedAction("seven.distributeSupply"), "small-button"));
   } else {
     const waiting = document.createElement("p");
-    waiting.textContent = "Warte auf den aktiven Spieler.";
+    waiting.textContent = t("sevenWaitingForActivePlayer");
     wrapper.append(waiting);
   }
   return wrapper;
 }
 
 function getSevenStepLabel(step) {
-  if (step === "discard") return "Rohstoffe abgeben";
-  if (step === "steal") return "Karte von Mitspieler ziehen";
-  if (step === "supply") return "Nachschub verteilen";
+  if (step === "discard") return t("sevenStepDiscard");
+  if (step === "steal") return t("sevenStepSteal");
+  if (step === "supply") return t("sevenStepSupply");
   return "-";
 }
 
@@ -857,7 +862,7 @@ function renderBuildTab(player) {
   const section = document.createElement("section");
   section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
-  title.textContent = "Bauen";
+  title.textContent = t("tabBuild");
   section.append(title, renderBuildControls(player));
   return section;
 }
@@ -866,7 +871,7 @@ function renderOverviewTab(player) {
   const section = document.createElement("section");
   section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
-  title.textContent = "Übersicht";
+  title.textContent = t("tabOverview");
   section.append(title, renderPlayerOverview(player));
   return section;
 }
@@ -875,7 +880,7 @@ function renderOutpostsTab(player) {
   const section = document.createElement("section");
   section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
-  title.textContent = "Außenposten";
+  title.textContent = t("tabOutposts");
   section.append(title, renderFriendshipSummary(player));
   return section;
 }
@@ -884,7 +889,7 @@ function renderTradeTab(player) {
   const section = document.createElement("section");
   section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
-  title.textContent = "Handeln";
+  title.textContent = t("tabTrade");
   section.append(title, renderBankTradeControls(player), renderPlayerTradeControls(player));
   return section;
 }
@@ -893,7 +898,7 @@ function renderSettingsTab() {
   const section = document.createElement("section");
   section.className = "player-hud-tab-content controller-section";
   const title = document.createElement("h2");
-  title.textContent = "Einstellungen";
+  title.textContent = t("controllerSettings");
   const adminActions = getFilteredActions().filter((action) => [
     "openControllers",
     "admin.backToMenu",
@@ -910,11 +915,11 @@ function renderSaveControls() {
   wrapper.className = "trade-build-section controller-save-controls";
 
   const title = document.createElement("strong");
-  title.textContent = "Spiel speichern";
+  title.textContent = t("saveGame");
 
   const label = document.createElement("label");
   label.className = "controller-field";
-  label.textContent = "Name";
+  label.textContent = t("playerSetupName");
   const input = document.createElement("input");
   input.type = "text";
   input.maxLength = 48;
@@ -933,7 +938,7 @@ function renderSaveControls() {
   });
   label.append(input);
 
-  const saveButton = createButton("Speichern", () => {
+  const saveButton = createButton(t("save"), () => {
     saveNameDraft = input.value;
     sendNamedAction("save.named", { name: saveNameDraft });
   }, "small-button");
@@ -949,7 +954,7 @@ function renderSaveList() {
   if (saves.length === 0) {
     const empty = document.createElement("p");
     empty.className = "controller-empty";
-    empty.textContent = "Keine Spielstände vorhanden.";
+    empty.textContent = t("noSaves");
     list.append(empty);
     return list;
   }
@@ -959,16 +964,16 @@ function renderSaveList() {
     item.className = "controller-save-item";
     const details = document.createElement("div");
     const name = document.createElement("strong");
-    name.textContent = save.name || "Spielstand";
+    name.textContent = save.name || t("unnamedSave");
     const meta = document.createElement("small");
-    meta.textContent = [save.displayDate, save.playerCount ? `${save.playerCount} Spieler` : ""].filter(Boolean).join(" · ");
+    meta.textContent = [save.displayDate, save.playerCount ? t("savePlayers", { count: save.playerCount }) : ""].filter(Boolean).join(" · ");
     details.append(name, meta);
 
     const actions = document.createElement("div");
     actions.className = "save-actions";
     actions.append(
-      createButton("Laden", () => sendNamedAction("save.load", { saveId: save.id }), "small-button"),
-      createButton("Löschen", () => sendNamedAction("save.delete", { saveId: save.id }), "small-button secondary-small-button")
+      createButton(t("load"), () => sendNamedAction("save.load", { saveId: save.id }), "small-button"),
+      createButton(t("delete"), () => sendNamedAction("save.delete", { saveId: save.id }), "small-button secondary-small-button")
     );
     item.append(details, actions);
     list.append(item);
@@ -978,10 +983,11 @@ function renderSaveList() {
 
 function createDefaultSaveName() {
   const now = new Date();
-  const date = now.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
-  const time = now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  const locale = gameState?.language === "en" ? "en-US" : "de-DE";
+  const date = now.toLocaleDateString(locale, { day: "2-digit", month: "2-digit" });
+  const time = now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
   const round = gameState?.phaseLabel ? ` - ${gameState.phaseLabel}` : "";
-  return `Spielstand ${date} ${time}${round}`;
+  return `${t("defaultSaveName")} ${date} ${time}${round}`;
 }
 
 function renderEncounterPanel() {
@@ -989,7 +995,7 @@ function renderEncounterPanel() {
   const panel = document.createElement("div");
   panel.className = "selection-panel controller-encounter-panel";
   const title = document.createElement("strong");
-  title.textContent = "Begegnung";
+  title.textContent = t("encounter");
   const isOwner = gameState.encounter.playerId === selectedPlayerId;
   const pendingStep = gameState.encounter.pendingStep;
   const isSingleRollStep = pendingStep?.type === "singleMothershipRoll";
@@ -1001,12 +1007,12 @@ function renderEncounterPanel() {
   panel.append(title);
 
   if (!isOwner && !isSingleRollParticipant && !isDualRollParticipant && !isDriveComparisonParticipant) {
-    const activeName = gameState.activePlayerName || "Ein anderer Spieler";
+    const activeName = gameState.activePlayerName || t("controllerOtherPlayer");
     const neutral = document.createElement("p");
     neutral.className = "encounter-prompt";
-    neutral.textContent = `${activeName} ist noch in einer Begegnung.`;
+    neutral.textContent = t("controllerEncounterObserver", { player: activeName });
     const wait = document.createElement("p");
-    wait.textContent = `Warte, bis ${activeName} die Begegnung abgeschlossen hat.`;
+    wait.textContent = t("controllerEncounterWaitForCompletion", { player: activeName });
     panel.append(neutral, wait);
     return panel;
   }
@@ -1062,7 +1068,7 @@ function renderEncounterPanel() {
       : (pendingStep.shipIds ?? []).length > 0;
     if (hasTargets) {
       panel.append(createButton(
-        gameState.encounter.pendingType === "boardTargetSelection" ? "Ziel wählen" : "Schiff wählen",
+        gameState.encounter.pendingType === "boardTargetSelection" ? t("encounterSelectTargetPoint") : t("controllerSelectShip"),
         () => {
           sendNamedAction("encounter.startBoardSelection");
           boardFullscreen = true;
@@ -1072,7 +1078,7 @@ function renderEncounterPanel() {
       ));
     } else {
       const empty = document.createElement("p");
-      empty.textContent = "Keine gültigen Ziele verfügbar.";
+      empty.textContent = t("controllerNoValidTargets");
       panel.append(empty);
       const finishAction = findAction("finishEncounter");
       if (finishAction) panel.append(renderActionGrid([finishAction]));
@@ -1104,7 +1110,7 @@ function renderControllerEncounterMessage(pendingStep) {
     wrapper.append(paragraph);
   }
   wrapper.append(createButton(
-    pendingStep.continueLabel || "Weiter",
+    pendingStep.continueLabel || t("continue"),
     () => sendNamedAction("encounter.submitPending"),
     "small-button"
   ));
@@ -1139,8 +1145,10 @@ function renderControllerEncounterDriveComparisonPreview(pendingStep) {
   wrapper.className = "encounter-choice-list";
   const message = document.createElement("p");
   message.textContent = pendingStep.activePlayerId === selectedPlayerId
-    ? "Antriebsvergleich wird angezeigt."
-    : `${pendingStep.active?.playerName ?? "Der aktive Spieler"} vergleicht die Antriebe mit deinem Mutterschiff.`;
+    ? t("encounterDriveComparisonActiveWait")
+    : t("encounterDriveComparisonPassiveWait", {
+      player: pendingStep.active?.playerName ?? t("activePlayer")
+    });
   wrapper.append(message);
 
   const activeSummary = document.createElement("p");
@@ -1154,9 +1162,13 @@ function renderControllerEncounterDriveComparisonPreview(pendingStep) {
 function formatControllerDriveComparisonValue(entry) {
   if (!entry) return "";
   const bonusText = entry.friendshipBonus > 0
-    ? ` + ${entry.friendshipBonus} Bonus = ${entry.effectiveDrives}`
+    ? t("controllerDriveBonus", { bonus: entry.friendshipBonus, effective: entry.effectiveDrives })
     : "";
-  return `${entry.playerName}: Antriebe ${entry.physicalDrives}${bonusText}`;
+  return t("controllerDriveValue", {
+    player: entry.playerName,
+    physical: entry.physicalDrives,
+    bonus: bonusText
+  });
 }
 
 function renderControllerEncounterDualMothershipRoll(pendingStep) {
@@ -1164,18 +1176,18 @@ function renderControllerEncounterDualMothershipRoll(pendingStep) {
   wrapper.className = "encounter-choice-list";
 
   const prompt = document.createElement("p");
-  prompt.textContent = "Beide beteiligten Spieler würfeln mit dem Mutterschiff.";
+  prompt.textContent = t("encounterMothershipRollPrompt");
   wrapper.append(prompt);
 
   if (hasControllerDualMothershipRoll(pendingStep)) {
     const waiting = document.createElement("p");
-    waiting.textContent = "Du hast gewürfelt. Warte auf den anderen Spieler.";
+    waiting.textContent = t("encounterMothershipRollDone");
     wrapper.append(waiting);
     return wrapper;
   }
 
   wrapper.append(createButton(
-    "Mit Mutterschiff würfeln",
+    t("encounterMothershipRollButton"),
     () => sendNamedAction("encounter.submitPending"),
     "small-button"
   ));
@@ -1187,18 +1199,18 @@ function renderControllerEncounterSingleMothershipRoll(pendingStep) {
   wrapper.className = "encounter-choice-list";
 
   const prompt = document.createElement("p");
-  prompt.textContent = "Würfle für die Begegnung mit deinem Mutterschiff.";
+  prompt.textContent = t("encounterSingleMothershipRollPrompt");
   wrapper.append(prompt);
 
   if (pendingStep.rolled) {
     const waiting = document.createElement("p");
-    waiting.textContent = "Der Wurf wird auf dem Spielfeld angezeigt.";
+    waiting.textContent = t("encounterSingleMothershipRollDone");
     wrapper.append(waiting);
     return wrapper;
   }
 
   wrapper.append(createButton(
-    "Mit Mutterschiff würfeln",
+    t("encounterMothershipRollButton"),
     () => sendNamedAction("encounter.submitPending"),
     "small-button"
   ));
@@ -1206,13 +1218,13 @@ function renderControllerEncounterSingleMothershipRoll(pendingStep) {
 }
 
 function getEncounterStatusLabel() {
-  if (gameState?.encounter?.status === "resolved") return "Begegnung abschließen.";
-  if (gameState?.encounter?.pendingStep?.type === "singleMothershipRoll") return "Würfle mit dem Mutterschiff.";
-  if (gameState?.encounter?.pendingStep?.type === "dualMothershipRoll") return "Würfle mit dem Mutterschiff.";
-  if (gameState?.encounter?.pendingStep?.type === "driveComparisonPreview") return "Antriebsvergleich wird angezeigt.";
+  if (gameState?.encounter?.status === "resolved") return t("finishEncounter");
+  if (gameState?.encounter?.pendingStep?.type === "singleMothershipRoll") return t("controllerEncounterRollStatus");
+  if (gameState?.encounter?.pendingStep?.type === "dualMothershipRoll") return t("controllerEncounterRollStatus");
+  if (gameState?.encounter?.pendingStep?.type === "driveComparisonPreview") return t("encounterDriveComparisonActiveWait");
   if (gameState?.encounter?.pendingStep?.hint) return gameState.encounter.pendingStep.hint;
-  if (gameState?.encounter?.pendingType) return "Folge den nächsten Begegnungsschritten.";
-  return "Wähle eine Antwort.";
+  if (gameState?.encounter?.pendingType) return t("controllerEncounterFollowSteps");
+  return t("controllerEncounterChooseAnswer");
 }
 
 function renderControllerEncounterResourceSelection(pendingStep) {
@@ -1226,11 +1238,11 @@ function renderControllerEncounterResourceSelection(pendingStep) {
 
   const instruction = document.createElement("p");
   instruction.textContent = isLoss
-    ? `Wähle genau ${amount} Rohstoffe, die du abgeben möchtest.`
-    : `Wähle genau ${amount} Rohstoff${amount === 1 ? "" : "e"}.`;
+    ? t("sevenDiscardInstruction", { count: amount })
+    : t("encounterResourceSelectionHint", { mode: t("chooseResource"), count: amount });
 
   const selectionInfo = document.createElement("p");
-  selectionInfo.textContent = `Ausgewählt: ${selectedTotal}/${amount}`;
+  selectionInfo.textContent = t("encounterSelectionCount", { selected: selectedTotal, count: amount });
 
   const grid = document.createElement("div");
   grid.className = "seven-discard-grid";
@@ -1241,9 +1253,11 @@ function renderControllerEncounterResourceSelection(pendingStep) {
     row.className = "seven-discard-row";
 
     const label = document.createElement("span");
-    label.textContent = isLoss
-      ? `${getResourceLabel(resource)}: Bestand ${owned} · ausgewählt ${selected}`
-      : `${getResourceLabel(resource)}: ausgewählt ${selected}`;
+    label.textContent = t(isLoss ? "controllerResourceOwnedSelected" : "controllerResourceSelected", {
+      resource: getResourceLabel(resource),
+      owned,
+      selected
+    });
 
     const decrease = createButton("-", () => {
       sendNamedAction("encounter.resourceDelta", { resource, delta: -1 });
@@ -1260,7 +1274,7 @@ function renderControllerEncounterResourceSelection(pendingStep) {
   }
 
   const submit = createButton(
-    isLoss ? "Rohstoffe abgeben" : "Rohstoff wählen",
+    t(isLoss ? "sevenStepDiscard" : "chooseResource"),
     () => sendNamedAction("encounter.submitPending"),
     "small-button"
   );
@@ -1277,14 +1291,14 @@ function renderControllerEncounterUpgradeSelection(pendingStep) {
   const hasLossTarget = upgradeDefinitions.some((upgrade) => (player?.upgrades?.[upgrade.id] ?? 0) > 0);
 
   if (isLoss && !hasLossTarget) {
-    wrapper.append(createButton("Weiter", () => sendNamedAction("encounter.submitPending"), "small-button"));
+    wrapper.append(createButton(t("continue"), () => sendNamedAction("encounter.submitPending"), "small-button"));
     return wrapper;
   }
 
   for (const upgrade of upgradeDefinitions) {
     const currentAmount = player?.upgrades?.[upgrade.id] ?? 0;
     const button = createButton(
-      `${isLoss ? "Ausbau abgeben" : "Ausbau wählen"} · ${getUpgradeLabel(upgrade.id)}`,
+      `${t(isLoss ? "controllerUpgradeGive" : "chooseUpgrade")} · ${getUpgradeLabel(upgrade.id)}`,
       () => sendNamedAction("encounter.submitPending", { upgrade: upgrade.id }),
       "small-button"
     );
@@ -1300,7 +1314,10 @@ function renderControllerEncounterOpponentGiftSelection(pendingStep) {
   const giver = gameState?.players?.find((player) => player.id === pendingStep.currentGiverPlayerId);
   const receiver = gameState?.players?.find((player) => player.id === pendingStep.receiverPlayerId);
   const hint = document.createElement("p");
-  hint.textContent = `${giver?.name ?? "Mitspieler"}: Wähle einen Rohstoff für ${receiver?.name ?? "den aktiven Spieler"}.`;
+  hint.textContent = t("controllerGiftResource", {
+    giver: giver?.name ?? t("controllerTeammate"),
+    receiver: receiver?.name ?? t("controllerActivePlayerAccusative")
+  });
   wrapper.append(hint);
 
   let hasResource = false;
@@ -1316,7 +1333,7 @@ function renderControllerEncounterOpponentGiftSelection(pendingStep) {
     wrapper.append(button);
   }
   if (!hasResource) {
-    wrapper.append(createButton("Weiter", () => sendNamedAction("encounter.submitPending", { skip: true }), "small-button"));
+    wrapper.append(createButton(t("continue"), () => sendNamedAction("encounter.submitPending", { skip: true }), "small-button"));
   }
   return wrapper;
 }
@@ -1326,11 +1343,11 @@ function renderControllerEncounterGlobalUpgradeSelection(pendingStep) {
   wrapper.className = "encounter-choice-list";
   const targetPlayer = gameState?.players?.find((player) => player.id === pendingStep.currentTargetPlayerId);
   const hint = document.createElement("p");
-  hint.textContent = `Betroffener Spieler: ${targetPlayer?.name ?? "keiner"}`;
+  hint.textContent = t("controllerAffectedPlayer", { player: targetPlayer?.name ?? t("none") });
   wrapper.append(hint);
 
   if (!targetPlayer) {
-    wrapper.append(createButton("Weiter", () => sendNamedAction("encounter.submitPending"), "small-button"));
+    wrapper.append(createButton(t("continue"), () => sendNamedAction("encounter.submitPending"), "small-button"));
     return wrapper;
   }
 
@@ -1347,7 +1364,7 @@ function renderControllerEncounterGlobalUpgradeSelection(pendingStep) {
     wrapper.append(button);
   }
   if (!hasUpgrade) {
-    wrapper.append(createButton("Weiter", () => sendNamedAction("encounter.submitPending"), "small-button"));
+    wrapper.append(createButton(t("continue"), () => sendNamedAction("encounter.submitPending"), "small-button"));
   }
   return wrapper;
 }
@@ -1356,14 +1373,14 @@ function renderTurnHint(player) {
   const wrapper = document.createElement("div");
   wrapper.className = "turn-summary controller-summary";
   if (!player) {
-    wrapper.textContent = "Warte auf Spielstand.";
+    wrapper.textContent = t("controllerWaitForState");
     return wrapper;
   }
   const activeText = isSelectedPlayerActive()
-    ? "Du bist am Zug."
-    : `${gameState?.activePlayerName || "Ein anderer Spieler"} ist am Zug.`;
-  wrapper.append(createMetaItem("Phase", gameState?.phaseLabel || "-"));
-  wrapper.append(createMetaItem("Status", activeText));
+    ? t("controllerYourTurn")
+    : t("controllerOtherPlayerTurn", { player: gameState?.activePlayerName || t("controllerOtherPlayer") });
+  wrapper.append(createMetaItem(t("phase"), gameState?.phaseLabel || "-"));
+  wrapper.append(createMetaItem(t("status"), activeText));
   return wrapper;
 }
 
@@ -1441,14 +1458,14 @@ function renderUpgradeControls(player) {
     const bonusText = document.createElement("small");
     bonusText.className = "upgrade-card-bonus";
     if (bonus > 0) {
-      bonusText.textContent = `Freundschaftsbonus +${bonus} · Effektiv: ${player?.effectiveUpgrades?.[upgrade.id] ?? ((player?.upgrades?.[upgrade.id] ?? 0) + bonus)}`;
+      bonusText.textContent = `${t("friendshipUpgradeBonus")} +${bonus} · ${t("effectiveUpgradeValue")}: ${player?.effectiveUpgrades?.[upgrade.id] ?? ((player?.upgrades?.[upgrade.id] ?? 0) + bonus)}`;
     }
 
     const cost = document.createElement("small");
     cost.className = "upgrade-card-cost";
-    cost.textContent = `Kosten: ${formatCost(upgrade.cost)}`;
+    cost.textContent = `${t("cost")}: ${formatCost(upgrade.cost)}`;
 
-    const button = createButton("Bauen", () => action && sendAction(action), "small-button");
+    const button = createButton(t("build"), () => action && sendAction(action), "small-button");
     button.disabled = !action || Boolean(action.disabled);
 
     const actions = document.createElement("div");
@@ -1492,9 +1509,9 @@ function renderBuildControls(player) {
 
     const cost = document.createElement("small");
     cost.className = "upgrade-card-cost";
-    cost.textContent = `Kosten: ${formatCost(actionDefinition.cost)}`;
+    cost.textContent = `${t("cost")}: ${formatCost(actionDefinition.cost)}`;
 
-    const button = createButton("Bauen", () => remoteAction && sendAction(remoteAction), "small-button");
+    const button = createButton(t("build"), () => remoteAction && sendAction(remoteAction), "small-button");
     button.disabled = !remoteAction || Boolean(remoteAction.disabled);
 
     const actions = document.createElement("div");
@@ -1509,10 +1526,10 @@ function renderBuildControls(player) {
     const factoryCount = player?.counts?.factories ?? 0;
     const factoryLimitReached = factoryCount >= supernovaFactoryLimitPerPlayer;
     const title = document.createElement("strong");
-    title.textContent = "Supernova-Fabriken";
+    title.textContent = t("supernovaFactories");
     const stock = document.createElement("small");
     stock.className = "upgrade-card-bonus";
-    stock.textContent = `Fabriken: ${factoryCount}/${supernovaFactoryLimitPerPlayer}`;
+    stock.textContent = t("supernovaFactoryStock", { built: factoryCount, limit: supernovaFactoryLimitPerPlayer });
     wrapper.append(title, stock);
 
     for (const factoryType of supernovaFactoryTypes) {
@@ -1532,21 +1549,21 @@ function renderBuildControls(player) {
       body.className = "upgrade-card-body";
       const label = document.createElement("strong");
       label.className = "upgrade-card-title";
-      label.textContent = factoryType.title;
+      label.textContent = getSupernovaLocalizedTitle(factoryType, gameState?.language);
 
       const hint = document.createElement("small");
       hint.className = "upgrade-card-bonus";
       hint.textContent = factoryLimitReached
-        ? "Alle 5 Fabriken sind gebaut."
+        ? t("supernovaFactoryLimitReached")
         : remoteAction
-          ? `${getResourceLabel(remoteAction.payload?.resource)}-Planet verfügbar`
-          : "Kein passender Bauplatz";
+          ? t("controllerFactoryResourceAvailable", { resource: getResourceLabel(remoteAction.payload?.resource) })
+          : t("noFactorySiteAvailable");
 
       const cost = document.createElement("small");
       cost.className = "upgrade-card-cost";
-      cost.textContent = `Kosten: ${formatCost(factoryType.cost)}`;
+      cost.textContent = `${t("cost")}: ${formatCost(factoryType.cost)}`;
 
-      const button = createButton("Bauen", () => remoteAction && sendAction(remoteAction), "small-button");
+      const button = createButton(t("build"), () => remoteAction && sendAction(remoteAction), "small-button");
       button.disabled = factoryLimitReached || !remoteAction || Boolean(remoteAction.disabled);
 
       const actions = document.createElement("div");
@@ -1565,7 +1582,7 @@ function renderResourceOverview(player) {
   const wrapper = document.createElement("div");
   wrapper.className = "resource-summary";
   const title = document.createElement("strong");
-  title.textContent = "Rohstoffe";
+  title.textContent = t("resources");
   const list = document.createElement("dl");
   for (const resource of resourceTypes) {
     const label = document.createElement("dt");
@@ -1602,17 +1619,17 @@ function renderBankTradeControls(player) {
   const wrapper = document.createElement("div");
   wrapper.className = "trade-build-section";
   const title = document.createElement("strong");
-  title.textContent = "Bankhandel";
+  title.textContent = t("bankTrade");
 
   const fields = document.createElement("div");
   fields.className = "trade-fields";
   const fromResource = gameState?.trade?.bankFromResource ?? "ore";
   const toResource = gameState?.trade?.bankToResource ?? "food";
   fields.append(
-    renderResourceSelect("Geben", fromResource, (resource) => {
+    renderResourceSelect(t("give"), fromResource, (resource) => {
       sendNamedAction("trade.setBankResources", { fromResource: resource, toResource });
     }),
-    renderResourceSelect("Erhalten", toResource, (resource) => {
+    renderResourceSelect(t("receive"), toResource, (resource) => {
       sendNamedAction("trade.setBankResources", { fromResource, toResource: resource });
     })
   );
@@ -1621,7 +1638,7 @@ function renderBankTradeControls(player) {
   const hint = document.createElement("p");
   hint.textContent = `${rate}:1`;
 
-  const button = createButton("Handeln", () => sendNamedAction("trade.bankTrade"), "small-button");
+  const button = createButton(t("trade"), () => sendNamedAction("trade.bankTrade"), "small-button");
   button.disabled = !canUseTradeBuildActions(player) || fromResource === toResource || (player?.resources?.[fromResource] ?? 0) < rate;
 
   wrapper.append(title, fields, hint, button);
@@ -1632,7 +1649,7 @@ function renderPlayerTradeControls(player) {
   const wrapper = document.createElement("div");
   wrapper.className = "trade-build-section player-trade-controls";
   const title = document.createElement("strong");
-  title.textContent = "Spielerhandel";
+  title.textContent = t("playerTrade");
   wrapper.append(title);
 
   const activeTradeOffer = gameState?.trade?.activeTradeOffer;
@@ -1643,7 +1660,7 @@ function renderPlayerTradeControls(player) {
 
   if (!canUseTradeBuildActions(player)) {
     const hint = document.createElement("p");
-    hint.textContent = isSelectedPlayerActive() ? "Handel ist nur in der Handels-/Bauphase möglich." : "Nicht am Zug.";
+    hint.textContent = t(isSelectedPlayerActive() ? "tradeOnlyInTradeBuild" : "notYourTurn");
     wrapper.append(hint);
     return wrapper;
   }
@@ -1654,7 +1671,7 @@ function renderPlayerTradeControls(player) {
     renderTradeResourceConfigurator("requested")
   );
 
-  const offerButton = createButton("Handel anbieten", () => sendNamedAction("trade.createOffer"), "small-button");
+  const offerButton = createButton(t("offerTrade"), () => sendNamedAction("trade.createOffer"), "small-button");
   offerButton.disabled = !canCreateTradeOffer(player);
   wrapper.append(offerButton);
   return wrapper;
@@ -1670,24 +1687,24 @@ function renderActiveTradeOffer(player, activeTradeOffer) {
   const receiveResources = isRecipientView ? activeTradeOffer.offeredResources : activeTradeOffer.requestedResources;
 
   const title = document.createElement("p");
-  title.textContent = "Offenes Handelsangebot";
+  title.textContent = t("openTradeOffer");
   const summary = document.createElement("p");
   summary.textContent = `${fromPlayer?.name ?? activeTradeOffer.fromPlayerId} -> ${toPlayer?.name ?? activeTradeOffer.toPlayerId}`;
   const offered = document.createElement("p");
-  offered.textContent = `Du gibst: ${formatResourceSelection(giveResources)}`;
+  offered.textContent = `${t("youGive")}: ${formatResourceSelection(giveResources)}`;
   const requested = document.createElement("p");
-  requested.textContent = `Du erhältst: ${formatResourceSelection(receiveResources)}`;
+  requested.textContent = `${t("youReceive")}: ${formatResourceSelection(receiveResources)}`;
   wrapper.append(title, summary, offered, requested);
 
   const actions = document.createElement("div");
   actions.className = "trade-offer-actions";
   if (player?.id === activeTradeOffer.toPlayerId) {
     actions.append(
-      createButton("Annehmen", () => sendNamedAction("trade.acceptOffer"), "small-button"),
-      createButton("Ablehnen", () => sendNamedAction("trade.declineOffer"), "small-button secondary-small-button")
+      createButton(t("accept"), () => sendNamedAction("trade.acceptOffer"), "small-button"),
+      createButton(t("decline"), () => sendNamedAction("trade.declineOffer"), "small-button secondary-small-button")
     );
   } else if (player?.id === activeTradeOffer.fromPlayerId) {
-    actions.append(createButton("Angebot zurückziehen", () => sendNamedAction("trade.cancelOffer"), "small-button secondary-small-button"));
+    actions.append(createButton(t("cancelOffer"), () => sendNamedAction("trade.cancelOffer"), "small-button secondary-small-button"));
   }
   if (actions.childElementCount > 0) wrapper.append(actions);
   return wrapper;
@@ -1697,12 +1714,12 @@ function renderTradeTargetSelect() {
   const label = document.createElement("label");
   label.className = "resource-select";
   const caption = document.createElement("span");
-  caption.textContent = "Zielspieler";
+  caption.textContent = t("targetPlayer");
 
   const select = document.createElement("select");
   const emptyOption = document.createElement("option");
   emptyOption.value = "";
-  emptyOption.textContent = "Zielspieler wählen";
+  emptyOption.textContent = t("selectTargetPlayer");
   select.append(emptyOption);
 
   for (const player of gameState?.players ?? []) {
@@ -1722,7 +1739,7 @@ function renderTradeResourceConfigurator(side) {
   const wrapper = document.createElement("div");
   wrapper.className = "trade-resource-configurator";
   const title = document.createElement("strong");
-  title.textContent = side === "offered" ? "Du gibst" : "Du erhältst";
+  title.textContent = t(side === "offered" ? "youGive" : "youReceive");
   wrapper.append(title);
 
   const selection = side === "offered"
@@ -1748,16 +1765,16 @@ function renderPlayerOverview(player) {
   const wrapper = document.createElement("div");
   wrapper.className = "fleet-summary player-overview";
   const title = document.createElement("strong");
-  title.textContent = "Übersicht";
+  title.textContent = t("tabOverview");
   const counts = player?.counts ?? {};
   const rows = [
-    ["Siegpunkte", player?.victoryPoints ?? 0],
-    ["Schiffe", counts.ships ?? 0],
-    ...(player?.supernovaMissions?.length ? [["Schlachtschiffe", counts.battleShips ?? 0]] : []),
-    ["Kolonien", counts.colonies ?? 0],
-    ["Raumhäfen", counts.spaceports ?? 0],
-    ["Handelsstationen", counts.tradeStations ?? 0],
-    ["Medaillen", player?.medalLabel ?? formatMedals(player)]
+    [t("victoryPoints"), player?.victoryPoints ?? 0],
+    [t("ships"), counts.ships ?? 0],
+    ...(player?.supernovaMissions?.length ? [[t("battleShips"), counts.battleShips ?? 0]] : []),
+    [t("colonies"), counts.colonies ?? 0],
+    [t("spaceports"), counts.spaceports ?? 0],
+    [t("tradeStations"), counts.tradeStations ?? 0],
+    [t("medals"), player?.medalLabel ?? formatMedals(player)]
   ];
   const list = document.createElement("dl");
   for (const [labelText, valueText] of rows) {
@@ -1772,17 +1789,17 @@ function renderPlayerOverview(player) {
     const missions = document.createElement("div");
     missions.className = "friendship-card-list";
     const missionsTitle = document.createElement("strong");
-    missionsTitle.textContent = "Supernova-Missionen";
+    missionsTitle.textContent = t("supernovaMissions");
     missions.append(missionsTitle);
     for (const mission of player.supernovaMissions) {
       const item = document.createElement("article");
       item.className = "friendship-card";
       const heading = document.createElement("strong");
-      heading.textContent = mission.title;
+      heading.textContent = getSupernovaLocalizedTitle(mission, gameState?.language);
       const text = document.createElement("p");
-      text.textContent = mission.originalText;
+      text.textContent = getSupernovaLocalizedText(mission, gameState?.language);
       const status = document.createElement("small");
-      status.textContent = mission.fulfilled ? "Erfüllt" : "Offen";
+      status.textContent = t(mission.fulfilled ? "missionFulfilled" : "missionOpen");
       item.append(heading, text, status);
       missions.append(item);
     }
@@ -1795,13 +1812,13 @@ function renderFriendshipSummary(player) {
   const wrapper = document.createElement("div");
   wrapper.className = "friendship-summary fleet-summary";
   const title = document.createElement("strong");
-  title.textContent = "Freundschaft";
+  title.textContent = t("friendship");
 
   const friendship = player?.friendship ?? {};
   const rows = [
-    ["Handelsstationen", player?.counts?.tradeStations ?? 0],
-    ["Außenposten", formatList(friendship.representedOutposts)],
-    ["Freundschaftsmarker", formatList(friendship.markers)]
+    [t("tradeStations"), player?.counts?.tradeStations ?? 0],
+    [t("outpost"), formatList(friendship.representedOutposts)],
+    [t("friendshipMarkers"), formatList(friendship.markers)]
   ];
   const list = document.createElement("dl");
   for (const [labelText, valueText] of rows) {
@@ -1817,7 +1834,7 @@ function renderFriendshipSummary(player) {
   const cards = friendship.cards ?? [];
   if (cards.length > 0) {
     const cardTitle = document.createElement("p");
-    cardTitle.textContent = "Aktive Freundschaftskarten";
+    cardTitle.textContent = t("activeFriendshipCards");
     const cardList = document.createElement("div");
     cardList.className = "friendship-card-list";
     for (const cardInfo of cards) {
@@ -1825,16 +1842,16 @@ function renderFriendshipSummary(player) {
       const cardElement = document.createElement("article");
       cardElement.className = "friendship-card";
       const titleElement = document.createElement("strong");
-      titleElement.textContent = cardInfo.title || getFriendshipCardTitle(card);
+      titleElement.textContent = cardInfo.title || getFriendshipCardTitle(card, gameState?.language);
       const summary = document.createElement("p");
-      summary.textContent = cardInfo.summary || getFriendshipCardSummary(card);
+      summary.textContent = cardInfo.summary || getFriendshipCardSummary(card, gameState?.language);
       cardElement.append(titleElement, summary);
       cardList.append(cardElement);
     }
     wrapper.append(cardTitle, cardList);
   } else {
     const empty = document.createElement("p");
-    empty.textContent = "Keine Freundschaftskarten.";
+    empty.textContent = t("controllerNoFriendshipCards");
     wrapper.append(empty);
   }
 
@@ -1847,10 +1864,10 @@ function renderBoardFullscreen() {
   const header = document.createElement("div");
   header.className = "controller-board-header";
   const title = document.createElement("h2");
-  title.textContent = "Spielfeld";
+  title.textContent = t("controllerBoard");
   const mode = document.createElement("p");
   mode.textContent = getControllerBoardModeLabel();
-  const backButton = createButton("Zurück zum Menü", () => {
+  const backButton = createButton(t("backToMenu"), () => {
     boardFullscreen = false;
     render();
   }, "controller-board-back-button");
@@ -1875,16 +1892,16 @@ function renderPlayerSummary(player) {
   const summary = document.createElement("div");
   summary.className = "turn-summary controller-summary";
   if (!player) {
-    summary.textContent = "Warte auf Spielstand.";
+    summary.textContent = t("controllerWaitForState");
     return summary;
   }
   const resourceText = Object.entries(player.resources ?? {})
-    .map(([resource, amount]) => `${resourceLabels[resource] ?? resource}: ${amount}`)
+    .map(([resource, amount]) => `${getResourceLabel(resource)}: ${amount}`)
     .join(" · ");
-  summary.append(createMetaItem("Spieler", player.name));
-  summary.append(createMetaItem("Siegpunkte", String(player.victoryPoints ?? 0)));
-  summary.append(createMetaItem("Medaillen", String(player.medals ?? 0).replace(".", ",")));
-  summary.append(createMetaItem("Rohstoffe", resourceText || "-"));
+  summary.append(createMetaItem(t("controllerPlayer"), player.name));
+  summary.append(createMetaItem(t("victoryPoints"), String(player.victoryPoints ?? 0)));
+  summary.append(createMetaItem(t("medals"), String(player.medals ?? 0).replace(".", ",")));
+  summary.append(createMetaItem(t("resources"), resourceText || "-"));
   return summary;
 }
 
@@ -1894,7 +1911,7 @@ function renderActionGrid(actions) {
   if (actions.length === 0) {
     const empty = document.createElement("p");
     empty.className = "controller-empty";
-    empty.textContent = isSelectedPlayerActive() ? "Keine Aktionen verfügbar." : "Nicht am Zug.";
+    empty.textContent = t(isSelectedPlayerActive() ? "controllerNoActions" : "notYourTurn");
     actionGrid.append(empty);
     return actionGrid;
   }
@@ -1969,18 +1986,18 @@ function getOwnLobbySlot() {
 
 function getFallbackPlayerName() {
   const slot = getOwnLobbySlot();
-  if (slot) return `Spieler ${slot.slotNumber}`;
+  if (slot) return t("playerNumber", { number: slot.slotNumber });
   const match = /^player-(\d+)$/.exec(selectedPlayerId || "");
-  if (match) return `Spieler ${match[1]}`;
-  return "Warte auf Spielstand";
+  if (match) return t("playerNumber", { number: match[1] });
+  return t("controllerWaitForState");
 }
 
 function getSetupStatus(slot) {
-  if (!slot) return "Warte auf Lobby.";
-  if (slot.ready) return "Bereit. Das Spiel startet automatisch, sobald alle bereit sind.";
-  if (!slot.name?.trim()) return "Bitte Namen eintragen.";
-  if (!slot.color) return "Bitte Farbe wählen.";
-  return "Bereit drücken, wenn alles passt.";
+  if (!slot) return t("controllerSetupWaiting");
+  if (slot.ready) return t("controllerSetupReady");
+  if (!slot.name?.trim()) return t("controllerSetupEnterName");
+  if (!slot.color) return t("controllerSetupChooseColor");
+  return t("controllerSetupConfirm");
 }
 
 function isSelectedPlayerActive() {
@@ -2281,18 +2298,18 @@ function attachBoardGestures(viewport, content) {
 }
 
 function getControllerBoardModeLabel() {
-  if (!gameState?.board) return "Nur ansehen";
-  if (canUseBoardSelection()) return gameState.board.mode || "Ziel wählen";
+  if (!gameState?.board) return t("boardViewOnly");
+  if (canUseBoardSelection()) return gameState.board.mode || t("encounterSelectTargetPoint");
   if (gameState.phase === "flight" && gameState.flight?.activePlayerName) {
-    return gameState.flight.waitHint || `Warte auf Flugphase von ${gameState.flight.activePlayerName}.`;
+    return gameState.flight.waitHint || t("controllerFlightWait", { playerName: gameState.flight.activePlayerName });
   }
   if (gameState.phase === "placement" && gameState.placement?.waitHint) {
     return gameState.placement.waitHint;
   }
   if (gameState.board.actionPlayerId && gameState.board.actionPlayerId !== selectedPlayerId) {
-    return `${gameState.activePlayerName || "Ein anderer Spieler"} ist am Zug.`;
+    return t("controllerOtherPlayerTurn", { player: gameState.activePlayerName || t("controllerOtherPlayer") });
   }
-  return "Nur ansehen";
+  return t("boardViewOnly");
 }
 
 function isPlacementBoardMode() {
@@ -2512,7 +2529,7 @@ function getFlightTurnHint() {
     return gameState.flight.turnHint || "";
   }
   if (gameState.flight.activePlayerName) {
-    return gameState.flight.waitHint || `Warte, bis ${gameState.flight.activePlayerName} seine Flugphase beendet.`;
+    return gameState.flight.waitHint || t("controllerFlightWait", { playerName: gameState.flight.activePlayerName });
   }
   return "";
 }
@@ -2603,15 +2620,15 @@ function createMetaItem(label, value) {
 }
 
 function getResourceLabel(resource) {
-  return resourceLabels[resource] ?? resource;
+  return t(`resource_${resource}`);
 }
 
 function getUpgradeLabel(upgradeId) {
-  return upgradeLabels[upgradeId] ?? upgradeId;
+  return t(`upgrade_${upgradeId}`);
 }
 
 function getBuildActionLabel(actionId) {
-  return buildLabels[actionId] ?? actionId;
+  return t(`build_${actionId}`);
 }
 
 function formatCost(cost = {}) {
@@ -2624,37 +2641,37 @@ function formatResourceSelection(resources = {}) {
   const entries = Object.entries(resources)
     .filter(([, amount]) => amount > 0)
     .map(([resource, amount]) => `${amount} ${getResourceLabel(resource)}`);
-  return entries.length > 0 ? entries.join(", ") : "keine";
+  return entries.length > 0 ? entries.join(", ") : t("none");
 }
 
 function formatUpgradeValue(player, upgrade) {
   const realValue = player?.upgrades?.[upgrade.id] ?? 0;
   const bonus = player?.upgradeBonuses?.[upgrade.id] ?? 0;
   return bonus > 0
-    ? `${realValue}/${upgrade.limit} (+${bonus}, Effektiv: ${realValue + bonus})`
+    ? `${realValue}/${upgrade.limit} (+${bonus}, ${t("effectiveUpgradeValue")}: ${realValue + bonus})`
     : `${realValue}/${upgrade.limit}`;
 }
 
 function formatMedals(player) {
   const medals = Math.max(0, player?.halfMedals ?? 0) / 2;
-  return medals.toLocaleString("de-DE", {
+  return medals.toLocaleString(gameState?.language === "en" ? "en-US" : "de-DE", {
     minimumFractionDigits: medals % 1 === 0 ? 0 : 1,
     maximumFractionDigits: 1
   });
 }
 
 function formatList(items = []) {
-  return items.length > 0 ? items.join(", ") : "keine";
+  return items.length > 0 ? items.join(", ") : t("none");
 }
 
 function getStatusLabel() {
-  if (connectionStatus === "connected") return "Verbunden";
-  if (connectionStatus === "waiting") return "Warte auf Spiel";
-  if (connectionStatus === "lost") return "Getrennt";
-  if (connectionStatus === "replaced") return "Ersetzt";
-  if (connectionStatus === "missing-session") return "Keine Session in der URL";
-  if (connectionStatus === "missing-player") return "Kein Spieler in der URL";
-  return "Verbinde ...";
+  if (connectionStatus === "connected") return t("controllerSlotConnected");
+  if (connectionStatus === "waiting") return t("controllerStatusWaiting");
+  if (connectionStatus === "lost") return t("controllerStatusLost");
+  if (connectionStatus === "replaced") return t("controllerStatusReplaced");
+  if (connectionStatus === "missing-session") return t("controllerStatusMissingSession");
+  if (connectionStatus === "missing-player") return t("controllerStatusMissingPlayer");
+  return t("controllerStatusConnecting");
 }
 
 function updateControllerViewportHeight() {

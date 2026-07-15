@@ -153,6 +153,52 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await controllerThree.close();
 });
 
+test("English controllers render localized setup, tabs, factories, and missions", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Neues Spiel" }).click();
+  await page.getByRole("button", { name: "EN", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Select number of players" })).toBeVisible();
+  await page.getByRole("button", { name: "3 players" }).click();
+  await page.getByRole("button", { name: "Supernova" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  const controllerUrls = await page.locator(".qr-url").allTextContents();
+  const controllers = await Promise.all(controllerUrls.map(() => page.context().newPage()));
+  for (const [index, controller] of controllers.entries()) {
+    await controller.goto(controllerUrls[index]);
+  }
+
+  const setup = [
+    { name: "Alice", color: "Red" },
+    { name: "Bob", color: "Blue" },
+    { name: "Cara", color: "Green" }
+  ];
+  for (const [index, controller] of controllers.entries()) {
+    await expect(controller.getByText(`Connected as Player ${index + 1}`)).toBeVisible();
+    await controller.getByLabel("Name").fill(setup[index].name);
+    await controller.getByRole("button", { name: setup[index].color, exact: true }).click();
+    await controller.getByRole("button", { name: "Ready", exact: true }).click();
+  }
+
+  await expect(page.locator(".board-placeholder")).toBeVisible();
+  const activeController = controllers[0];
+  await activeController.getByRole("button", { name: "Build", exact: true }).click();
+  await expect(activeController.getByText("Supernova factories")).toBeVisible();
+  await expect(activeController.getByText("Refinery", { exact: true })).toBeVisible();
+  await expect(activeController.getByText("Food Factory", { exact: true })).toBeVisible();
+
+  await activeController.getByRole("button", { name: "Overview", exact: true }).click();
+  await expect(activeController.getByText("Supernova missions")).toBeVisible();
+  await expect(activeController.locator(".player-overview .friendship-card")).toHaveCount(3);
+
+  const visibleControllerText = await activeController.locator("body").innerText();
+  expect(visibleControllerText).not.toMatch(/Verbunden|Bereit|Bauen|Handeln|Übersicht|Warte|Rohstoff|Fabrik|Missionen|Treibstoff|Nahrung|Handelsware|Schlachtschiff|Raumhafen|Einstellungen/);
+  expect(await activeController.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+  expect(await activeController.evaluate(() => document.documentElement.lang)).toBe("en");
+
+  await Promise.all(controllers.map((controller) => controller.close()));
+});
+
 test("main menu uses a 16:9 stage and shows a portrait rotate hint", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/");
@@ -581,7 +627,7 @@ test("active controller starts a visible single-player encounter roll", async ({
   await expect(page.locator(".mothership-speed-overlay")).toHaveCount(0);
   const resolvedState = await page.evaluate(() => JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null"));
   expect(resolvedState.flightSpeedTotal).toBe(initialFlightSpeed);
-  await expect(controller.getByText("Begegnung abschließen.")).toBeVisible();
+  await expect(controller.getByRole("button", { name: "Begegnung abschließen", exact: true })).toBeVisible();
   await controller.close();
 });
 
