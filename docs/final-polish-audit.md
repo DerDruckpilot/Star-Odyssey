@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `6e781a4`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `2528d83`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -23,7 +23,7 @@ Der Stand ist trotzdem **nicht final polished**:
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 17 von 31 IDs erledigt (1 P0, 11 P1, 5 P2); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 18 von 31 IDs erledigt (1 P0, 11 P1, 6 P2); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -62,20 +62,22 @@ Die Zahlen bilden den Auditstichtag ab. Aktuell sind 17 von 31 IDs erledigt (1 P
 
 | Quelle | Fundort/Stand | Abdeckung | Bemerkung |
 |---|---|---|---|
-| Offizielle Anleitung `CATAN_Spielanleitung_Sternenfahrer.pdf` | lokal unter `docs/`, 8 Seiten, Ausgabe 2019 | vollstaendig gelesen und textuell extrahiert | Durch `docs/*.pdf` in `.gitignore` nicht versioniert; siehe `DOC-001`. |
-| Offizieller Almanach `CATAN_Almanach_Sternenfahrer.pdf` | lokal unter `docs/`, 20 Seiten, Ausgabe 2019 | vollstaendig gelesen und textuell extrahiert | Praezisiert Aufbau, Zugablauf, Bau-/Flugregeln, Begegnungen, Freundschaft und Sieg. Ebenfalls nicht versioniert. |
+| Offizielle Anleitung `CATAN_Spielanleitung_Sternenfahrer.pdf` | lokal unter `docs/`, 8 Seiten, Ausgabe 2019 | vollstaendig gelesen und textuell extrahiert | Aus Lizenz-/Groessengruenden nicht versioniert; erwarteter Dateiname und SHA-256 stehen in `docs/rule-sources.md`. |
+| Offizieller Almanach `CATAN_Almanach_Sternenfahrer.pdf` | lokal unter `docs/`, 20 Seiten, Ausgabe 2019 | vollstaendig gelesen und textuell extrahiert | Praezisiert Aufbau, Zugablauf, Bau-/Flugregeln, Begegnungen, Freundschaft und Sieg; lokaler Dateiname und SHA-256 sind versioniert dokumentiert. |
 
 ### Supernova-Quellen
 
 | Quelle | Fundort/Stand | Abdeckung | Bemerkung |
 |---|---|---|---|
-| `star_odyssey_supernova_regelwerk.md` | Codex-Anhangsablage | vollstaendig gelesen | Nicht im Repository versioniert; siehe `DOC-001`. |
-| `star_odyssey_supernova_missionskarten.md` | Codex-Anhangsablage | vollstaendig gelesen | Enthaelt 25 Missionen und 5 Fabrik-Siegpunktkarten; nicht versioniert. |
+| `star_odyssey_supernova_regelwerk.md` | `docs/rules/supernova/` | vollstaendig gelesen | Inhaltlich unveraendert versioniert; Integritaet ueber `docs/rule-sources.md` dokumentiert. |
+| `star_odyssey_supernova_missionskarten.md` | `docs/rules/supernova/` | vollstaendig gelesen | Enthaelt 25 Missionen und 5 Fabrik-Siegpunktkarten; versioniert und mit SHA-256 dokumentiert. |
 
 ### Projektspezifische Quellen
 
 - `docs/encounter-card-markdown/begegnungskarten_implementierungshinweise_codex.md`
 - `docs/encounter-card-markdown/begegnung_karte_01_*.md` bis `begegnung_karte_32_*.md`
+- `docs/rule-sources.md`
+- `docs/star-odyssey-rule-decisions.md`
 - `docs/game-reference.md`
 - `docs/board-layout.md`
 - `docs/turn-structure.md`
@@ -88,7 +90,7 @@ Die Zahlen bilden den Auditstichtag ab. Aktuell sind 17 von 31 IDs erledigt (1 P
 - `docs/vision.md`
 - `docs/pdf-analysis-workflow.md`
 
-`docs/ui-flow.md`, `docs/implementation-roadmap.md`, `docs/assets-plan.md` und `docs/vision.md` beschreiben teilweise einen aelteren Prototypstand und sind nicht durchgehend als aktuelle Sollquelle geeignet (`DOC-001`).
+`docs/rule-sources.md` klassifiziert verbindliche, abgeleitete und historische Dokumente. Die fruehen Planungsdateien `docs/ui-flow.md`, `docs/implementation-roadmap.md`, `docs/turn-structure.md` und `docs/vision.md` tragen zusaetzlich einen sichtbaren Status mit Datum (`DOC-001`, erledigt).
 
 ## 3. Bewusste und bestaetigte Abweichungen vom Brettspiel
 
@@ -426,7 +428,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### DOC-001 - Massgebliche Regelquellen sind nicht versioniert, Projektdokumente teilweise veraltet
 
 - **Bereich:** Dokumentation / Nachvollziehbarkeit
-- **Status:** TECHNISCH RISKANT
+- **Status:** UMGESETZT
 - **Prioritaet:** P2 - Wichtig
 - **Aufwand:** S
 - **Betroffene Spielvariante:** beide
@@ -440,6 +442,9 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Abhaengigkeiten:** Lizenz-/Ablageentscheidung fuer offizielle PDFs.
 - **Akzeptanzkriterien:** Ein frischer Checkout benennt eindeutig die aktuelle Classic-, Almanach-, Supernova- und Star-Odyssey-Sollquelle; veraltete Dateien tragen Status/Datum; keine widerspruechliche Datei gilt stillschweigend als aktuell.
 - **Verifikationsstatus:** Vollstaendig verifiziert.
+- **Resolution (`2528d83`):** **ERLEDIGT.** `docs/rule-sources.md` legt Rangfolge, erwartete Classic-PDF-Dateinamen und deren SHA-256 fest. Die beiden vom Projektinhaber gelieferten Supernova-Transkriptionen sind unter `docs/rules/supernova/` versioniert und ueber Hashes nachvollziehbar. `docs/star-odyssey-rule-decisions.md` trennt bestaetigte digitale Anpassungen von Brettspielregeln. Historische UI-, Roadmap-, Vision-, Turn- und abgeleitete Referenzdokumente tragen einen sichtbaren Status; README und Strukturcheck fuehren die massgeblichen Quellen zuerst.
+- **Geaenderte Dateien:** `docs/rule-sources.md`, `docs/star-odyssey-rule-decisions.md`, `docs/rules/supernova/*.md`, `docs/ui-flow.md`, `docs/implementation-roadmap.md`, `docs/vision.md`, `docs/turn-structure.md`, `docs/game-reference.md`, `README.md`, `scripts/check-structure.js`.
+- **Verifikation:** `npm run check`, `npm test`, `git diff --check`; Supernova-Dateihashes, Statusmarker und Required-Path-Struktur gezielt geprueft. Die offiziellen PDFs bleiben bewusst unversioniert, sind aber eindeutig identifizierbar.
 
 ### CTRL-001 - Controller-Oberflaeche ist nicht vollstaendig DE/EN-lokalisiert
 
@@ -891,7 +896,7 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 - Der automatisierte Schluesselvergleich bestaetigt identische DE-/EN-Schluesselmengen. Die zuvor im Audit als fehlend genannten Supernova-Logschluessel waren bereits vorhanden; die eigentliche Luecke waren direkte Controller-Literale und fehlende strukturierte EN-Texte fuer Supernova-Inhalte (`CTRL-001`, erledigt).
 - Ein englisches Drei-Controller-Supernova-E2E prueft Bedien-/Statustexte, Fabriken, private Missionen, dynamische Werte und Viewport-Ueberlauf (`CTRL-001`, erledigt).
 - Die festgelegte Bezeichnung **halbe Medaille** wird im geprueften Supernova-/Encounter-State statt RR/Ruhmesring verwendet.
-- Fabriknamen verwenden `Nahrungsfabrik`; die Quelle nennt auch Farm/Treibstoff-Farm als missverstaendliche Varianten. Die aktuelle Benennung ist als bewusste Klarstellung vertretbar, sollte aber in einem versionierten Glossar festgehalten werden (`DOC-001`).
+- Fabriknamen verwenden `Nahrungsfabrik`; die Quelle nennt auch Farm/Treibstoff-Farm als missverstaendliche Varianten. Die bestaetigte Klarstellung ist in `docs/star-odyssey-rule-decisions.md` versioniert (`DOC-001`, erledigt).
 - Die 25 Missionstexte entsprechen der verbindlichen Supernova-Markdown; M06 verwendet wieder die Quellanforderung "je eine Kolonie".
 - Encounter-Markdowns sind als fachliche Quelle vorhanden; alle vier im Audit konkret gefundenen Flowabweichungen `ENC-001` bis `ENC-004` sind korrigiert und besitzen gezielte Regressionen.
 - Fest in aktiven Menuehintergruenden eingebrannte Bedienungstexte wurden nicht gefunden; Buttons/Titel bleiben HTML-Text.
@@ -976,7 +981,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
 
 8. **Test- und Release-Gate**
    - `TEST-001`: Szenariotests parallel zu jedem obigen Fix, abschliessend reale 3-/4-Spieler-Classic- und Supernova-Testpartie.
-   - `DOC-001`: Quellenindex und aktuelle Dokumentationskennzeichnung vor Release einfrieren.
+   - Erledigt: `DOC-001` versioniert Quellenindex, Supernova-Transkriptionen, Projektentscheidungen und historische Dokumentstatus.
    - `TECH-001`: Debuglogs entfernen.
 
 9. **Optionale Erweiterungen nach Release-Reife**
@@ -990,7 +995,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### Quellen und Regeln
 
-- [ ] Massgebliche Classic-/Supernova-Quellen sind in einem frischen Checkout eindeutig verfuegbar (`DOC-001`).
+- [x] Massgebliche Classic-/Supernova-Quellen sind in einem frischen Checkout eindeutig benannt; Supernova ist versioniert, offizielle PDFs sind ueber erwartete Dateinamen und SHA-256 referenziert (`DOC-001`).
 - [~] Classic-Regeln sind implementiert; Spielerzahl (`CLS-001`), Drei-Spieler-Aufbau/-Belegungsgrenze (`CLS-002`), Nachschubfrist (`CLS-003`) und die auditierten Encounter-Flows sind korrigiert. Die vollstaendige Abnahme bleibt wegen der fehlenden realen Vollpartie offen (`TEST-001`).
 - [x] Fuenf Rohstoffe, Produktion und Sieben-Grundlogik sind vorhanden.
 - [x] Physische Mutterschiff-Anbauten und Freundschaftsboni sind getrennt.
@@ -1109,7 +1114,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - Portabler Saveexport/-import (`OPS-001`).
 - Legacy-Assetbereinigung (`ASSET-001`) ist Polish/Wartbarkeit und kein Spielblocker.
 
-**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde sowie fuenf P2-Befunde einschliesslich Encounter-, Speicherfehler-, Controller-Lokalisierungs- und responsiven UI-Problemen sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, Mehrgeraete-, Restore- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
+**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde sowie sechs P2-Befunde einschliesslich Encounter-, Speicherfehler-, Controller-Lokalisierungs-, Quellen- und responsiven UI-Problemen sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, Mehrgeraete-, Restore- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
 
 ## Implementation Progress
 
@@ -1134,3 +1139,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `CTRL-001` | P2 | ERLEDIGT | `5b58e02` | `npm run check`, `npm test`, `npm run test:e2e` (14/14), `git diff --check`; identische DE-/EN-Schluesselmengen, englische Drei-Controller-Supernova-Partie, private Missionen, Fabriken, dynamische Werte und Viewport-Ueberlauf | weitere reale Geraete- und Langtextabnahme bleibt unter `TEST-001` |
 | `UI-001` | P2 | ERLEDIGT | `bf8eeaf`, `6e781a4` | 1080p-/4K-Screenshots und Bounding-Box-Verhaeltnisse, 844-x-390-Safe-Area, Portrait-Hinweis, `npm run check`, `npm test`, `npm run test:e2e` (14/14), `git diff --check` | realer 4K-Fire-TV-Screenshot bleibt unter `TEST-001` |
 | `UI-002` | P2 | ERLEDIGT | `6e781a4` | 852-x-393-Screenshotvergleich, langer englischer Controller ohne horizontalen Ueberlauf, Portrait-Smoke, Blur-Fallback statisch geprueft, volle Check-/Test-/E2E-Suite | reale iOS-/Android-Kontrastabnahme bleibt unter `TEST-001` |
+| `DOC-001` | P2 | ERLEDIGT | `2528d83` | `npm run check`, `npm test`, `git diff --check`; Quellenrangfolge, Supernova-Dateihashes, Statusmarker und Required-Path-Struktur | offizielle PDFs bleiben aus Lizenz-/Groessengruenden lokal, sind aber eindeutig referenziert |

@@ -9,6 +9,7 @@ Diese Datei dokumentiert bestaetigte digitale Anpassungen. Sie ergaenzt die Quel
 
 - `RR` und `Ruhmesringe` der Supernova-Vorlage werden als **halbe Medaillen** bezeichnet und dargestellt.
 - Eine ganze Medaille entspricht zwei halben Medaillen, wenn ein Kartentext diese Umrechnung benoetigt.
+- Die in der Supernova-Quelle uneinheitlich als Farm bzw. Treibstoff-Farm bezeichnete Fabrik, die Nahrung produziert, heisst in Star Odyssey **Nahrungsfabrik**.
 
 ## Mutterschiff-Ausbauten
 
