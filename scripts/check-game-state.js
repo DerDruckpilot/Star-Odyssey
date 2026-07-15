@@ -343,6 +343,40 @@ const baseProductionGame = normalizeGameState(JSON.parse(JSON.stringify(game)), 
   boardLayout
 });
 
+const legacyGameWithoutStructures = JSON.parse(JSON.stringify(baseProductionGame));
+delete legacyGameWithoutStructures.board.structures;
+const migratedLegacyStructures = normalizeGameState(legacyGameWithoutStructures, {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(
+  migratedLegacyStructures.board.structures.length === boardLayout.startAssignments
+    .slice(0, baseProductionGame.playerCount)
+    .reduce((sum, assignment) => sum + assignment.structures.length, 0),
+  "A legacy save without the structures field should recreate its starting structures."
+);
+
+const modernGameWithNoStructures = JSON.parse(JSON.stringify(baseProductionGame));
+modernGameWithNoStructures.board.structures = [];
+const preservedEmptyStructures = normalizeGameState(modernGameWithNoStructures, {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(
+  preservedEmptyStructures.board.structures.length === 0 && preservedEmptyStructures.players.every((player) => player.structures.length === 0),
+  "An explicitly empty modern structures list should remain empty after normalization."
+);
+
+const normalStructureIds = baseProductionGame.board.structures.map((structure) => structure.id).sort().join(",");
+const reloadedStructureIds = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+}).board.structures.map((structure) => structure.id).sort().join(",");
+assert(reloadedStructureIds === normalStructureIds, "A normal save should preserve its structure set unchanged.");
+
 const specialPlanet = findPlanetWithSpecialToken(game);
 if (specialPlanet) {
   const specialToken = game.board.numberTokens.planetTokensById[specialPlanet.id];

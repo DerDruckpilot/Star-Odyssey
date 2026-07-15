@@ -6237,7 +6237,7 @@ function attachPlayerAssets(players, structures, ships) {
 
 function normalizeStructures(structures, playerCount, boardLayout, options = {}) {
   const useFallback = options.useFallback ?? true;
-  if ((!Array.isArray(structures) || structures.length === 0) && useFallback) {
+  if (!Array.isArray(structures) && useFallback) {
     return createStartingStructures(playerCount, boardLayout);
   }
 
