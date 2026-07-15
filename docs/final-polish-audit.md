@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `9cf989e`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `b4ca742`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -24,7 +24,7 @@ Der Stand ist trotzdem **nicht final polished**:
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 21 von 31 IDs erledigt (1 P0, 11 P1, 8 P2, 1 P3); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 22 von 31 IDs erledigt (1 P0, 11 P1, 8 P2, 2 P3); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -49,7 +49,7 @@ Die Zahlen bilden den Auditstichtag ab. Aktuell sind 21 von 31 IDs erledigt (1 P
 
 1. `FIRE-001` / `TEST-001`: Reale Fire-TV-, Mehrgeraete- und Vollpartie-Abnahmen fehlen weiterhin.
 2. `PWA-002` / `PERF-001`: Sicherer Smartphone-Installationsweg und reale Geraetebudgets sind noch nicht abgenommen.
-3. `TECH-001`: Produktive Debuglogs koennen private oder umfangreiche Zustandsdaten in Browser-/WebView-Konsolen ausgeben.
+3. `TEST-001`: Reale Classic-/Supernova-Vollpartien und weitere Langzeit-Save-/Resume-Ketten fehlen weiterhin.
 
 ### Verifikationsgrenzen
 
@@ -603,7 +603,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### TEST-001 - Tests decken keine vollstaendige Partie und zentrale Supernova-/Resume-Pfade ab
 
 - **Bereich:** Tests / Verifikationsabdeckung
-- **Status:** TECHNISCH RISKANT
+- **Status:** UMGESETZT
 - **Prioritaet:** P2 - Wichtig
 - **Aufwand:** L
 - **Betroffene Spielvariante:** beide
@@ -693,6 +693,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Abhaengigkeiten:** Keine.
 - **Akzeptanzkriterien:** Normale Partie erzeugt keine Debuglogs; Fehler bleiben diagnostizierbar; Debugseiten koennen bei Bedarf explizit loggen.
 - **Verifikationsstatus:** Statisch verifiziert.
+- **Resolution (14.07.2026):** **ERLEDIGT.** Die drei ungeschuetzten Platzierungs-`console.debug`-Bloecke in `src/controller.js` und `src/main.js` sowie ihre reinen Diagnosevariablen wurden entfernt. Echte Warnungen fuer fehlende optionale Assets und blockierte Controller-Popups bleiben erhalten. `scripts/check-structure.js` verhindert neue unbedingte `console.debug`-Ausgaben in Host, Controller und Remote-State. Verifikation: `npm run check`, `npm test`, `git diff --check`; statische Suche findet in den Produktionspfaden nur die zwei beabsichtigten `console.warn`-Fehlerhinweise. Commit: `b4ca742`.
 
 ### ASSET-001 - Alte Raw-/Legacy-Menueassets bleiben unbereinigt im Webbestand
 
@@ -1073,7 +1074,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - [ ] P0- und P1-Akzeptanzkriterien besitzen Regressionstests (`TEST-001`).
 - [-] Vollstaendige reale Classic- und Supernova-Testpartien sind protokolliert.
 - [-] Fire-TV-, iOS-PWA- und Android-PWA-Hardwarematrix ist abgenommen.
-- [ ] Produktions-Debuglogs sind entfernt (`TECH-001`).
+- [x] Produktions-Debuglogs sind entfernt (`TECH-001`).
 
 ## 20. Abschlussurteil
 
@@ -1151,3 +1152,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `STATE-001` | P3 | ERLEDIGT | `9cf989e` | `npm run check`, `npm test`, `git diff --check`; fehlendes Legacy-Feld migriert, explizit leere Liste bleibt leer, normaler Struktur-ID-Satz bleibt unveraendert | keiner |
 | `FIRE-001` | P2 | TEILWEISE ERLEDIGT | `e16743c` | `npm run check`; Debug-/Release-APK gebaut; Manifest `debuggable=true/false`; Debug-APK auf Fire TV installiert und DPAD/Back ohne Absturz | Fire TV erreichte den LAN-Host nicht; sichtbarer Fokus-, Dialog- und Langzeittest bleibt offen |
 | `PERF-001` | P2 | TEILWEISE ERLEDIGT | `ed298a6` | `npm run check`, `npm test`, `npm run test:e2e` (15/15), `git diff --check`; Drei-Worker-Grenze, Farbauswahl, Classic-/Supernova-Trennung und Boardstart | reale RAM-/Frametime-Budgets und Nachladeruckel auf Fire TV/Smartphone nicht verifiziert |
+| `TECH-001` | P3 | ERLEDIGT | `b4ca742` | `npm run check`, `npm test`, `git diff --check`; statische Produktionsquellen-Pruefung und gezielte Konsolensuche | keiner |
