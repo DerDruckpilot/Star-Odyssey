@@ -200,13 +200,26 @@ test("English controllers render localized setup, tabs, factories, and missions"
 });
 
 test("main menu uses a 16:9 stage and shows a portrait rotate hint", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/");
   const scene = page.locator(".main-menu-scene");
+  const title = page.locator(".main-menu-title");
+  const buttonList = page.locator(".main-menu-button-list");
   await expect(scene).toBeVisible();
   const desktopBox = await scene.boundingBox();
-  expect(desktopBox?.width).toBeGreaterThan(1270);
+  const desktopTitleBox = await title.boundingBox();
+  const desktopButtonListBox = await buttonList.boundingBox();
+  expect(desktopBox?.width).toBeGreaterThan(1910);
   expect(Math.abs((desktopBox.width / desktopBox.height) - (16 / 9))).toBeLessThan(0.02);
+
+  await page.setViewportSize({ width: 3840, height: 2160 });
+  const fourKBox = await scene.boundingBox();
+  const fourKTitleBox = await title.boundingBox();
+  const fourKButtonListBox = await buttonList.boundingBox();
+  expect(fourKBox?.width).toBeGreaterThan(3830);
+  expect(fourKTitleBox.width / desktopTitleBox.width).toBeGreaterThan(1.95);
+  expect(fourKButtonListBox.width / desktopButtonListBox.width).toBeGreaterThan(2.05);
+  expect(fourKButtonListBox.y + fourKButtonListBox.height).toBeLessThan((fourKBox.y + fourKBox.height) * 0.82);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
@@ -217,6 +230,9 @@ test("main menu uses a 16:9 stage and shows a portrait rotate hint", async ({ pa
   await page.goto("/");
   await expect(scene).toBeVisible();
   await expect(page.locator(".main-menu-rotate-hint")).toBeHidden();
+  const landscapeSceneBox = await scene.boundingBox();
+  const landscapeButtonListBox = await buttonList.boundingBox();
+  expect(landscapeButtonListBox.y + landscapeButtonListBox.height).toBeLessThan((landscapeSceneBox.y + landscapeSceneBox.height) * 0.9);
 });
 
 test("TV remote focus reaches setup and the controller PWA shell is valid", async ({ page }) => {

@@ -1205,11 +1205,11 @@ textarea:focus-visible {
 
   .main-menu-button-list {
     top: 42%;
-    gap: 0.35rem;
+    gap: 0.2rem;
   }
 
   .main-menu-action-button {
-    min-height: 3.2rem;
+    min-height: clamp(2.15rem, 10.5vh, 3.2rem);
   }
 
   .qr-grid,
