@@ -1,5 +1,6 @@
 import { buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
 import { getFriendshipCardById, getFriendshipCardSummary, getFriendshipCardTitle } from "./data/friendshipCards.js";
+import { getFactoryBlueprintAssetPath } from "./data/factoryVisuals.js";
 import {
   getSupernovaLocalizedText,
   getSupernovaLocalizedTitle,
@@ -1579,12 +1580,32 @@ function renderBuildControls(player) {
   if (isSupernova) {
     const factoryCount = player?.counts?.factories ?? 0;
     const factoryLimitReached = factoryCount >= supernovaFactoryLimitPerPlayer;
+    const pendingFactoryPlacement = gameState?.factoryPlacement;
     const title = document.createElement("strong");
     title.textContent = t("supernovaFactories");
     const stock = document.createElement("small");
     stock.className = "upgrade-card-bonus";
     stock.textContent = t("supernovaFactoryStock", { built: factoryCount, limit: supernovaFactoryLimitPerPlayer });
     wrapper.append(title, stock);
+    if (pendingFactoryPlacement?.ownerPlayerId === selectedPlayerId) {
+      const placement = document.createElement("p");
+      placement.className = "controller-factory-placement-hint";
+      placement.textContent = pendingFactoryPlacement.hint || t("supernovaFactoryChoosePlanet", {
+        factory: pendingFactoryPlacement.factoryTitle || ""
+      });
+      const cancelAction = findAction("supernova.factory.cancel");
+      const controls = document.createElement("div");
+      controls.className = "upgrade-card-actions";
+      controls.append(
+        createButton(t("controllerBoard"), () => {
+          boardFullscreen = true;
+          boardViewFitted = false;
+          render();
+        }, "small-button"),
+        createButton(t("cancelFactoryBuild"), () => cancelAction && sendAction(cancelAction), "small-button secondary-small-button")
+      );
+      wrapper.append(placement, controls);
+    }
 
     for (const factoryType of supernovaFactoryTypes) {
       const remoteAction = findAction(
@@ -1595,9 +1616,13 @@ function renderBuildControls(player) {
       card.className = "upgrade-card upgrade-card--menu build-action-card factory-build-card";
 
       const preview = document.createElement("div");
-      preview.className = `upgrade-card-preview factory-build-preview factory-build-preview--${factoryType.resource}`;
+      preview.className = "upgrade-card-preview factory-build-preview";
       preview.setAttribute("aria-hidden", "true");
-      preview.textContent = "⚙";
+      const previewImage = document.createElement("img");
+      previewImage.className = "upgrade-card-blueprint factory-build-blueprint";
+      previewImage.src = getFactoryBlueprintAssetPath(factoryType.id) ?? "";
+      previewImage.alt = "";
+      preview.append(previewImage);
 
       const body = document.createElement("div");
       body.className = "upgrade-card-body";
@@ -1610,15 +1635,21 @@ function renderBuildControls(player) {
       hint.textContent = factoryLimitReached
         ? t("supernovaFactoryLimitReached")
         : remoteAction
-          ? t("controllerFactoryResourceAvailable", { resource: getResourceLabel(remoteAction.payload?.resource) })
+          ? `${t("supernovaFactoryProduces", { resource: getResourceLabel(factoryType.resource) })} · ${t("supernovaFactorySiteAvailable")}`
           : t("noFactorySiteAvailable");
 
       const cost = document.createElement("small");
       cost.className = "upgrade-card-cost";
       cost.textContent = `${t("cost")}: ${formatCost(factoryType.cost)}`;
 
-      const button = createButton(t("build"), () => remoteAction && sendAction(remoteAction), "small-button");
-      button.disabled = factoryLimitReached || !remoteAction || Boolean(remoteAction.disabled);
+      const button = createButton(t("build"), () => {
+        if (!remoteAction) return;
+        sendAction(remoteAction);
+        boardFullscreen = true;
+        boardViewFitted = false;
+        render();
+      }, "small-button");
+      button.disabled = factoryLimitReached || Boolean(pendingFactoryPlacement) || !remoteAction || Boolean(remoteAction.disabled);
 
       const actions = document.createElement("div");
       actions.className = "upgrade-card-actions";
@@ -2075,7 +2106,7 @@ function prepareControllerBoardSvg(content) {
   applyStructuredFlightBoardState(content);
   applyStructuredEncounterBoardState(content);
 
-  if (isPlacementBoardMode() || isFlightMovementBoardMode() || isEncounterBoardSelectionMode()) {
+  if (isPlacementBoardMode() || isFlightMovementBoardMode() || isEncounterBoardSelectionMode() || isFactoryPlacementBoardMode()) {
     svg.classList.add("controller-board-svg--placement");
     content.querySelectorAll(".planet.is-selected, .planet-system.is-selected, .start-system.is-selected").forEach((element) => {
       element.classList.remove("is-selected");
@@ -2085,6 +2116,16 @@ function prepareControllerBoardSvg(content) {
       element.removeAttribute("role");
       element.removeAttribute("tabindex");
     });
+  }
+  if (isFactoryPlacementBoardMode()) {
+    for (const planetId of gameState.factoryPlacement?.validPlanetIds ?? []) {
+      const planet = content.querySelector(`[data-board-type='planet'][data-board-id='${cssEscape(planetId)}']`);
+      if (!planet) continue;
+      planet.classList.add("is-factory-target");
+      planet.style.pointerEvents = "auto";
+      planet.setAttribute("role", "button");
+      planet.setAttribute("tabindex", "0");
+    }
   }
 }
 
@@ -2170,7 +2211,7 @@ function clampBoardScale(scale) {
 
 function attachBoardGestures(viewport, content) {
   viewport.addEventListener("click", (event) => {
-    if (!isPlacementBoardMode() && !isFlightMovementBoardMode() && !isEncounterBoardSelectionMode()) return;
+    if (!isPlacementBoardMode() && !isFlightMovementBoardMode() && !isEncounterBoardSelectionMode() && !isFactoryPlacementBoardMode()) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     if (boardGestureMoved) {
@@ -2178,6 +2219,15 @@ function attachBoardGestures(viewport, content) {
       return;
     }
     if (!canUseBoardSelection()) {
+      flashBoardFeedback(viewport);
+      return;
+    }
+    if (isFactoryPlacementBoardMode()) {
+      const factoryTarget = getFactoryPlanetTargetElement(getBoardElementFromEventTarget(event.target));
+      if (factoryTarget) {
+        sendFactoryPlacementSelection(factoryTarget.dataset.boardId);
+        return;
+      }
       flashBoardFeedback(viewport);
       return;
     }
@@ -2252,6 +2302,15 @@ function attachBoardGestures(viewport, content) {
         flashBoardFeedback(viewport);
         return;
       }
+      if (isFactoryPlacementBoardMode()) {
+        const factoryTarget = getFactoryPlanetTargetElement(element);
+        if (factoryTarget) {
+          sendFactoryPlacementSelection(factoryTarget.dataset.boardId);
+          return;
+        }
+        flashBoardFeedback(viewport);
+        return;
+      }
       if (isPlacementBoardMode()) {
         const placementTarget = getPlacementTargetElement(element) ?? findNearestPlacementTarget(content, event.clientX, event.clientY);
         if (!placementTarget) {
@@ -2300,7 +2359,6 @@ function attachBoardGestures(viewport, content) {
   });
 
   viewport.addEventListener("pointerdown", (event) => {
-    viewport.setPointerCapture(event.pointerId);
     if (boardPointers.size === 0) boardGestureMoved = false;
     boardPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     const midpoint = getPointerMidpoint();
@@ -2314,10 +2372,13 @@ function attachBoardGestures(viewport, content) {
   });
   viewport.addEventListener("pointermove", (event) => {
     if (!boardPointers.has(event.pointerId)) return;
-    const previousPoint = boardPointers.get(event.pointerId);
     boardPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (previousPoint && Math.hypot(event.clientX - previousPoint.x, event.clientY - previousPoint.y) > 3) {
+    if (
+      boardPanStart &&
+      Math.hypot(event.clientX - boardPanStart.pointerX, event.clientY - boardPanStart.pointerY) > 8
+    ) {
       boardGestureMoved = true;
+      if (!viewport.hasPointerCapture(event.pointerId)) viewport.setPointerCapture(event.pointerId);
     }
     if (boardPointers.size >= 2) {
       const nextDistance = getPointerDistance();
@@ -2389,6 +2450,13 @@ function isEncounterBoardSelectionMode() {
   );
 }
 
+function isFactoryPlacementBoardMode() {
+  return Boolean(
+    gameState?.phase === "tradeBuild" &&
+    gameState?.factoryPlacement?.ownerPlayerId
+  );
+}
+
 function isEncounterShipJumpBoardMode() {
   return Boolean(["shipJumpSelection", "shipBlockSelection"].includes(gameState?.encounter?.pendingType));
 }
@@ -2400,6 +2468,12 @@ function isEncounterTargetBoardMode() {
 function getPlacementTargetElement(element) {
   const candidate = element?.closest?.("[data-board-type='spacePoint'][data-board-id]");
   if (!candidate?.classList?.contains("is-placement-target")) return null;
+  return candidate;
+}
+
+function getFactoryPlanetTargetElement(element) {
+  const candidate = element?.closest?.("[data-board-type='planet'][data-board-id]");
+  if (!candidate || !gameState?.factoryPlacement?.validPlanetIds?.includes(candidate.dataset.boardId)) return null;
   return candidate;
 }
 
@@ -2549,6 +2623,14 @@ function sendEncounterTargetSelection(nodeId) {
 function sendPlacementSelection(nodeId) {
   if (!nodeId) return;
   sendNamedAction("placement.select", { nodeId });
+}
+
+function sendFactoryPlacementSelection(planetId) {
+  if (!planetId) return;
+  sendNamedAction("board.select", {
+    type: "planet",
+    id: planetId
+  });
 }
 
 function getPlacementTurnHint() {

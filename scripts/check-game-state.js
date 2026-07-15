@@ -1,12 +1,14 @@
 import { boardLayout } from "../src/data/boardLayout.js";
 import {
   advanceToFlightPhase,
+  beginSupernovaFactoryPlacement,
   buyUpgrade,
   canDrawSupply,
   buildSupernovaFactory,
   calculateVictoryPoints,
   buildShip,
   canFoundColonyWithShip,
+  cancelPendingFactoryPlacement,
   cancelPendingSpaceportUpgrade,
   cancelTradeOffer,
   confirmPendingSpaceportUpgrade,
@@ -61,6 +63,8 @@ import { shipVfxData } from "../src/data/shipVfxData.js";
 import {
   gameVariants,
   supernovaFactoryLimitPerPlayer,
+  supernovaFactoryTypes,
+  supernovaFactoryVictoryCards,
   supernovaMissionCards,
   supernovaMissionCounts
 } from "../src/data/supernova.js";
@@ -2243,6 +2247,20 @@ let supernovaFactoryGame = createGameState({
   boardLayout,
   gameVariant: gameVariants.supernova
 });
+assert(
+  JSON.stringify(supernovaFactoryTypes.map(({ id, cost }) => ({ id, cost }))) === JSON.stringify([
+    { id: "ore", cost: { ore: 3, carbon: 1 } },
+    { id: "fuel", cost: { ore: 1, carbon: 1, fuel: 2 } },
+    { id: "food", cost: { ore: 1, carbon: 1, food: 2 } },
+    { id: "carbon", cost: { ore: 1, carbon: 3 } },
+    { id: "goods", cost: { ore: 1, carbon: 1, fuel: 1, goods: 2 } }
+  ]),
+  "All five Supernova factory types should retain their specified build costs."
+);
+assert(
+  supernovaFactoryVictoryCards.length === 5 && supernovaFactoryVictoryCards.every((card) => card.victoryPoints === 1),
+  "Supernova should define five one-point factory majority cards."
+);
 const factoryPlanet = findBuildableFactoryPlanet(supernovaFactoryGame);
 assert(Boolean(factoryPlanet), "Supernova factory smoke test needs a non-start planet with an adjacent site.");
 if (factoryPlanet) {
@@ -2279,9 +2297,53 @@ if (factoryPlanet) {
   const factoryOptions = getBuildableSupernovaFactoryOptions(supernovaFactoryGame, boardLayout, "player-1");
   const matchingFactoryOption = factoryOptions.find((option) => option.planetId === factoryPlanet.id && option.resource === factoryPlanet.resource);
   assert(Boolean(matchingFactoryOption), "Supernova factories should be buildable on adjacent explored non-start planets.");
+  const resourcesBeforePlacement = { ...supernovaFactoryGame.players[0].resources };
+  supernovaFactoryGame = beginSupernovaFactoryPlacement(supernovaFactoryGame, boardLayout, matchingFactoryOption?.factoryType);
+  assert(
+    supernovaFactoryGame.supernova?.pendingFactoryPlacement?.factoryType === matchingFactoryOption?.factoryType &&
+      JSON.stringify(supernovaFactoryGame.players[0].resources) === JSON.stringify(resourcesBeforePlacement),
+    "Starting a Supernova factory placement should persist the selected type without paying resources."
+  );
+  const pendingFactorySave = normalizeGameState(JSON.parse(JSON.stringify(supernovaFactoryGame)), {
+    language: "de",
+    playerCount: 2,
+    boardLayout
+  });
+  assert(
+    pendingFactorySave.supernova?.pendingFactoryPlacement?.ownerPlayerId === "player-1" &&
+      pendingFactorySave.supernova?.pendingFactoryPlacement?.factoryType === matchingFactoryOption?.factoryType,
+    "A pending Supernova factory placement should survive save/load normalization."
+  );
+  assert(
+    advanceToFlightPhase(pendingFactorySave) === pendingFactorySave,
+    "A pending Supernova factory placement should block the transition to the flight phase."
+  );
+  const cancelledFactoryPlacement = cancelPendingFactoryPlacement(pendingFactorySave);
+  assert(
+    !cancelledFactoryPlacement.supernova?.pendingFactoryPlacement &&
+      JSON.stringify(cancelledFactoryPlacement.players[0].resources) === JSON.stringify(resourcesBeforePlacement),
+    "Cancelling a Supernova factory placement should not spend resources."
+  );
+  supernovaFactoryGame = beginSupernovaFactoryPlacement(cancelledFactoryPlacement, boardLayout, matchingFactoryOption?.factoryType);
   const resourceBeforeFactory = supernovaFactoryGame.players[0].resources[factoryPlanet.resource] ?? 0;
   supernovaFactoryGame = buildSupernovaFactory(supernovaFactoryGame, boardLayout, matchingFactoryOption?.factoryType, factoryPlanet.id);
-  assert(supernovaFactoryGame.supernova?.factories?.length === 1, "Building a Supernova factory should persist the factory.");
+  assert(
+    supernovaFactoryGame.supernova?.factories?.length === 1 &&
+      !supernovaFactoryGame.supernova?.pendingFactoryPlacement,
+    "Building a Supernova factory should persist the factory and finish placement."
+  );
+  const resourcesAfterFactory = { ...supernovaFactoryGame.players[0].resources };
+  const afterRepeatedFactoryTap = buildSupernovaFactory(
+    supernovaFactoryGame,
+    boardLayout,
+    matchingFactoryOption?.factoryType,
+    factoryPlanet.id
+  );
+  assert(
+    afterRepeatedFactoryTap === supernovaFactoryGame &&
+      JSON.stringify(afterRepeatedFactoryTap.players[0].resources) === JSON.stringify(resourcesAfterFactory),
+    "Repeating a completed factory placement should neither build again nor spend resources twice."
+  );
   const reloadedFactoryGame = normalizeGameState(JSON.parse(JSON.stringify(supernovaFactoryGame)), {
     language: "de",
     playerCount: 2,

@@ -866,7 +866,7 @@ export function distributeSevenSupply(gameState) {
 }
 
 export function advanceToFlightPhase(gameState) {
-  if (isGameOverState(gameState)) return gameState;
+  if (isGameOverState(gameState) || gameState?.supernova?.pendingFactoryPlacement) return gameState;
   const nextState = updateGameState(gameState, {
     phase: "flight",
     activeTradeOffer: null,
@@ -2444,11 +2444,55 @@ export function getBuildableSupernovaFactoryOptions(gameState, boardLayout, play
     })));
 }
 
+export function beginSupernovaFactoryPlacement(gameState, boardLayout, factoryTypeId) {
+  if (isGameOverState(gameState) || !isSupernovaGame(gameState) || gameState.phase !== "tradeBuild") return gameState;
+  const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const hasOtherPlacement = Boolean(
+    gameState.board?.pendingShipPlacement ||
+    gameState.board?.pendingSpaceportUpgrade ||
+    gameState.board?.pendingTradeStationPlacement ||
+    gameState.supernova?.pendingFactoryPlacement
+  );
+  const option = getBuildableSupernovaFactoryOptions(gameState, boardLayout, activePlayer?.id)
+    .find((candidate) => candidate.factoryType === factoryTypeId && candidate.canBuild);
+  if (!activePlayer || hasOtherPlacement || !option || !getSupernovaFactoryType(factoryTypeId)) return gameState;
+
+  return updateGameState(gameState, {
+    board: {
+      ...gameState.board,
+      selectedElement: null
+    },
+    supernova: {
+      ...gameState.supernova,
+      pendingFactoryPlacement: {
+        ownerPlayerId: activePlayer.id,
+        factoryType: factoryTypeId
+      }
+    }
+  });
+}
+
+export function cancelPendingFactoryPlacement(gameState) {
+  if (!gameState?.supernova?.pendingFactoryPlacement) return gameState;
+  return updateGameState(gameState, {
+    supernova: {
+      ...gameState.supernova,
+      pendingFactoryPlacement: null
+    }
+  });
+}
+
 export function buildSupernovaFactory(gameState, boardLayout, factoryTypeId, planetId = null) {
   if (isGameOverState(gameState) || !isSupernovaGame(gameState) || gameState.phase !== "tradeBuild") return gameState;
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
+  const pending = gameState.supernova?.pendingFactoryPlacement;
+  if (
+    !planetId ||
+    pending?.ownerPlayerId !== activePlayer?.id ||
+    pending?.factoryType !== factoryTypeId
+  ) return gameState;
   const option = getBuildableSupernovaFactoryOptions(gameState, boardLayout, activePlayer?.id)
-    .find((candidate) => candidate.factoryType === factoryTypeId && (!planetId || candidate.planetId === planetId));
+    .find((candidate) => candidate.factoryType === factoryTypeId && candidate.planetId === planetId);
   const factoryType = getSupernovaFactoryType(factoryTypeId);
   if (!activePlayer || !option || !factoryType || !option.canBuild) return gameState;
 
@@ -2474,7 +2518,8 @@ export function buildSupernovaFactory(gameState, boardLayout, factoryTypeId, pla
     },
     supernova: {
       ...gameState.supernova,
-      factories: [...(gameState.supernova?.factories ?? []), factory]
+      factories: [...(gameState.supernova?.factories ?? []), factory],
+      pendingFactoryPlacement: null
     },
     logEntry: {
       type: "build",

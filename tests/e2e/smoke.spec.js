@@ -844,6 +844,7 @@ test("Supernova factories render on the board", async ({ page }) => {
   await expect(page.locator(".board-screen")).toBeVisible();
   await expect(marker).toHaveCount(1);
   await expect(marker.locator("title")).toContainText("Spieler 1");
+  await expect(marker.locator("image.factory-marker-image")).toHaveAttribute("href", /factory-(mine|refinery|food|carbon|trade)-red\.png$/);
 
   const controller = await page.context().newPage();
   await controller.goto(await getAuthorizedControllerUrl(page, 1));
@@ -851,6 +852,77 @@ test("Supernova factories render on the board", async ({ page }) => {
   await expect(controller.locator(".controller-status")).toHaveText("Verbunden");
   await controller.getByRole("button", { name: "Spielfeld" }).click();
   await expect(controller.locator(`[data-factory-id="${factory.id}"]`)).toHaveCount(1);
+  await expect(controller.locator(`[data-factory-id="${factory.id}"] image.factory-marker-image`)).toHaveAttribute("href", /factory-(mine|refinery|food|carbon|trade)-red\.png$/);
+  await controller.close();
+});
+
+test("active controller places a Supernova factory on a valid planet", async ({ page }) => {
+  await page.goto("/");
+  const setup = await page.evaluate(async () => {
+    const [{ createGameState, getBuildableSupernovaFactoryOptions }, { boardLayout }, { gameVariants }] = await Promise.all([
+      import("/src/game/gameState.js"),
+      import("/src/data/boardLayout.js"),
+      import("/src/data/supernova.js")
+    ]);
+    const gameState = createGameState({
+      language: "de",
+      playerCount: 2,
+      boardLayout,
+      gameVariant: gameVariants.supernova
+    });
+    const system = gameState.board.placedSystems.find((candidate) => candidate.planets?.length && candidate.colonySites?.length);
+    const site = system.colonySites.find((candidate) => candidate.adjacentPlanetIds?.length);
+    const planet = system.planets.find((candidate) => site.adjacentPlanetIds.includes(candidate.id));
+    gameState.phase = "tradeBuild";
+    gameState.currentPlayerIndex = 0;
+    gameState.board.exploredSystems = [...new Set([...(gameState.board.exploredSystems ?? []), system.id])];
+    gameState.board.structures = [{
+      id: "factory-placement-colony",
+      ownerPlayerId: "player-1",
+      type: "colony",
+      locationId: site.nodeId,
+      systemId: system.id,
+      adjacentPlanetIds: site.adjacentPlanetIds
+    }];
+    gameState.players[0].resources = { ore: 10, fuel: 10, carbon: 10, food: 10, goods: 10 };
+    const option = getBuildableSupernovaFactoryOptions(gameState, boardLayout, "player-1")
+      .find((candidate) => candidate.planetId === planet.id && candidate.canBuild);
+    localStorage.removeItem("starOdyssey.autosave.v1");
+    localStorage.setItem("star-odyssey-current-game", JSON.stringify(gameState));
+    return {
+      planetId: planet.id,
+      factoryType: option.factoryType,
+      factoryLabel: option.label,
+      resource: option.resource,
+      resourceBefore: gameState.players[0].resources[option.resource],
+      resourceCost: option.cost[option.resource] ?? 0
+    };
+  });
+
+  await page.reload();
+  await expect(page.locator(".board-screen")).toBeVisible();
+  const controller = await page.context().newPage();
+  const sentFrames = [];
+  controller.on("websocket", (webSocket) => webSocket.on("framesent", (event) => sentFrames.push(String(event.payload))));
+  await controller.goto(await getAuthorizedControllerUrl(page, 1));
+  await controller.getByRole("button", { name: "Bauen", exact: true }).click();
+  const enabledFactoryBuild = controller.locator(".factory-build-card")
+    .filter({ hasText: setup.factoryLabel })
+    .getByRole("button", { name: "Bauen", exact: true });
+  await expect(enabledFactoryBuild).toBeEnabled();
+  await enabledFactoryBuild.click();
+  const target = controller.locator(`[data-planet-id="${setup.planetId}"].is-factory-target`);
+  await expect(target).toBeVisible();
+  await target.click();
+  await expect.poll(() => sentFrames.some((frame) => frame.includes('"actionId":"board.select"'))).toBe(true);
+
+  const marker = page.locator(`[data-factory-id][data-planet-id="${setup.planetId}"]`);
+  await expect(marker).toHaveCount(1);
+  const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null"));
+  expect(persisted.supernova.pendingFactoryPlacement).toBeNull();
+  expect(persisted.supernova.factories).toHaveLength(1);
+  expect(persisted.supernova.factories[0].planetId).toBe(setup.planetId);
+  expect(persisted.players[0].resources[setup.resource]).toBe(setup.resourceBefore - setup.resourceCost);
   await controller.close();
 });
 

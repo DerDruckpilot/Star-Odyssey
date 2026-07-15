@@ -4,6 +4,10 @@ import {
   importedOutpostVisualLayoutFiles,
   outpostVisualLayouts
 } from "../src/data/outpostVisualLayouts.js";
+import {
+  factoryAssetPaths,
+  factoryBlueprintAssetPaths
+} from "../src/data/factoryVisuals.js";
 
 const requiredPaths = [
   "package.json",
@@ -71,6 +75,21 @@ for (const asset of menuManifest.assets ?? []) {
     } catch {
       assetIssues.push(`${asset.assetKey} references missing ${field}: ${projectPath}`);
     }
+  }
+}
+
+const factoryAssetEntries = Object.values(factoryAssetPaths).flatMap((colorAssets) => Object.values(colorAssets));
+if (factoryAssetEntries.length !== 20) {
+  assetIssues.push(`Expected 20 player-colored factory assets, found ${factoryAssetEntries.length}.`);
+}
+if (Object.values(factoryBlueprintAssetPaths).length !== 5) {
+  assetIssues.push(`Expected 5 factory blueprints, found ${Object.values(factoryBlueprintAssetPaths).length}.`);
+}
+for (const assetPath of [...factoryAssetEntries, ...Object.values(factoryBlueprintAssetPaths)]) {
+  try {
+    await access(path.join(process.cwd(), assetPath.replace(/^\.\//, "")));
+  } catch {
+    assetIssues.push(`Factory visual references missing asset: ${assetPath}`);
   }
 }
 

@@ -7,6 +7,12 @@ import {
 } from "./asset-preloader.js";
 import { buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
 import { getEncounterCardById } from "./data/encounterCards.js";
+import {
+  factoryAssetPaths,
+  factoryBlueprintAssetPaths,
+  getFactoryAssetPath,
+  getFactoryBlueprintAssetPath
+} from "./data/factoryVisuals.js";
 import { getFriendshipCardById, getFriendshipCardSummary, getFriendshipCardTitle } from "./data/friendshipCards.js";
 import {
   formatTokenLabel,
@@ -57,11 +63,13 @@ import {
 import { mothershipUpgradeSlots, upgradeMenuAssetPaths, upgradeMenuOrder } from "./data/upgradeVisuals.js";
 import {
   advanceToFlightPhase,
+  beginSupernovaFactoryPlacement,
   buildSupernovaFactory,
   buildShip,
   buyUpgrade,
   canFoundColonyWithShip as canFoundColonyInGame,
   canDrawSupply,
+  cancelPendingFactoryPlacement,
   cancelPendingShipPlacement,
   cancelPendingSpaceportUpgrade,
   cancelPendingTradeStationPlacement,
@@ -696,6 +704,7 @@ function getGameAssetUrls() {
   ];
   if (isSupernova) {
     playerAssets.push(selectAssetUrlsForColors(battleShipAssetPaths, selectedColors));
+    playerAssets.push(Object.values(factoryAssetPaths).map((assets) => selectAssetUrlsForColors(assets, selectedColors)));
   }
   const upgradeAssets = collectAssetUrls(upgradeMenuAssetPaths)
     .filter((url) => isSupernova || url !== upgradeMenuAssetPaths.buildBlueprints.battleShip);
@@ -707,7 +716,8 @@ function getGameAssetUrls() {
     outpostAssetPaths,
     tradeStationAssetPaths,
     playerAssets,
-    upgradeAssets
+    upgradeAssets,
+    isSupernova ? factoryBlueprintAssetPaths : null
   ]).filter(Boolean))];
 }
 
@@ -1395,6 +1405,8 @@ function enableBoardElementSelection(element, type, id) {
 function selectBoardElement(type, id) {
   if (!state.gameState) return;
 
+  if (type === "planet" && placePendingFactoryAt(id)) return;
+  if (type === "planet" && state.gameState.supernova?.pendingFactoryPlacement) return;
   if (type === "ship" && confirmEncounterJumpShip(id)) return;
   if (type === "ship" && confirmEncounterBlockShip(id)) return;
   if (type === "spacePoint" && confirmEncounterTargetAt(id)) return;
@@ -1795,7 +1807,7 @@ function setTradeOfferTarget(playerId) {
 }
 
 function offerTradeToPlayer() {
-  if (!state.gameState) return;
+  if (!state.gameState || state.gameState.supernova?.pendingFactoryPlacement) return;
   const activePlayer = getActivePlayer();
   state.gameState = createTradeOffer(state.gameState, {
     fromPlayerId: activePlayer?.id,
@@ -1868,7 +1880,11 @@ function distributeSevenSupplyForActivePlayer() {
 }
 
 function goToFlightPhase() {
-  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+  if (
+    !state.gameState ||
+    state.gameState.phase !== "tradeBuild" ||
+    state.gameState.supernova?.pendingFactoryPlacement
+  ) return;
 
   state.gameState = advanceToFlightPhase(state.gameState);
   state.hudPlayerId = null;
@@ -1878,7 +1894,7 @@ function goToFlightPhase() {
 }
 
 function tradeActivePlayerWithSupply() {
-  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+  if (!state.gameState || state.gameState.phase !== "tradeBuild" || state.gameState.supernova?.pendingFactoryPlacement) return;
 
   state.gameState = tradeWithSupply(state.gameState, {
     fromResource: state.tradeFromResource,
@@ -1889,7 +1905,7 @@ function tradeActivePlayerWithSupply() {
 }
 
 function buyActivePlayerUpgrade(upgradeId) {
-  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+  if (!state.gameState || state.gameState.phase !== "tradeBuild" || state.gameState.supernova?.pendingFactoryPlacement) return;
 
   state.gameState = buyUpgrade(state.gameState, upgradeId);
   saveCurrentGameState();
@@ -1897,17 +1913,35 @@ function buyActivePlayerUpgrade(upgradeId) {
 }
 
 function buildActivePlayerShip(shipType) {
-  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+  if (!state.gameState || state.gameState.phase !== "tradeBuild" || state.gameState.supernova?.pendingFactoryPlacement) return;
 
   state.gameState = buildShip(state.gameState, boardLayout, shipType);
   saveCurrentGameState();
   render();
 }
 
-function buildActivePlayerSupernovaFactory(factoryType, planetId = null) {
+function beginActivePlayerSupernovaFactoryPlacement(factoryType) {
   if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
 
-  state.gameState = buildSupernovaFactory(state.gameState, boardLayout, factoryType, planetId);
+  state.gameState = beginSupernovaFactoryPlacement(state.gameState, boardLayout, factoryType);
+  saveCurrentGameState();
+  render();
+}
+
+function placePendingFactoryAt(planetId) {
+  const pending = state.gameState?.supernova?.pendingFactoryPlacement;
+  if (!pending || state.gameState?.phase !== "tradeBuild") return false;
+  const previousGameState = state.gameState;
+  state.gameState = buildSupernovaFactory(state.gameState, boardLayout, pending.factoryType, planetId);
+  if (state.gameState === previousGameState) return false;
+  saveCurrentGameState();
+  render();
+  return true;
+}
+
+function cancelActiveFactoryPlacement() {
+  if (!state.gameState?.supernova?.pendingFactoryPlacement) return;
+  state.gameState = cancelPendingFactoryPlacement(state.gameState);
   saveCurrentGameState();
   render();
 }
@@ -1933,7 +1967,7 @@ function cancelActiveShipBuild() {
 }
 
 function buildActivePlayerSpaceport() {
-  if (!state.gameState || state.gameState.phase !== "tradeBuild") return;
+  if (!state.gameState || state.gameState.phase !== "tradeBuild" || state.gameState.supernova?.pendingFactoryPlacement) return;
 
   state.gameState = startPendingSpaceportUpgrade(state.gameState);
   saveCurrentGameState();
@@ -3304,9 +3338,9 @@ function renderPhaseActions(player = getActivePlayer()) {
     hint.textContent = t("tradeBuildReady");
     wrapper.append(hint);
     wrapper.append(renderSupplyDrawControls());
-    wrapper.append(
-      createButton(t("toFlightPhase"), goToFlightPhase, "small-button")
-    );
+    const flightButton = createButton(t("toFlightPhase"), goToFlightPhase, "small-button");
+    flightButton.disabled = Boolean(state.gameState.supernova?.pendingFactoryPlacement);
+    wrapper.append(flightButton);
   } else if (state.gameState.phase === "flight") {
     if (!state.gameState.hasRolledFlightSpeed) {
       wrapper.append(renderSupplyDrawControls());
@@ -4173,6 +4207,7 @@ function renderBuildControls(player = getActivePlayer()) {
 
   const pendingShipPlacement = state.gameState?.board?.pendingShipPlacement;
   const pendingSpaceportUpgrade = state.gameState?.board?.pendingSpaceportUpgrade;
+  const pendingFactoryPlacement = state.gameState?.supernova?.pendingFactoryPlacement;
   if (pendingShipPlacement) {
     const pending = document.createElement("p");
     pending.textContent = `${t("chooseStartPoint")}: ${getShipTypeLabel(pendingShipPlacement.shipType)}. ${t("chooseStartPointHint")}`;
@@ -4182,6 +4217,13 @@ function renderBuildControls(player = getActivePlayer()) {
     const pending = document.createElement("p");
     pending.textContent = `${t("selectColony")}: ${t("chooseSpaceportColonyHint")}`;
     wrapper.append(pending, createButton(t("cancelSpaceportBuild"), cancelActiveSpaceportBuild, "small-button secondary-small-button"));
+  }
+  if (pendingFactoryPlacement) {
+    const pending = document.createElement("p");
+    const factoryType = supernovaFactoryTypes.find((candidate) => candidate.id === pendingFactoryPlacement.factoryType);
+    pending.textContent = t("supernovaFactoryChoosePlanet")
+      .replace("{factory}", getSupernovaLocalizedTitle(factoryType, state.language));
+    wrapper.append(pending, createButton(t("cancelFactoryBuild"), cancelActiveFactoryPlacement, "small-button secondary-small-button"));
   }
 
   for (const action of buildActionDefinitions.filter((definition) => !definition.variant || isSupernovaGame(state.gameState))) {
@@ -4211,7 +4253,7 @@ function renderBuildControls(player = getActivePlayer()) {
 
     const disabledReasonKey = getBuildUnavailableReason(player, action);
     const button = createButton(t("build"), () => runBuildAction(action.id), "small-button");
-    button.disabled = Boolean(pendingShipPlacement) || Boolean(pendingSpaceportUpgrade) || !canTradeBuildActions(player) || !canPlayerBuild(player, action);
+    button.disabled = Boolean(pendingShipPlacement) || Boolean(pendingSpaceportUpgrade) || Boolean(pendingFactoryPlacement) || !canTradeBuildActions(player) || !canPlayerBuild(player, action);
 
     const actions = document.createElement("div");
     actions.className = "upgrade-card-actions";
@@ -4247,6 +4289,13 @@ function renderBuildControls(player = getActivePlayer()) {
       const option = factoryOptions.find((candidate) => candidate.factoryType === factoryType.id);
       const card = document.createElement("article");
       card.className = "upgrade-card upgrade-card--menu build-action-card";
+      const preview = document.createElement("div");
+      preview.className = "upgrade-card-preview factory-build-preview";
+      const image = document.createElement("img");
+      image.className = "upgrade-card-blueprint factory-build-blueprint";
+      image.src = getFactoryBlueprintAssetPath(factoryType.id) ?? "";
+      image.alt = "";
+      preview.append(image);
       const body = document.createElement("div");
       body.className = "upgrade-card-body";
       const label = document.createElement("strong");
@@ -4257,16 +4306,17 @@ function renderBuildControls(player = getActivePlayer()) {
       cost.textContent = `${t("cost")}: ${formatCost(factoryType.cost)}`;
       const hint = document.createElement("small");
       hint.className = "upgrade-card-bonus";
-      hint.textContent = factoryLimitReached
+      const availability = factoryLimitReached
         ? t("supernovaFactoryLimitReached")
-        : option ? t(`resource_${option.resource}`) : t("noFactorySiteAvailable");
-      const button = createButton(t("build"), () => buildActivePlayerSupernovaFactory(factoryType.id, option?.planetId), "small-button");
-      button.disabled = Boolean(pendingShipPlacement) || Boolean(pendingSpaceportUpgrade) || !option?.canBuild;
+        : option ? t("supernovaFactorySiteAvailable") : t("noFactorySiteAvailable");
+      hint.textContent = `${t("supernovaFactoryProduces").replace("{resource}", t(`resource_${factoryType.resource}`))} · ${availability}`;
+      const button = createButton(t("build"), () => beginActivePlayerSupernovaFactoryPlacement(factoryType.id), "small-button");
+      button.disabled = Boolean(pendingShipPlacement) || Boolean(pendingSpaceportUpgrade) || Boolean(pendingFactoryPlacement) || !option?.canBuild;
       const actions = document.createElement("div");
       actions.className = "upgrade-card-actions";
       actions.append(button, cost);
       body.append(label, hint, actions);
-      card.append(body);
+      card.append(preview, body);
       wrapper.append(card);
     }
   }
@@ -6988,7 +7038,8 @@ function canTradeBuildActions(player) {
   return Boolean(
     player?.id === getActivePlayer()?.id &&
     state.gameState?.phase === "tradeBuild" &&
-    !state.gameState?.pendingFriendshipAction
+    !state.gameState?.pendingFriendshipAction &&
+    !state.gameState?.supernova?.pendingFactoryPlacement
   );
 }
 
@@ -7422,9 +7473,10 @@ function renderPlanetSystem(system, className, explored) {
     const fallbackOffset = planetRenderFallbackOffsets[index] ?? { x: 0, y: 0 };
     const position = getPlanetRenderPosition(system, planet, fallbackOffset);
     const selectedClass = isSelectedElement("planet", planet.id) ? " is-selected" : "";
+    const factoryTargetClass = isValidPendingFactoryPlanet(planet.id) ? " is-factory-target" : "";
     const imageSize = className === "start-system" ? 82 : 72;
     const planetElement = createSvgElement("g", {
-      class: `planet planet--${planet.resource}${selectedClass}`,
+      class: `planet planet--${planet.resource}${selectedClass}${factoryTargetClass}`,
       "data-planet-id": planet.id,
     });
     const planetAssetPath = getPlanetAssetPath(planet.resource);
@@ -7477,40 +7529,30 @@ function renderFactoriesLayer() {
     const placement = getFactoryRenderPlacement(factory);
     if (!placement) continue;
     const owner = state.gameState?.players?.find((player) => player.id === factory.ownerPlayerId);
-    const ownerIndex = Math.max(1, state.gameState.players.findIndex((player) => player.id === factory.ownerPlayerId) + 1);
     const factoryType = supernovaFactoryTypes.find((candidate) => candidate.id === factory.type);
+    const assetPath = getFactoryAssetPath(factory.type, owner?.color);
     const factoryGroup = createSvgElement("g", {
       class: `factory-marker factory-marker--${factory.type}`,
       "data-factory-id": factory.id,
       "data-factory-type": factory.type,
+      "data-planet-id": factory.planetId,
       "data-owner-player-id": factory.ownerPlayerId,
       transform: `translate(${placement.x} ${placement.y})`
     });
     const title = createSvgElement("title");
     title.textContent = `${getSupernovaLocalizedTitle(factoryType, state.language) || factory.type} - ${owner?.name ?? factory.ownerPlayerId}`;
-    factoryGroup.append(
-      title,
-      createSvgElement("polygon", {
-        class: `factory-marker-gear player-color-${ownerIndex}`,
-        points: createFactoryGearPoints(0, 0, 15, 11)
-      }),
-      createSvgElement("circle", {
-        class: "factory-marker-plate",
-        cx: 0,
-        cy: 0,
-        r: 10
-      }),
-      createSvgElement("circle", {
-        class: "factory-marker-core",
-        cx: 0,
-        cy: 0,
-        r: 7
-      }),
-      createSvgElement("path", {
-        class: "factory-marker-building",
-        d: "M -6 6 V -4 L -2 -1 V -5 L 2 -2 V -6 H 6 V 6 Z"
-      })
-    );
+    factoryGroup.append(title);
+    if (assetPath) {
+      factoryGroup.append(createSvgElement("image", {
+        class: "factory-marker-image",
+        href: assetPath,
+        x: -16,
+        y: -16,
+        width: 32,
+        height: 32,
+        preserveAspectRatio: "xMidYMid meet"
+      }));
+    }
     group.append(factoryGroup);
   }
 
@@ -7524,21 +7566,17 @@ function getFactoryRenderPlacement(factory) {
   if (!system || !planet) return null;
   const planetIndex = system.planets.indexOf(planet);
   const position = getPlanetRenderPosition(system, planet, planetRenderFallbackOffsets[planetIndex] ?? { x: 0, y: 0 });
-  const deltaX = position.x - system.x;
-  const deltaY = position.y - system.y;
-  const distance = Math.hypot(deltaX, deltaY) || 1;
   return {
-    x: position.x + (deltaX / distance) * 27,
-    y: position.y + (deltaY / distance) * 27
+    x: position.x + 18,
+    y: position.y + 18
   };
 }
 
-function createFactoryGearPoints(centerX, centerY, outerRadius, innerRadius) {
-  return Array.from({ length: 16 }, (_, index) => {
-    const angle = (Math.PI * 2 * index) / 16 - Math.PI / 2;
-    const radius = index % 2 === 0 ? outerRadius : innerRadius;
-    return `${centerX + Math.cos(angle) * radius},${centerY + Math.sin(angle) * radius}`;
-  }).join(" ");
+function isValidPendingFactoryPlanet(planetId) {
+  const pending = state.gameState?.supernova?.pendingFactoryPlacement;
+  if (!pending || pending.ownerPlayerId !== getActivePlayer()?.id) return false;
+  return getBuildableSupernovaFactoryOptions(state.gameState, boardLayout, pending.ownerPlayerId)
+    .some((option) => option.factoryType === pending.factoryType && option.planetId === planetId && option.canBuild);
 }
 
 function getPlanetRenderPosition(system, planet, fallbackOffset) {
@@ -8606,6 +8644,7 @@ function getRemoteControllerState() {
     trade: getRemoteTradeState(),
     encounter: getRemoteEncounterStateForController(),
     supernovaBattle: getRemoteSupernovaBattleState(),
+    factoryPlacement: getRemoteFactoryPlacementState(),
     board: getRemoteBoardState(),
     saves: getRemoteSaveList(),
     actions: getRemoteControllerActions()
@@ -8634,6 +8673,23 @@ function getRemoteSupernovaBattleState() {
     winnerPlayerId: battle.winnerPlayerId,
     pendingUpgradePlayerId: battle.pendingUpgradePlayerId,
     removableUpgradeIds: battle.removableUpgradeIds ?? []
+  };
+}
+
+function getRemoteFactoryPlacementState() {
+  const pending = state.gameState?.supernova?.pendingFactoryPlacement;
+  if (!pending) return null;
+  const factoryType = supernovaFactoryTypes.find((candidate) => candidate.id === pending.factoryType);
+  const validPlanetIds = getBuildableSupernovaFactoryOptions(state.gameState, boardLayout, pending.ownerPlayerId)
+    .filter((option) => option.factoryType === pending.factoryType && option.canBuild)
+    .map((option) => option.planetId);
+  return {
+    ownerPlayerId: pending.ownerPlayerId,
+    factoryType: pending.factoryType,
+    factoryTitle: getSupernovaLocalizedTitle(factoryType, state.language),
+    validPlanetIds,
+    hint: t("supernovaFactoryChoosePlanet")
+      .replace("{factory}", getSupernovaLocalizedTitle(factoryType, state.language))
   };
 }
 
@@ -8931,6 +8987,9 @@ function getRemoteBoardActionPlayerId() {
   if (state.gameState?.board?.pendingSpaceportUpgrade) {
     return state.gameState.board.pendingSpaceportUpgrade.ownerPlayerId ?? null;
   }
+  if (state.gameState?.supernova?.pendingFactoryPlacement) {
+    return state.gameState.supernova.pendingFactoryPlacement.ownerPlayerId ?? null;
+  }
   if (state.gameState?.phase === "placement") {
     return ["placeSpaceport", "placeColonyShip", "placeFirstColony", "placeSecondColony"].includes(state.gameState.placement?.step)
       ? getActivePlayer()?.id ?? null
@@ -8954,6 +9013,9 @@ function getRemoteBoardMode() {
   if (state.encounterBoardSelectionActive && pendingEncounterStep?.type === "boardTargetSelection") return t("encounterSelectTargetPoint");
   if (state.gameState?.board?.pendingShipPlacement) return t("chooseStartPointHint");
   if (state.gameState?.board?.pendingSpaceportUpgrade) return t("chooseStartPointHint");
+  if (state.gameState?.supernova?.pendingFactoryPlacement) {
+    return getRemoteFactoryPlacementState()?.hint ?? t("supernovaFactoryChoosePlanet");
+  }
   if (state.gameState?.phase === "placement") {
     const hint = getControllerPlacementBoardHint(state.gameState.placement?.step);
     if (hint) return hint;
@@ -9120,36 +9182,48 @@ function getRemoteControllerActions() {
   }
 
   if (state.gameState.phase === "tradeBuild") {
+    const pendingFactoryPlacement = state.gameState.supernova?.pendingFactoryPlacement;
     const drawCount = getSupplyDrawCount(getActivePlayer());
     if (drawCount > 0 && canDrawSupply(state.gameState)) {
       actions.push(createRemoteAction("drawSupply", t("drawSupply").replace("{count}", drawCount), {}, { requiresActivePlayer: true }));
     }
-    actions.push(createRemoteAction("toFlightPhase", t("toFlightPhase"), {}, { requiresActivePlayer: true }));
+    actions.push(createRemoteAction("toFlightPhase", t("toFlightPhase"), {}, {
+      requiresActivePlayer: true,
+      disabled: Boolean(pendingFactoryPlacement)
+    }));
     actions.push(
-      createRemoteAction("build.colonyShip", t("build_colonyShip"), {}, { requiresActivePlayer: true }),
-      createRemoteAction("build.tradeShip", t("build_tradeShip"), {}, { requiresActivePlayer: true }),
-      createRemoteAction("build.spaceport", t("build_spaceport"), {}, { requiresActivePlayer: true })
+      createRemoteAction("build.colonyShip", t("build_colonyShip"), {}, { requiresActivePlayer: true, disabled: Boolean(pendingFactoryPlacement) }),
+      createRemoteAction("build.tradeShip", t("build_tradeShip"), {}, { requiresActivePlayer: true, disabled: Boolean(pendingFactoryPlacement) }),
+      createRemoteAction("build.spaceport", t("build_spaceport"), {}, { requiresActivePlayer: true, disabled: Boolean(pendingFactoryPlacement) })
     );
     if (isSupernovaGame(state.gameState)) {
-      actions.push(createRemoteAction("build.battleShip", t("build_battleShip"), {}, { requiresActivePlayer: true }));
-      for (const option of getBuildableSupernovaFactoryOptions(state.gameState, boardLayout, getActivePlayer()?.id)) {
+      actions.push(createRemoteAction("build.battleShip", t("build_battleShip"), {}, { requiresActivePlayer: true, disabled: Boolean(pendingFactoryPlacement) }));
+      if (pendingFactoryPlacement) {
+        actions.push(createRemoteAction("supernova.factory.cancel", t("cancelFactoryBuild"), {}, { requiresActivePlayer: true }));
+      }
+      const factoryOptions = getBuildableSupernovaFactoryOptions(state.gameState, boardLayout, getActivePlayer()?.id);
+      for (const factoryType of supernovaFactoryTypes) {
+        const options = factoryOptions.filter((option) => option.factoryType === factoryType.id);
+        const option = options.find((candidate) => candidate.canBuild) ?? options[0];
+        if (!option) continue;
         actions.push(createRemoteAction(
           "supernova.factory",
-          `${option.label} ${t("build")}`,
+          `${getSupernovaLocalizedTitle(factoryType, state.language)} ${t("build")}`,
           {
-            factoryType: option.factoryType,
-            factoryTitle: option.label,
-            planetId: option.planetId,
-            resource: option.resource,
-            cost: option.cost
+            factoryType: factoryType.id,
+            factoryTitle: getSupernovaLocalizedTitle(factoryType, state.language),
+            resource: factoryType.resource,
+            cost: factoryType.cost,
+            validPlanetIds: options.filter((candidate) => candidate.canBuild).map((candidate) => candidate.planetId)
           },
-          { requiresActivePlayer: true, disabled: !option.canBuild }
+          { requiresActivePlayer: true, disabled: Boolean(pendingFactoryPlacement) || !options.some((candidate) => candidate.canBuild) }
         ));
       }
     }
     for (const upgrade of upgradeDefinitions) {
       actions.push(createRemoteAction("upgrade.buy", `${t("build")} ${getUpgradeLabel(upgrade.id)}`, { upgradeId: upgrade.id }, {
-        requiresActivePlayer: true
+        requiresActivePlayer: true,
+        disabled: Boolean(pendingFactoryPlacement)
       }));
     }
   }
@@ -9372,8 +9446,11 @@ function executeRemoteAction(actionId, payload = {}) {
       break;
     case "supernova.factory":
       if (isRemoteActionPlayerActive(playerId) && payload.factoryType) {
-        buildActivePlayerSupernovaFactory(payload.factoryType, payload.planetId ?? null);
+        beginActivePlayerSupernovaFactoryPlacement(payload.factoryType);
       }
+      break;
+    case "supernova.factory.cancel":
+      if (isRemoteActionPlayerActive(playerId)) cancelActiveFactoryPlacement();
       break;
     case "supernova.battle.roll": {
       const nextGameState = submitSupernovaShipBattleRoll(state.gameState, { playerId });
