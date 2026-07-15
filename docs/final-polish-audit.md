@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `323f519`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `a6a8887`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -16,14 +16,14 @@ Der Stand ist trotzdem **nicht final polished**:
 
 - **Classic ist in den konkret auditierten Aufbaupunkten korrigiert.** Neue Partien sind auf 3/4 Spieler begrenzt (`CLS-001`); Drei-Spieler-Partien besitzen die neutralen Teile der vierten Farbe und die Zwei-von-drei-Belegungsgrenze ausserhalb der Startsysteme (`CLS-002`). Die Nachschub-Nachholfrist ist ebenfalls korrigiert (`CLS-003`). `ENC-004` verhindert weiterhin eine vollstaendige Regelabnahme.
 - **Der urspruengliche P0-Encounter-Softlock ist behoben.** Ausbau-Belohnungen ohne freien physischen Platz setzen den Flow nun kontrolliert fort (`ENC-001`). Auch Hehlerei-/Piraten-Sonderwuerfe warten nun auf die aktive Controlleraktion und werden sichtbar ausgewertet (`ENC-002`); `ENC-004` verhindert weiterhin eine vollstaendige Encounter-Regelabnahme.
-- **Supernova ist noch nicht vollstaendig regelkonform spielbar.** 13 von 25 Missionen sind nicht automatisch regelgeprueft (`SN-001`). Fabriken (`SN-003`) und die interaktiven, save/load-faehigen Schlachtschiffkaempfe samt drei getrennten Folgepfaden (`SN-004`, `SN-005`) sind inzwischen vervollstaendigt.
+- **Die kritischen Supernova-Systeme sind umgesetzt.** Alle 25 Missionen werden aus dem echten Spielzustand geprueft (`SN-001`); Fabriken (`SN-003`) und die interaktiven, save/load-faehigen Schlachtschiffkaempfe samt drei getrennten Folgepfaden (`SN-004`, `SN-005`) sind ebenfalls vervollstaendigt. Eine reale Vollpartie und die verbleibende Encounter-Abweichung `ENC-004` verhindern weiterhin die abschliessende Regelabnahme.
 - **Private Controllerdaten sind inzwischen getrennt.** Der Host erzeugt player-spezifische View-States; fremde Ressourcenarten, Freundschaftskarten, Missionen und private Auswahlentwuerfe werden nicht mehr serialisiert (`SN-002`).
 - **Das visuelle Niveau ist bei 1920 x 1080 bereits zusammenhaengend, aber nicht ueber alle Zielgeraete fertig.** Die 4K-Hauptmenue-Komposition bleibt wegen fester Obergrenzen zu klein; Controller-Panels verdecken den Space-Hintergrund weitgehend.
 - **Deployment und reale Hardware bleiben Risikobereiche.** Der veraltete Assetcache ist korrigiert (`PWA-001`); die LAN-Auslieferung erfolgt aber weiterhin ueber HTTP, und echte Fire-TV-, PWA- und Langzeit-Performance wurden nicht vollstaendig auf Hardware verifiziert.
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 11 von 31 IDs erledigt (1 P0, 10 P1); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 12 von 31 IDs erledigt (1 P0, 11 P1); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -46,9 +46,9 @@ Die Zahlen bilden den Auditstichtag ab. Aktuell sind 11 von 31 IDs erledigt (1 P
 
 ### Groesste Risiken
 
-1. `SN-001`: 13 Missionsbedingungen sind nicht automatisch regelgeprueft; dadurch bleibt die Supernova-Siegbedingung fachlich unvollstaendig.
-2. `ENC-004`: Mindestens ein Encounter-Flow weicht weiterhin von der verbindlichen Kartenspezifikation ab.
-3. `NET-001` / `NET-002`: Controllerberechtigung, Doppelverbindung und Restore-Handshake bleiben offen.
+1. `ENC-004`: Mindestens ein Encounter-Flow weicht weiterhin von der verbindlichen Kartenspezifikation ab.
+2. `NET-001` / `NET-002`: Controllerberechtigung, Doppelverbindung und Restore-Handshake bleiben offen.
+3. `SAVE-001` / `STATE-001`: Speicherfehler bleiben unsichtbar; eine Legacy-Normalisierung kann leere Strukturstaende fehlinterpretieren.
 
 ### Verifikationsgrenzen
 
@@ -129,13 +129,13 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 |---|---|---|---|---|
 | Variantenwahl/Initialisierung | Classic oder Supernova; Default Classic; persistiert | UMGESETZT | Setup `src/main.js:1901-1951`; Normalisierung `src/game/gameState.js:2515-2636,2814-2851` | - |
 | Nachschub | 3-5 SP: 3; 6-8: 2; 9-11: 1; 12-15: 0 | UMGESETZT | `src/game/gameState.js:3014-3026`; Tests `scripts/check-game-state.js:1635+` | - |
-| 25 Missionen | Drei verschiedene Kategorien, privat, regelkonforme Erfuellung | TEILWEISE UMGESETZT: Daten/Ziehung und private Controllerzustellung vorhanden, 13 Bedingungen nur manuell | `src/data/supernova.js:6-31`; `src/game/gameState.js:2779-2811,2907-2955`; `src/remote/controllerState.js`; `src/main.js` | `SN-001` |
+| 25 Missionen | Drei verschiedene Kategorien, privat, regelkonforme Erfuellung | UMGESETZT: Daten/Ziehung, private Controllerzustellung und automatische Pruefung aller 25 Bedingungen | `src/data/supernova.js`; Missionspruefung in `src/game/gameState.js`; 25 Positiv-/Negativfaelle in `scripts/check-game-state.js`; private Views in `src/remote/controllerState.js` | - |
 | Fabriken | 5 Typen, 5 Teile je Spieler, Baugrenzen, sichtbare Platzierung, doppelte Eigenproduktion | UMGESETZT | `src/data/supernova.js`; `src/game/gameState.js`; Fabriklayer und Controller-Bauansicht in `src/main.js`/`src/controller.js`; Regressionstests | - |
 | Fabrik-Siegpunktkarten | 5 Karten, je 1 SP, nur alleinige Mehrheit, sofort neu berechnen | UMGESETZT im Zustandsmodell | `src/data/supernova.js:42-47`; `src/game/gameState.js:2863-2881` | - |
 | Schlachtschiffbau | Max. 3, 2 Carbon + 2 Treibstoff, mindestens 1 physische Kanone | UMGESETZT | `src/data/buildCosts.js:36-38`; `src/game/gameState.js:2160-2192` | - |
 | Schlachtschiffbewegung | Wie Schiffe; darf besetzten Raumpunkt angreifen | UMGESETZT | Bewegungs-/Kampftrigger und persistierter Kampfzustand in `src/game/gameState.js`; Board-/Controller-Smokes in `scripts/check-game-state.js` und `tests/e2e/smoke.spec.js` | - |
 | Schlachtschiffkampf | Interaktive Wuerfe, Gleichstand erneut, zieltypspezifische Folgen | UMGESETZT | Teilnehmergebundene Controlleraktionen, Host-Auswertung und drei getrennte Folgepfade in `src/game/gameState.js`, `src/main.js`, `src/controller.js`; Regressionen in `scripts/check-game-state.js` und `tests/e2e/smoke.spec.js` | - |
-| Supernova-Sieg | 15 SP und mindestens eine erfuellte Mission im eigenen Zug | TEILWEISE UMGESETZT | Technisch vorhanden, aber von manuellen Missionsmarken abhaengig; `src/game/gameState.js:5551-5587`; Tests `scripts/check-game-state.js:1795+` | `SN-001` |
+| Supernova-Sieg | 15 SP und mindestens eine erfuellte Mission im eigenen Zug | UMGESETZT | Siegpruefung und automatische Missionsauswertung in `src/game/gameState.js`; Legacy-Manuellflags werden verworfen; Regression in `scripts/check-game-state.js` | - |
 | Profivariante | Optional zwei statt drei Missionen | FEHLT, optional | Keine Setup-/State-Option vorhanden | `SN-006` |
 | Classic-Isolation | Keine Supernova-Systeme im Classic-Modus | UMGESETZT | Variantengates in Bau-, Produktions- und Sieglogik | - |
 
@@ -149,7 +149,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 | Brett-Hexfelder / Sternennebel | 135 / 15 markiert | 135 / 15 | ja | BEWUSSTE ABWEICHUNG | - |
 | Begegnungskarten | 32 | 32 | ja | TEILWEISE UMGESETZT | `ENC-004` |
 | Freundschaftskarten | 20 (4 x 5) | 20 | ja | UMGESETZT | - |
-| Missionskarten | 25 | 25 | ja | TEILWEISE UMGESETZT | `SN-001` |
+| Missionskarten | 25 | 25 | ja | UMGESETZT | - |
 | Fabrik-Siegpunktkarten | 5 | 5 | ja | UMGESETZT | - |
 | Fabriktypen | 5 | 5 | baubar und auf TV/Controller sichtbar in Supernova | UMGESETZT | - |
 | Mutterschiff-Ausbauarten | 3 | 3 | ja | UMGESETZT | - |
@@ -249,12 +249,12 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### SN-001 - Missionssystem prueft nur einen Teil der 25 Missionsregeln
 
 - **Bereich:** Supernova / Missionen und Sieg
-- **Status:** TEILWEISE UMGESETZT
+- **Status:** UMGESETZT
 - **Prioritaet:** P1 - Kritisch
 - **Aufwand:** XL
 - **Betroffene Spielvariante:** Supernova
 - **Quelle bzw. Sollverhalten:** Alle 25 Missionskarten besitzen konkrete, private Erfuellungsbedingungen. Drei verschiedenfarbige Missionen werden gezogen; eine Mission gilt nur bei tatsaechlicher Regelerfuellung. Mission 06 fordert mindestens je eine Kolonie an den entferntesten Systemen.
-- **Aktuelles Istverhalten:** Daten und Ziehung sind vorhanden, aber `isSupernovaMissionAutomaticallyFulfilled` implementiert nur 12 Bedingungen; alle uebrigen bleiben ohne manuelle Markierung falsch. Host/Controller bieten eine manuelle Erfuellt-Umschaltung. Der gespeicherte Text von Mission 06 verkuerzt "je eine" zu einer mehrdeutigen Einzahlform.
+- **Urspruengliches Istverhalten:** Daten und Ziehung waren vorhanden, aber `isSupernovaMissionAutomaticallyFulfilled` implementierte nur 12 Bedingungen; alle uebrigen blieben ohne manuelle Markierung falsch. Host/Controller boten eine manuelle Erfuellt-Umschaltung. Der gespeicherte Text von Mission 06 verkuerzte "je eine" zu einer mehrdeutigen Einzahlform.
 - **Konkrete Abweichung:** Die Supernova-Siegbedingung kann nicht aus dem tatsaechlichen Spielzustand fuer alle Missionen ermittelt werden und laesst sich manuell unabhaengig von der Regel setzen.
 - **Beleg:** `src/data/supernova.js:6-31` (insbesondere M06); `src/game/gameState.js:2779-2811,2907-2955`; `src/main.js:2700-2764,8417-8422`; `scripts/check-game-state.js:1795+` setzt eine Mission manuell fuer den Siegtest.
 - **Auswirkung:** Missionserfuellung und damit Spielende koennen falsch, verfrueht oder nie eintreten; eine regelkonforme vollstaendige Supernova-Partie ist nicht nachgewiesen.
@@ -263,6 +263,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Abhaengigkeiten:** Vollstaendiger Missionskatalog, private Controllerdaten, Ereignis-/State-Historie fuer zeitliche Bedingungen, Siegpruefung und Save/Load.
 - **Akzeptanzkriterien:** Alle 25 Missionen besitzen eindeutige Tests fuer nicht erfuellt/erfuellt und Sonderfaelle; M06 verlangt je eine Kolonie an jedem geforderten fernen System; normale Spieler koennen Status nicht frei setzen; Sieg prueft 15 SP plus real erfuellte Mission.
 - **Verifikationsstatus:** Datenbestand und fehlende Branches vollstaendig verifiziert; einzelne missionsspezifische Laufzeitbedingungen mangels Vollpartie nicht verifiziert.
+- **Resolution (`a6a8887`):** **ERLEDIGT.** `src/game/gameState.js` prueft alle 25 Bedingungen aus physischen Ausbauten, Mehrheitskarten, Wild-Space-Kolonien, Flotten-, Fabrik-, Eroberungs-, Handels- und Medaillenzustaenden. Die normalen Host-/Controlleraktionen zum freien Umschalten wurden entfernt; alte `fulfilledMissionIdsByPlayerId`-Flags werden bei Save/Load verworfen. `src/data/supernova.js` enthaelt die verbindlichen Kartentexte, einschliesslich der Pluralanforderung fuer M06. `scripts/check-game-state.js` prueft jede Mission explizit offen/erfuellt sowie Startsystemausschluss, Schiffe im Flug, fremde Spezialmedaillen und die Siegbedingung 15 SP plus real erfuellte Mission. Verifikation: `npm run check`, `npm test`, `npm run test:e2e` (11/11), `git diff --check`.
 
 ### SN-002 - Private Missionen und Ressourcen werden an alle Controller verteilt
 
@@ -760,7 +761,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 | Handelsschiffe | 12 getrennte Asset-/VFX-Zuordnungen vorhanden; keine Vermischung mit Kolonieschiffdaten gefunden. Vollsatz nicht visuell durchgespielt. | TEILWEISE UMGESETZT | `TEST-001`, `PERF-001` |
 | Schlachtschiffe | 12 freigestellte Varianten, VFX-Anker, Engine-/Shot-Daten und Renderer-Auswahl vorhanden. Der interaktive Regelkampf und seine Host-Auswertung sind automatisiert verifiziert; die sichtbare Hardwareabnahme aller Varianten fehlt. | UMGESETZT, visuell als Vollsatz NICHT VERIFIZIERT | `TEST-001` |
 | Planeten/Systeme | Start- und Wild-Space-Daten vollstaendig; initiale Bilder geladen. Grosse Rasterdateien erhoehen Speicherlast. | UMGESETZT, Performance TECHNISCH RISKANT | `PERF-001` |
-| Karten | Encounter-, Freundschafts- und Missionsdaten vorhanden; Texte werden als UI-Text gerendert. Missionsregeltext M06 und ein Encounter-Flow sind fachlich offen. | TEILWEISE UMGESETZT | `SN-001`, `ENC-004` |
+| Karten | Encounter-, Freundschafts- und Missionsdaten vorhanden; Texte werden als UI-Text gerendert. Die Missionspruefung ist vollstaendig; ein Encounter-Flow ist fachlich offen. | TEILWEISE UMGESETZT | `ENC-004` |
 | Blaupausen | Mutterschiff-/Schiffs-/Supernova-Assets und Baumenuepfade sind vorhanden; nicht alle Blaupausen wurden in jeder Farbe/Variante und auf Mobil visuell geprueft. | NICHT VERIFIZIERT als Vollsatz | `TEST-001` |
 | Icons | Ressourcen-/Spielicons vorhanden; Hauptmenue nutzt weiterhin Unicode-Symbole statt der verarbeiteten Iconfamilie. | VISUELL VERBESSERUNGSWÜRDIG | `UI-003` |
 | Rahmen/Ornamente | Hauptmenue, Setup und Lobby wirken im 1080p-Screenshot verwandt; keine sichtbaren weissen Saeume im aktiven Pfad. Raw-/Legacyvarianten bleiben im Webbestand. | UMGESETZT mit Assethygiene-Restpunkt | `ASSET-001` |
@@ -882,7 +883,7 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 - Direkte deutsche Controller-Literale verhindern vollstaendige Umschaltung (`CTRL-001`).
 - Die festgelegte Bezeichnung **halbe Medaille** wird im geprueften Supernova-/Encounter-State statt RR/Ruhmesring verwendet.
 - Fabriknamen verwenden `Nahrungsfabrik`; die Quelle nennt auch Farm/Treibstoff-Farm als missverstaendliche Varianten. Die aktuelle Benennung ist als bewusste Klarstellung vertretbar, sollte aber in einem versionierten Glossar festgehalten werden (`DOC-001`).
-- Mission M06 gibt die Quellanforderung "je eine Kolonie" nicht exakt wieder (`SN-001`).
+- Die 25 Missionstexte entsprechen der verbindlichen Supernova-Markdown; M06 verwendet wieder die Quellanforderung "je eine Kolonie".
 - Encounter-Markdowns sind als fachliche Quelle vorhanden; von den vier gefundenen Flowabweichungen bleibt `ENC-004` offen.
 - Fest in aktiven Menuehintergruenden eingebrannte Bedienungstexte wurden nicht gefunden; Buttons/Titel bleiben HTML-Text.
 
@@ -937,7 +938,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
    - `ENC-004`: Zahn-der-Zeit-Phasen.
 
 3. **Supernova-Vervollstaendigung**
-   - `SN-001`: Alle 25 Missionsbedingungen und exakte Texte.
+   - Erledigt: `SN-001` prueft alle 25 Missionsbedingungen automatisch und verwendet die exakten Quelltexte.
    - Erledigt: `SN-003` begrenzt den Fabrikbestand und rendert Fabriken auf TV und Controller.
    - Erledigt: `SN-004` implementiert den interaktiven, persistierten Schlachtschiffkampf mit beiden Controllern und sichtbarer Host-Auswertung.
    - Erledigt: `SN-005` trennt die drei Kampffolgen, Entscheidungen und Endpositionen.
@@ -991,12 +992,12 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 - [x] Variantenwahl und Save-Fallback auf Classic sind vorhanden.
 - [x] Supernova-Nachschubstaffel entspricht der Quelle.
-- [ ] Alle 25 Missionen werden regelkonform automatisch geprueft (`SN-001`).
+- [x] Alle 25 Missionen werden regelkonform automatisch geprueft (`SN-001`).
 - [x] Private Missionen/Ressourcen bleiben technisch privat (`SN-002`).
 - [x] Fabrikbau, Bestand, Produktion, Mehrheiten sowie TV-/Controllerdarstellung funktionieren (`SN-003`).
 - [x] Schlachtschiffbaukosten, Maximum und Kanonenvoraussetzung sind vorhanden.
 - [x] Schlachtschiffkaempfe sind interaktiv, gleichstands- und folgenkorrekt (`SN-004`, `SN-005`).
-- [~] Siegbedingung 15 SP plus Mission ist technisch vorhanden, aber von unvollstaendiger Missionspruefung abhaengig.
+- [x] Siegbedingung 15 SP plus real erfuellte Mission ist technisch und per Regression geprueft.
 - [ ] Optionale Profivariante ist vorhanden (`SN-006`, optional).
 
 ### State und Save/Load
@@ -1061,7 +1062,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### 2. Kann eine vollstaendige Supernova-Partie regelkonform gespielt werden?
 
-**Nein.** Missionen sind fuer 13 Karten nicht automatisch regelgeprueft (`SN-001`). Fabriksystem (`SN-003`) und Schlachtschiffkaempfe (`SN-004`, `SN-005`) sind inzwischen vervollstaendigt; die technische Siegpruefung allein macht die Variante ohne vollstaendige Missionspruefung dennoch nicht regelkonform.
+**Noch nicht belastbar als vollstaendige Partie abgenommen.** Missionssystem (`SN-001`), Fabriksystem (`SN-003`) und Schlachtschiffkaempfe (`SN-004`, `SN-005`) sind implementiert und automatisiert geprueft. `ENC-004` betrifft weiterhin den gemeinsamen Encounter-Stapel; ausserdem fehlt eine protokollierte reale Supernova-Vollpartie.
 
 ### 3. Gibt es bekannte Faelle von Datenverlust oder festhaengenden Spielzustaenden?
 
@@ -1069,7 +1070,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### 4. Sind alle notwendigen Spielobjekte, Karten und Assets vorhanden?
 
-**Die zentralen Datenbestaende sind zahlenmaessig vorhanden:** 32 Encounter, 20 Freundschaftskarten, 25 Missionen, 5 Fabriktypen/-Mehrheitskarten und je 12 Schiffvarianten. Funktionale Vollstaendigkeit fehlt bei Missionen; Fabrikbestand/-darstellung und Kampf sind umgesetzt. Nicht jede Blaupause/VFX-Kombination wurde visuell abgenommen.
+**Die zentralen Datenbestaende sind zahlenmaessig und bei Missionen auch funktional vorhanden:** 32 Encounter, 20 Freundschaftskarten, 25 automatisch gepruefte Missionen, 5 Fabriktypen/-Mehrheitskarten und je 12 Schiffvarianten. Nicht jede Blaupause/VFX-Kombination wurde visuell abgenommen; `ENC-004` bleibt fachlich offen.
 
 ### 5. Ist die TV-/Fire-TV-Bedienung vor Verbindung der Controller vollstaendig moeglich?
 
@@ -1086,7 +1087,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 ### 8. Welche Punkte verhindern aktuell die Bezeichnung "final polished"?
 
 - Verbleibende Classic-/Encounter-Abweichung `ENC-004`; `CLS-001`, `CLS-002`, `CLS-003` und `ENC-002` sind erledigt.
-- Unvollstaendige Missionspruefung `SN-001`; Fabriken (`SN-003`), Schlachtschiffkaempfe (`SN-004`, `SN-005`) und Controllerprivacy (`SN-002`) sind erledigt.
+- Die kritischen Supernova-Befunde `SN-001` bis `SN-005` sind erledigt; offen bleiben gemeinsame Encounter-, Mehrgeraete- und Hardwareabnahmen.
 - Robuste Mehrgeraete-Wiederherstellung und Controllerberechtigung `NET-001`, `NET-002`; die Payload-Privatsphaere aus `SN-002` ist korrigiert.
 - PWA-/Fire-TV-Risiken `PWA-002` und `FIRE-001`; der stale Assetcache `PWA-001` ist korrigiert.
 - 4K-/Controller-/VFX-Abnahme und zu geringe End-to-End-Testabdeckung `UI-001`, `UI-002`, `TEST-001`, `PERF-001`.
@@ -1098,7 +1099,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - Portabler Saveexport/-import (`OPS-001`).
 - Legacy-Assetbereinigung (`ASSET-001`) ist Polish/Wartbarkeit und kein Spielblocker.
 
-**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-Praesentation. Der urspruengliche P0-Softlock und zehn P1-Befunde sind behoben; die verbleibende P1-Missionspruefung sowie die nicht abgeschlossene Hardware-/Mehrgeraeteabnahme verhindern weiterhin Release- und Final-Polish-Reife.
+**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-Praesentation. Der urspruengliche P0-Softlock und alle elf P1-Befunde sind behoben; die verbleibende Encounter-Abweichung sowie die nicht abgeschlossene Hardware-/Mehrgeraeteabnahme verhindern weiterhin Release- und Final-Polish-Reife.
 
 ## Implementation Progress
 
@@ -1117,3 +1118,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `CLS-002` | P1 | ERLEDIGT | `18f6973` | `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; Neutralteile, Blockade, ausbleibende Produktion/Punkte, Save/Load, 3-/4-Spieler-Grenze und TV-Rendering | keiner |
 | `SN-004` | P1 | ERLEDIGT | `323f519` | `npm run check`, `npm test`, `npm run test:e2e` (11/11), `git diff --check`; beide Controllerwuerfe, Host-Reveal, sieben Gleichstaende, Teilnehmerbindung, Save/Load und Reconnect | reale Fire-TV-Hardwaredarstellung bleibt unter `TEST-001` |
 | `SN-005` | P1 | ERLEDIGT | `323f519` | `npm run check`, `npm test`, `npm run test:e2e` (11/11), `git diff --check`; Angreifer-/Verteidigersieg aller drei Zieltypen, Ein-Rohstoff-Fall, Ausbauwahl und eindeutige Feldbelegung | keiner |
+| `SN-001` | P1 | ERLEDIGT | `a6a8887` | `npm run check`, `npm test`, `npm run test:e2e` (11/11), `git diff --check`; 25 explizite Offen-/Erfuellt-Faelle, Sonderfaelle, Legacyflag-Migration und Supernova-Sieg | reale Vollpartie bleibt unter `TEST-001` |
