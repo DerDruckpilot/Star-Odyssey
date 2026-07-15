@@ -328,6 +328,7 @@ test("English controllers render localized setup, tabs, factories, and missions"
 
   await expect(page.locator(".board-placeholder")).toBeVisible();
   const activeController = controllers[0];
+  await activeController.setViewportSize({ width: 852, height: 393 });
   await activeController.getByRole("button", { name: "Build", exact: true }).click();
   await expect(activeController.getByText("Supernova factories")).toBeVisible();
   await expect(activeController.getByText("Refinery", { exact: true })).toBeVisible();
@@ -340,6 +341,9 @@ test("English controllers render localized setup, tabs, factories, and missions"
   const visibleControllerText = await activeController.locator("body").innerText();
   expect(visibleControllerText).not.toMatch(/Verbunden|Bereit|Bauen|Handeln|Übersicht|Warte|Rohstoff|Fabrik|Missionen|Treibstoff|Nahrung|Handelsware|Schlachtschiff|Raumhafen|Einstellungen/);
   expect(await activeController.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+  expect(await activeController.locator(".controller-tabbar").evaluate((tabbar) => tabbar.scrollWidth <= tabbar.clientWidth + 1)).toBe(true);
+  await activeController.setViewportSize({ width: 740, height: 360 });
+  expect(await activeController.locator(".controller-tabbar").evaluate((tabbar) => tabbar.scrollWidth <= tabbar.clientWidth + 1)).toBe(true);
   expect(await activeController.evaluate(() => document.documentElement.lang)).toBe("en");
 
   await Promise.all(controllers.map((controller) => controller.close()));
