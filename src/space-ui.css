@@ -853,6 +853,41 @@ textarea {
   text-align: center;
 }
 
+.storage-warning {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  max-width: min(34rem, calc(100vw - 2rem));
+  padding: 0.75rem 0.85rem 0.75rem 1rem;
+  border: 1px solid rgba(251, 113, 133, 0.78);
+  border-radius: 0.35rem;
+  background: rgba(39, 8, 19, 0.94);
+  color: #fff1f2;
+  box-shadow: 0 0 1.4rem rgba(225, 29, 72, 0.28);
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.storage-warning__retry {
+  flex: 0 0 auto;
+  min-height: 2.5rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .storage-warning {
+    right: max(0.5rem, env(safe-area-inset-right));
+    bottom: max(0.5rem, env(safe-area-inset-bottom));
+    left: max(0.5rem, env(safe-area-inset-left));
+    max-width: none;
+    font-size: 0.82rem;
+  }
+}
+
 .shell-screen {
   position: relative;
   isolation: isolate;

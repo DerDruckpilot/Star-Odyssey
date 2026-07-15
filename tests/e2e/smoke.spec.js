@@ -397,6 +397,64 @@ test("menu preview loads processed assets and live layout controls", async ({ pa
   expect(buttonLayoutResponse.ok()).toBe(true);
 });
 
+test("storage failures stay visible and retry without a false save success", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const [{ createGameState }, { boardLayout }, { gameVariants }] = await Promise.all([
+      import("/src/game/gameState.js"),
+      import("/src/data/boardLayout.js"),
+      import("/src/data/supernova.js")
+    ]);
+    const gameState = createGameState({
+      language: "de",
+      playerCount: 3,
+      boardLayout,
+      gameVariant: gameVariants.classic
+    });
+    localStorage.removeItem("starOdyssey.autosave.v1");
+    localStorage.setItem("star-odyssey-current-game", JSON.stringify(gameState));
+  });
+  await page.reload();
+  await expect(page.locator(".board-screen")).toBeVisible();
+
+  await page.evaluate(() => {
+    const originalSetItem = Storage.prototype.setItem;
+    window.__starOdysseyOriginalSetItem = originalSetItem;
+    Storage.prototype.setItem = function setItemWithFailure(key, value) {
+      if (["starOdyssey.autosave.v1", "star-odyssey-current-game", "star-odyssey-saves"].includes(String(key))) {
+        throw new DOMException("Storage quota exceeded", "QuotaExceededError");
+      }
+      return originalSetItem.call(this, key, value);
+    };
+    window.dispatchEvent(new Event("pagehide"));
+  });
+
+  const storageWarning = page.locator('[data-storage-warning="true"]');
+  await expect(storageWarning).toContainText("Speichern fehlgeschlagen");
+
+  await page.getByRole("button", { name: "⚙" }).click();
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await page.getByPlaceholder("Name des Spielstands").fill("Quota-Test");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.getByText("Spielstand konnte nicht gespeichert werden.")).toBeVisible();
+  await expect(page.getByText("Spiel gespeichert.")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    Storage.prototype.setItem = window.__starOdysseyOriginalSetItem;
+    delete window.__starOdysseyOriginalSetItem;
+  });
+  await storageWarning.getByRole("button", { name: "Erneut versuchen" }).click();
+
+  await expect(storageWarning).toHaveCount(0);
+  await expect(page.getByText("Speichern funktioniert wieder.")).toBeVisible();
+  const stored = await page.evaluate(() => ({
+    autosave: JSON.parse(localStorage.getItem("starOdyssey.autosave.v1") ?? "null"),
+    saves: JSON.parse(localStorage.getItem("star-odyssey-saves") ?? "[]")
+  }));
+  expect(stored.autosave?.gameState?.gameVariant).toBe("classic");
+  expect(stored.saves.some((save) => save.name === "Quota-Test" && save.gameState?.gameVariant === "classic")).toBe(true);
+});
+
 test("Supernova factories render on the board", async ({ page }) => {
   await page.goto("/");
   const factory = await page.evaluate(async () => {

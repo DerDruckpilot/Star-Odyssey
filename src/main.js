@@ -199,6 +199,11 @@ const remoteHost = {
 const controllerReconnectMs = 1600;
 const localControllerStoragePrefix = "star-odyssey-controller-channel";
 let autosaveTimer = null;
+let storageRetryTimer = null;
+let storageStatusRenderFrame = null;
+let pendingManualSaves = null;
+const storageWriteFailures = new Set();
+const storageRetryDelayMs = 5000;
 
 const placementVfxDuration = 1650;
 const placementVfx = {
@@ -404,14 +409,19 @@ function loadAutosaveGameState(fallbackLanguage = defaultLanguage) {
 }
 
 function saveCurrentGameState() {
-  if (!state.gameState) return;
+  if (!state.gameState) return true;
 
   try {
     localStorage.setItem(currentGameStorageKey, JSON.stringify(state.gameState));
+    clearStorageWriteFailure("currentGame");
   } catch {
-    // Saving the current game is best-effort for the browser prototype.
+    recordStorageWriteFailure("currentGame");
+    scheduleStorageRetry();
+    scheduleAutosave();
+    return false;
   }
   scheduleAutosave();
+  return true;
 }
 
 function scheduleAutosave() {
@@ -424,7 +434,7 @@ function writeAutosaveNow() {
     clearTimeout(autosaveTimer);
     autosaveTimer = null;
   }
-  if (!state.gameState || state.view !== "board") return;
+  if (!state.gameState || state.view !== "board") return true;
 
   try {
     localStorage.setItem(autosaveStorageKey, JSON.stringify({
@@ -435,9 +445,65 @@ function writeAutosaveNow() {
       controllerMode: state.controllerMode,
       gameState: state.gameState
     }));
+    clearStorageWriteFailure("autosave");
+    return true;
   } catch {
-    // Autosave is best-effort; the game must stay playable if storage is full.
+    recordStorageWriteFailure("autosave");
+    scheduleStorageRetry();
+    return false;
   }
+}
+
+function recordStorageWriteFailure(scope) {
+  const wasEmpty = storageWriteFailures.size === 0;
+  storageWriteFailures.add(scope);
+  if (wasEmpty) queueStorageStatusRender();
+}
+
+function clearStorageWriteFailure(scope) {
+  if (!storageWriteFailures.delete(scope)) return;
+  queueStorageStatusRender();
+}
+
+function queueStorageStatusRender() {
+  if (storageStatusRenderFrame || document.visibilityState === "hidden") return;
+  storageStatusRenderFrame = requestAnimationFrame(() => {
+    storageStatusRenderFrame = null;
+    render();
+  });
+}
+
+function scheduleStorageRetry() {
+  if (storageRetryTimer) return;
+  storageRetryTimer = setTimeout(() => {
+    storageRetryTimer = null;
+    retryStorageWrites();
+  }, storageRetryDelayMs);
+}
+
+function retryStorageWrites() {
+  const hadFailures = storageWriteFailures.size > 0;
+
+  if (storageWriteFailures.has("manualSave") && pendingManualSaves) {
+    writeSaves(pendingManualSaves);
+  }
+  if (storageWriteFailures.has("currentGame")) {
+    saveCurrentGameState();
+  }
+  if (storageWriteFailures.has("autosave")) {
+    writeAutosaveNow();
+  }
+
+  if (storageWriteFailures.size > 0) {
+    scheduleStorageRetry();
+    return false;
+  }
+
+  if (hadFailures) {
+    state.notice = t("storageWriteRestored");
+    queueStorageStatusRender();
+  }
+  return true;
 }
 
 function clearAutosave() {
@@ -591,7 +657,17 @@ function readSaves() {
 }
 
 function writeSaves(saves) {
-  localStorage.setItem(savesStorageKey, JSON.stringify(saves));
+  try {
+    localStorage.setItem(savesStorageKey, JSON.stringify(saves));
+    pendingManualSaves = null;
+    clearStorageWriteFailure("manualSave");
+    return true;
+  } catch {
+    pendingManualSaves = saves;
+    recordStorageWriteFailure("manualSave");
+    scheduleStorageRetry();
+    return false;
+  }
 }
 
 function t(key) {
@@ -7819,7 +7895,11 @@ function saveCurrentGame(name, options = {}) {
     gameState: state.gameState
   };
 
-  writeSaves([save, ...readSaves()]);
+  if (!writeSaves([save, ...readSaves()])) {
+    state.notice = t("saveFailed");
+    render();
+    return;
+  }
   state.notice = t("saveSuccess");
   if (options.returnToSettings !== false) {
     state.modal = "settings";
@@ -7906,6 +7986,25 @@ function renderNotice() {
   notice.textContent = state.notice;
   notice.hidden = state.notice.length === 0;
   return notice;
+}
+
+function renderStorageWarning() {
+  if (storageWriteFailures.size === 0) return null;
+
+  const warning = document.createElement("aside");
+  warning.className = "storage-warning";
+  warning.dataset.storageWarning = "true";
+  warning.setAttribute("role", "alert");
+  warning.setAttribute("aria-live", "assertive");
+
+  const message = document.createElement("span");
+  message.textContent = t("storageWriteFailed");
+
+  const retryButton = createButton(t("retrySave"), retryStorageWrites, "small-button storage-warning__retry");
+  retryButton.dataset.remoteId = "storage-retry";
+
+  warning.append(message, retryButton);
+  return warning;
 }
 
 function connectRemoteHost() {
@@ -9090,7 +9189,8 @@ function render() {
   const renderedView = (views[state.view] ?? renderMenu)();
   const renderedModal = renderModal();
 
-  app.replaceChildren(...[renderedView, renderedModal].filter(Boolean));
+  const storageWarning = renderStorageWarning();
+  app.replaceChildren(...[renderedView, renderedModal, storageWarning].filter(Boolean));
   restorePlayerHudScrollPosition();
   drawShipEngineVfxOverlays();
   syncShipVfxLoop();
@@ -9117,7 +9217,11 @@ document.addEventListener("focusin", () => {
 window.addEventListener("firetvback", handleRemoteBack);
 
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") writeAutosaveNow();
+  if (document.visibilityState === "hidden") {
+    writeAutosaveNow();
+  } else if (storageWriteFailures.size > 0) {
+    queueStorageStatusRender();
+  }
 });
 window.addEventListener("pagehide", writeAutosaveNow);
 window.addEventListener("beforeunload", writeAutosaveNow);
