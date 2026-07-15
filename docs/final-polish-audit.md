@@ -584,7 +584,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### PERF-001 - Asset-Preloader dekodiert alle grossen Schiff-/Planetenvarianten gleichzeitig
 
 - **Bereich:** Performance / Asset-Laden
-- **Status:** TECHNISCH RISKANT
+- **Status:** TEILWEISE UMGESETZT
 - **Prioritaet:** P2 - Wichtig
 - **Aufwand:** M
 - **Betroffene Spielvariante:** beide
@@ -598,6 +598,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Abhaengigkeiten:** Assetmanifest, Cachestrategie `PWA-001`, VFX-Variantenwahl und Hardwareprofiling.
 - **Akzeptanzkriterien:** Preload laedt keine im Spiel unerreichbaren Farb-/Variantenkombinationen unnoetig; definierte Speicher-/Zeitbudgets auf Fire TV und Smartphone werden eingehalten; keine sichtbaren Nachladeruckler nach Spielstart.
 - **Verifikationsstatus:** URL-Sammlung und Dateigroessen verifiziert; reales Fire-TV-Speicherprofil **NICHT VERIFIZIERT**.
+- **Resolution (14.07.2026):** **TEILWEISE ERLEDIGT.** `src/asset-preloader.js` begrenzt Bildlade- und Dekodierarbeit auf drei parallele Worker. `src/main.js` laedt in der QR-Lobby zunaechst die gemeinsamen Assets und ergaenzt danach nur die tatsaechlich gewaehlten Spielerfarben; Schlachtschiffe und ihre Blaupause werden nur fuer Supernova angefordert. Revisions- und Request-Key-Guards halten den Spielstart bei einer spaeten Farbaenderung bis zum passenden Assetsatz gesperrt, ohne identische Ladeauftraege zu vervielfachen. Fehlende optionale Assets bleiben ein geloggter Fallback statt eines Softlocks. `scripts/check-asset-preloader.js` prueft URL-Auswahl, Deduplizierung und die Parallelitaetsgrenze; der Chromium-Lobbytest belegt Classic ohne Schlachtschiffe sowie Supernova mit exakt der gewaehlten Farbe und den anschliessenden normalen Boardstart. Verifikation: `npm run check`, `npm test`, `npm run test:e2e` (15/15), `git diff --check`. Commit: `ed298a6`. Offen bleiben gemessene RAM-/Frametime-Budgets und eine Nachladeruckel-Abnahme auf echtem Fire TV/Smartphone; diese Hardwarepunkte bleiben unter `PERF-001`/`TEST-001` **NICHT VERIFIZIERT**.
 
 ### TEST-001 - Tests decken keine vollstaendige Partie und zentrale Supernova-/Resume-Pfade ab
 
@@ -1149,3 +1150,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `NET-002` | P2 | ERLEDIGT | `56cda42` | echter Relay-Prozessneustart auf demselben Port, Host-Neuregistrierung, restaurierter Pending-Encounter-State und genau eine Aktion; volle Check-/Test-/E2E-Suite | realer PC-/Hardware-Neustart bleibt unter `TEST-001` |
 | `STATE-001` | P3 | ERLEDIGT | `9cf989e` | `npm run check`, `npm test`, `git diff --check`; fehlendes Legacy-Feld migriert, explizit leere Liste bleibt leer, normaler Struktur-ID-Satz bleibt unveraendert | keiner |
 | `FIRE-001` | P2 | TEILWEISE ERLEDIGT | `e16743c` | `npm run check`; Debug-/Release-APK gebaut; Manifest `debuggable=true/false`; Debug-APK auf Fire TV installiert und DPAD/Back ohne Absturz | Fire TV erreichte den LAN-Host nicht; sichtbarer Fokus-, Dialog- und Langzeittest bleibt offen |
+| `PERF-001` | P2 | TEILWEISE ERLEDIGT | `ed298a6` | `npm run check`, `npm test`, `npm run test:e2e` (15/15), `git diff --check`; Drei-Worker-Grenze, Farbauswahl, Classic-/Supernova-Trennung und Boardstart | reale RAM-/Frametime-Budgets und Nachladeruckel auf Fire TV/Smartphone nicht verifiziert |
