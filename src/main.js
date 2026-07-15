@@ -3338,6 +3338,13 @@ function renderEncounterActions(player) {
   if (!encounter || !card) return wrapper;
 
   const activePlayer = getActivePlayer();
+  if (encounter.pendingStep?.type === "message") {
+    wrapper.append(renderEncounterMessage(
+      encounter.pendingStep,
+      !state.controllerMode && player?.id === activePlayer?.id
+    ));
+    return wrapper;
+  }
   const hasAdvancedEncounter = Boolean(encounter.choiceId || encounter.pendingStep || encounter.status === "resolved");
   const currentText = getLocalizedEncounterText(hasAdvancedEncounter ? encounter.resultText : card.prompt);
   if (currentText) {
@@ -3458,6 +3465,30 @@ function renderEncounterActions(player) {
     choiceList.append(button);
   }
   wrapper.append(choiceList);
+  return wrapper;
+}
+
+function renderEncounterMessage(pendingStep, canContinue) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-message-step";
+  const titleText = getLocalizedEncounterText(pendingStep.titleText);
+  const bodyText = getLocalizedEncounterText(pendingStep.bodyText);
+  const detailText = getLocalizedEncounterText(pendingStep.detailText);
+  if (titleText) {
+    const title = document.createElement("h2");
+    title.textContent = titleText;
+    wrapper.append(title);
+  }
+  for (const text of [bodyText, detailText]) {
+    if (!text) continue;
+    const paragraph = document.createElement("p");
+    paragraph.className = "encounter-prompt";
+    paragraph.textContent = text;
+    wrapper.append(paragraph);
+  }
+  if (canContinue) {
+    wrapper.append(createButton(t("continue"), () => submitEncounterPendingAction(), "small-button"));
+  }
   return wrapper;
 }
 
@@ -8304,6 +8335,15 @@ function getRemoteEncounterStateForController() {
 
 function getRemoteEncounterPendingStep(pendingStep) {
   if (!pendingStep) return null;
+  if (pendingStep.type === "message") {
+    return {
+      type: "message",
+      titleText: getLocalizedEncounterText(pendingStep.titleText),
+      bodyText: getLocalizedEncounterText(pendingStep.bodyText),
+      detailText: getLocalizedEncounterText(pendingStep.detailText),
+      continueLabel: t("continue")
+    };
+  }
   if (pendingStep.type === "singleMothershipRoll") {
     return {
       type: "singleMothershipRoll",

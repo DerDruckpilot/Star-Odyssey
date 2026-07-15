@@ -657,10 +657,23 @@ function createToothOfTimeCard(number, id, threshold, hasGalacticCouncil) {
     effects.push({
       type: "globalLeaderHalfMedal",
       metric: "cargo",
-      amount: 1
+      amount: 1,
+      showResult: true,
+      titleText: L("Galaktischer Rat", "Galactic Council"),
+      bodyText: L(
+        "Die Spieler, deren Mutterschiffe über die meisten Frachtringe verfügen, erhalten eine halbe Medaille.",
+        "The players whose motherships have the most cargo rings receive half a medal."
+      )
     });
   }
-  effects.push({ type: "drawNextEncounter", reshuffleAll: true });
+  effects.push(
+    {
+      type: "showEncounterMessage",
+      titleText: L("Neue Begegnung", "New Encounter"),
+      bodyText: L("Die Begegnungen wurden neu gemischt.", "The encounters were reshuffled.")
+    },
+    { type: "drawNextEncounter", reshuffleAll: true }
+  );
 
   return createEncounterCard({
     number,
@@ -675,11 +688,7 @@ function createToothOfTimeCard(number, id, threshold, hasGalacticCouncil) {
       ? "Everyone whose mothership has more than six upgrades chooses one upgrade and removes it. The players with the most cargo rings receive half a medal."
       : "Everyone whose mothership has more than eight upgrades chooses one upgrade and removes it.",
     choices: [
-      createChoice("continue", "Weiter", "Continue", effects, {
-        resultText: hasGalacticCouncil
-          ? L("Galaktischer Rat: Die Spieler mit den meisten Frachtringen erhalten eine halbe Medaille. Neue Begegnung: Die Begegnungen wurden neu gemischt.")
-          : L("Neue Begegnung: Die Begegnungen wurden neu gemischt.")
-      })
+      createChoice("continue", "Weiter", "Continue", effects)
     ],
     resultsDe: "Die Begegnungen wurden neu gemischt.",
     resultsEn: "The encounters were reshuffled.",

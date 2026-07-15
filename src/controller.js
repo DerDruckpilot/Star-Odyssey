@@ -1011,6 +1011,11 @@ function renderEncounterPanel() {
     return panel;
   }
 
+  if (isOwner && pendingStep?.type === "message") {
+    panel.append(renderControllerEncounterMessage(pendingStep));
+    return panel;
+  }
+
   const promptText = gameState.encounter.pendingStep?.type === "choiceSelection"
     ? (gameState.encounter.pendingStep.promptText || gameState.encounter.resultText || gameState.encounter.prompt || "")
     : (gameState.encounter.resultText || gameState.encounter.prompt || "");
@@ -1082,6 +1087,28 @@ function renderEncounterPanel() {
     }))));
   }
   return panel;
+}
+
+function renderControllerEncounterMessage(pendingStep) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "encounter-choice-list encounter-message-step";
+  if (pendingStep.titleText) {
+    const title = document.createElement("h3");
+    title.textContent = pendingStep.titleText;
+    wrapper.append(title);
+  }
+  for (const text of [pendingStep.bodyText, pendingStep.detailText]) {
+    if (!text) continue;
+    const paragraph = document.createElement("p");
+    paragraph.textContent = text;
+    wrapper.append(paragraph);
+  }
+  wrapper.append(createButton(
+    pendingStep.continueLabel || "Weiter",
+    () => sendNamedAction("encounter.submitPending"),
+    "small-button"
+  ));
+  return wrapper;
 }
 
 function isControllerDualMothershipRollParticipant(pendingStep) {

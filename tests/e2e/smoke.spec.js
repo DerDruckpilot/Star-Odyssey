@@ -527,6 +527,83 @@ test("active controller starts a visible single-player encounter roll", async ({
   await controller.close();
 });
 
+test("Tooth of Time shows its saved result phases before drawing again", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const [{
+      createGameState,
+      determineFlightSpeed,
+      resolveEncounterChoice,
+      startPendingFlightEncounter,
+      submitEncounterPending
+    }, { boardLayout }] = await Promise.all([
+      import("/src/game/gameState.js"),
+      import("/src/data/boardLayout.js")
+    ]);
+    let gameState = createGameState({
+      language: "de",
+      playerCount: 2,
+      boardLayout
+    });
+    gameState = {
+      ...gameState,
+      phase: "flight",
+      currentPlayerIndex: 0,
+      players: gameState.players.map((player, index) => ({
+        ...player,
+        upgrades: index === 0
+          ? { drive: 6, cargo: 1, cannon: 2 }
+          : { drive: 4, cargo: 2, cannon: 1 },
+        friendshipCards: [],
+        halfMedals: 0
+      })),
+      board: {
+        ...gameState.board,
+        ships: [{
+          id: "tooth-of-time-e2e-ship",
+          ownerPlayerId: "player-1",
+          type: "colonyShip",
+          locationId: boardLayout.points[0].id,
+          status: "active"
+        }]
+      }
+    };
+    gameState = determineFlightSpeed(gameState, {
+      balls: ["black", "yellow"],
+      encounterCardId: "spreadsheet-32"
+    });
+    gameState = startPendingFlightEncounter(gameState);
+    gameState = resolveEncounterChoice(gameState, { choiceId: "continue" });
+    gameState = submitEncounterPending(gameState, { upgrade: "drive" });
+    gameState = submitEncounterPending(gameState, { upgrade: "drive" });
+    localStorage.removeItem("starOdyssey.autosave.v1");
+    localStorage.setItem("star-odyssey-current-game", JSON.stringify(gameState));
+  });
+
+  await page.reload();
+  await expect(page.locator(".encounter-message-step h2")).toHaveText("Galaktischer Rat");
+  await expect(page.locator(".encounter-message-step")).toContainText("Spieler 2 erhält eine halbe Medaille.");
+
+  const sessionId = await page.evaluate(() => sessionStorage.getItem("star-odyssey-controller-session"));
+  const controller = await page.context().newPage();
+  await controller.goto(`/controller.html?session=${sessionId}&player=1`);
+  await expect(controller.locator(".encounter-message-step h3")).toHaveText("Galaktischer Rat");
+  await controller.getByRole("button", { name: "Weiter" }).click();
+
+  await expect(page.locator(".encounter-message-step h2")).toHaveText("Neue Begegnung");
+  await expect(controller.locator(".encounter-message-step h3")).toHaveText("Neue Begegnung");
+  await expect(controller.locator(".encounter-message-step")).toContainText("Die Begegnungen wurden neu gemischt.");
+  await controller.getByRole("button", { name: "Weiter" }).click();
+
+  await expect.poll(async () => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null");
+    return state?.activeEncounter?.cardId ?? null;
+  })).not.toBe("spreadsheet-32");
+  const finalState = await page.evaluate(() => JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null"));
+  expect(finalState.players[1].halfMedals).toBe(1);
+  await controller.close();
+});
+
 test("both controllers must roll before a Supernova ship battle is shown", async ({ page }) => {
   await page.goto("/");
   const initialFlightSpeed = await page.evaluate(async () => {

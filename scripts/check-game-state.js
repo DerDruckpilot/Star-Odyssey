@@ -1615,10 +1615,97 @@ assert(getRealUpgradeValue(toothEncounterGame.players[0], "drive") === 5, "Globa
 assert(getFriendshipUpgradeBonus(toothEncounterGame, "player-1", "drive") === 2, "Global upgrade loss should not remove friendship drive bonuses.");
 assert(getEffectiveUpgradeValue(toothEncounterGame, "player-1", "drive") === 7, "Effective drives should keep remaining real upgrades plus friendship bonuses after global loss.");
 toothEncounterGame = submitEncounterPending(toothEncounterGame, { upgrade: "drive" });
-assert(Boolean(toothEncounterGame.activeEncounter?.cardId), "Global follow-up cards should draw a new encounter immediately.");
-assert(toothEncounterGame.activeEncounter?.cardId !== "spreadsheet-32", "Global cards should transition into a new encounter after resolving.");
+assert(toothEncounterGame.activeEncounter?.cardId === "spreadsheet-32", "The Galactic Council should remain on card 32 while its result is shown.");
+assert(toothEncounterGame.activeEncounter?.pendingStep?.type === "message", "The Galactic Council result should be a visible intermediate message.");
+assert(toothEncounterGame.activeEncounter?.pendingStep?.titleText?.de === "Galaktischer Rat", "Card 32 should show the Galactic Council heading before drawing again.");
+assert(toothEncounterGame.activeEncounter?.pendingStep?.detailText?.de?.includes(toothEncounterGame.players[1].name), "The Galactic Council result should name the physical cargo-ring leader.");
 assert(toothEncounterGame.players[0].halfMedals === 0, "The Galactic Council should not reward a player with fewer physical cargo rings.");
 assert(toothEncounterGame.players[1].halfMedals === 1, "The Galactic Council should reward the sole leader in physical cargo rings.");
+
+toothEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(toothEncounterGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(toothEncounterGame.activeEncounter?.pendingStep?.titleText?.de === "Galaktischer Rat", "Saving and loading should preserve the Galactic Council result step.");
+assert(toothEncounterGame.players[1].halfMedals === 1, "Saving and loading the Galactic Council result must not duplicate its medal.");
+toothEncounterGame = submitEncounterPending(toothEncounterGame);
+assert(toothEncounterGame.activeEncounter?.cardId === "spreadsheet-32", "Card 32 should remain active for the reshuffle message.");
+assert(toothEncounterGame.activeEncounter?.pendingStep?.titleText?.de === "Neue Begegnung", "Card 32 should show a separate New Encounter step after the Galactic Council.");
+assert(toothEncounterGame.activeEncounter?.pendingStep?.bodyText?.de === "Die Begegnungen wurden neu gemischt.", "The reshuffle message should match the card specification.");
+assert(toothEncounterGame.players[1].halfMedals === 1, "Advancing to the reshuffle message must not award the Galactic Council medal twice.");
+
+toothEncounterGame = normalizeGameState(JSON.parse(JSON.stringify(toothEncounterGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+toothEncounterGame = submitEncounterPending(toothEncounterGame);
+assert(Boolean(toothEncounterGame.activeEncounter?.cardId), "Card 32 should draw a new encounter after the visible reshuffle message.");
+assert(toothEncounterGame.activeEncounter?.cardId !== "spreadsheet-32", "Card 32 should transition only after the reshuffle message is confirmed.");
+assert(toothEncounterGame.players[1].halfMedals === 1, "Reloading and completing card 32 must not duplicate its medal.");
+
+let emptyCouncilGame = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+emptyCouncilGame = {
+  ...emptyCouncilGame,
+  phase: "flight",
+  currentPlayerIndex: 0,
+  players: emptyCouncilGame.players.map((player) => ({
+    ...player,
+    upgrades: { drive: 0, cargo: 0, cannon: 0 },
+    friendshipCards: [],
+    halfMedals: 0
+  }))
+};
+emptyCouncilGame = determineFlightSpeed(emptyCouncilGame, {
+  balls: ["black", "yellow"],
+  encounterCardId: "spreadsheet-32"
+});
+emptyCouncilGame = revealPendingFlightEncounter(emptyCouncilGame);
+emptyCouncilGame = resolveEncounterChoice(emptyCouncilGame, { choiceId: "continue" });
+assert(emptyCouncilGame.activeEncounter?.pendingStep?.titleText?.de === "Galaktischer Rat", "Card 32 should show the Galactic Council even when nobody has cargo rings.");
+assert(emptyCouncilGame.activeEncounter?.pendingStep?.detailText?.de === "Niemand erhält eine halbe Medaille.", "Card 32 should visibly state that nobody receives a medal when all cargo-ring counts are zero.");
+assert(emptyCouncilGame.players.every((player) => player.halfMedals === 0), "The Galactic Council should award nobody when no physical cargo ring exists.");
+
+let tooth31Game = normalizeGameState(JSON.parse(JSON.stringify(baseProductionGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+tooth31Game = {
+  ...tooth31Game,
+  phase: "flight",
+  currentPlayerIndex: 0,
+  players: tooth31Game.players.map((player, index) => ({
+    ...player,
+    upgrades: index === 0
+      ? { drive: 6, cargo: 2, cannon: 1 }
+      : { drive: 0, cargo: 0, cannon: 0 },
+    friendshipCards: []
+  }))
+};
+tooth31Game = determineFlightSpeed(tooth31Game, {
+  balls: ["black", "yellow"],
+  encounterCardId: "spreadsheet-31"
+});
+tooth31Game = revealPendingFlightEncounter(tooth31Game);
+tooth31Game = resolveEncounterChoice(tooth31Game, { choiceId: "continue" });
+tooth31Game = submitEncounterPending(tooth31Game, { upgrade: "drive" });
+assert(tooth31Game.activeEncounter?.cardId === "spreadsheet-31", "Card 31 should remain active while the reshuffle message is shown.");
+assert(tooth31Game.activeEncounter?.pendingStep?.titleText?.de === "Neue Begegnung", "Card 31 should show its specified New Encounter message before drawing again.");
+assert(getRealUpgradeValue(tooth31Game.players[0], "drive") === 5, "Card 31 should remove the selected physical upgrade exactly once.");
+tooth31Game = normalizeGameState(JSON.parse(JSON.stringify(tooth31Game)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(getRealUpgradeValue(tooth31Game.players[0], "drive") === 5, "Reloading card 31 at the message step must not repeat the upgrade loss.");
+tooth31Game = submitEncounterPending(tooth31Game);
+assert(tooth31Game.activeEncounter?.cardId !== "spreadsheet-31", "Card 31 should draw a new encounter only after its reshuffle message is confirmed.");
 
 assert(calculateVictoryPoints(game, "player-1") >= 4, "Central scoring should count starting colonies and spaceports.");
 

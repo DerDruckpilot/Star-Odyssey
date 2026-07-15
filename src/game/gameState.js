@@ -3511,6 +3511,16 @@ function normalizeLocalizedText(text) {
 function normalizePendingEncounterStep(pendingStep) {
   if (!pendingStep || typeof pendingStep !== "object") return null;
 
+  if (pendingStep.type === "message") {
+    return {
+      type: "message",
+      titleText: normalizeLocalizedText(pendingStep.titleText),
+      bodyText: normalizeLocalizedText(pendingStep.bodyText),
+      detailText: normalizeLocalizedText(pendingStep.detailText),
+      remainingEffects: Array.isArray(pendingStep.remainingEffects) ? pendingStep.remainingEffects : []
+    };
+  }
+
   if (pendingStep.type === "singleMothershipRoll") {
     return {
       type: "singleMothershipRoll",
@@ -4164,24 +4174,36 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
           : 0
       }));
       const maxValue = Math.max(...metricValues.map((entry) => entry.value), 0);
-      if (maxValue <= 0) {
-        return { state };
-      }
       const targetIds = metricValues
-        .filter((entry) => entry.value === maxValue)
+        .filter((entry) => maxValue > 0 && entry.value === maxValue)
         .map((entry) => entry.playerId);
       const nextPlayers = state.players.map((player) => targetIds.includes(player.id)
         ? withHalfMedalDelta(player, amount)
         : player);
+      const nextState = {
+        ...state,
+        players: nextPlayers
+      };
+      const logEntries = targetIds.map((playerId) => createEncounterLog("logEncounterHalfMedalGain", {
+        player: getPlayerNameById(nextPlayers, playerId),
+        amount
+      }));
+      if (effect.showResult) {
+        return {
+          state: nextState,
+          logEntries,
+          pendingStep: {
+            type: "message",
+            titleText: normalizeLocalizedText(effect.titleText),
+            bodyText: normalizeLocalizedText(effect.bodyText),
+            detailText: createGalacticCouncilResultText(metricValues, targetIds),
+            remainingEffects: []
+          }
+        };
+      }
       return {
-        state: {
-          ...state,
-          players: nextPlayers
-        },
-        logEntries: targetIds.map((playerId) => createEncounterLog("logEncounterHalfMedalGain", {
-          player: getPlayerNameById(nextPlayers, playerId),
-          amount
-        }))
+        state: nextState,
+        logEntries
       };
     }
     case "loseHalfMedal": {
@@ -4404,6 +4426,17 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
           forcedCardId: typeof effect.forcedCardId === "string" ? effect.forcedCardId : null
         }
       };
+    case "showEncounterMessage":
+      return {
+        state,
+        pendingStep: {
+          type: "message",
+          titleText: normalizeLocalizedText(effect.titleText),
+          bodyText: normalizeLocalizedText(effect.bodyText),
+          detailText: normalizeLocalizedText(effect.detailText),
+          remainingEffects: []
+        }
+      };
     case "globalUpgradeLossAbove": {
       const threshold = Number.isInteger(effect.threshold) ? effect.threshold : 0;
       const amount = Number.isInteger(effect.amount) ? Math.max(1, effect.amount) : 1;
@@ -4472,6 +4505,10 @@ function applyEncounterEffectSequence(gameState, state, activePlayerId, effect, 
 function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, pendingStep, payload = {}) {
   const state = createEncounterWorkingState(gameState);
   const remainingEffects = pendingStep.remainingEffects ?? [];
+
+  if (pendingStep.type === "message") {
+    return runEncounterEffectSequence(gameState, state, activePlayer.id, remainingEffects, card, payload, {});
+  }
 
   if (pendingStep.type === "singleMothershipRoll") {
     return resolveSingleMothershipRollPending(gameState, state, activePlayer, card, pendingStep, payload);
@@ -4930,6 +4967,38 @@ function resolveEncounterPendingStep(gameState, encounter, card, activePlayer, p
   }
 
   return null;
+}
+
+function createGalacticCouncilResultText(metricValues, targetIds) {
+  if (targetIds.length === 0) {
+    return {
+      de: "Niemand erhält eine halbe Medaille.",
+      en: "No player receives half a medal."
+    };
+  }
+
+  const names = metricValues
+    .filter((entry) => targetIds.includes(entry.playerId))
+    .map((entry) => entry.playerName)
+    .filter(Boolean);
+  const deNames = joinLocalizedNames(names, "und");
+  const enNames = joinLocalizedNames(names, "and");
+  if (names.length === 1) {
+    return {
+      de: `${deNames} erhält eine halbe Medaille.`,
+      en: `${enNames} receives half a medal.`
+    };
+  }
+  return {
+    de: `${deNames} erhalten jeweils eine halbe Medaille.`,
+    en: `${enNames} each receive half a medal.`
+  };
+}
+
+function joinLocalizedNames(names, conjunction) {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return `${names[0]} ${conjunction} ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")} ${conjunction} ${names.at(-1)}`;
 }
 
 function createDualMothershipRollStep(gameState, state, activePlayer, effect, payload = {}, mode = "combat") {
