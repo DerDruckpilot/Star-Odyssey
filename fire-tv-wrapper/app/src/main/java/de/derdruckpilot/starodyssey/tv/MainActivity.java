@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -28,7 +29,7 @@ public class MainActivity extends Activity {
     private static final String PREF_URL = "url";
     private static final String EXTRA_URL = "star_odyssey_url";
     private static final String GITHUB_PAGES_URL = "https://derdruckpilot.github.io/Star-Odyssey/";
-    private static final String LAN_PLACEHOLDER_URL = "http://192.168.178.20:5173/";
+    private static final String LAN_PLACEHOLDER_URL = "http://mini-pc.local:5173/";
 
     private WebView webView;
     private LinearLayout controls;
@@ -84,17 +85,18 @@ public class MainActivity extends Activity {
     }
 
     private void configureWebView(WebView view) {
-        WebView.setWebContentsDebuggingEnabled(true);
+        boolean isDebugBuild = (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        WebView.setWebContentsDebuggingEnabled(isDebugBuild);
         WebSettings settings = view.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(true);
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         }
         view.addJavascriptInterface(new FireTvBridge(), "FireTvBridge");
         view.setWebViewClient(new WebViewClient());
