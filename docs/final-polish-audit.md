@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `917633f`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `5b58e02`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -23,7 +23,7 @@ Der Stand ist trotzdem **nicht final polished**:
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 14 von 31 IDs erledigt (1 P0, 11 P1, 2 P2); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 15 von 31 IDs erledigt (1 P0, 11 P1, 3 P2); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -444,7 +444,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### CTRL-001 - Controller-Oberflaeche ist nicht vollstaendig DE/EN-lokalisiert
 
 - **Bereich:** Controller / Lokalisierung
-- **Status:** TEILWEISE UMGESETZT
+- **Status:** UMGESETZT
 - **Prioritaet:** P2 - Wichtig
 - **Aufwand:** M
 - **Betroffene Spielvariante:** beide
@@ -457,7 +457,8 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Sichtbare Controller-Literale in i18n-Schluessel ueberfuehren, fehlende EN-Schluessel ergaenzen und automatisierten Key-/Literal-Smoke-Test einrichten.
 - **Abhaengigkeiten:** Vollstaendige Textinventur der 32 Encounter und Supernova-Flows.
 - **Akzeptanzkriterien:** DE und EN besitzen identische Keymengen; Controller zeigt in EN keine deutschen Bedien-/Status-/Logtexte; dynamische Namen/Werte bleiben korrekt; lange englische Texte werden nicht abgeschnitten.
-- **Verifikationsstatus:** Statisch verifiziert; nicht jeder dynamische Controllerzustand visuell in EN durchgespielt.
+- **Verifikationsstatus:** Automatisiert und im Chromium-E2E verifiziert.
+- **Resolution (14.07.2026):** **ERLEDIGT.** Der Host uebertraegt die aktive Sprache im player-spezifischen Controller-State. `src/controller.js` bezieht alle sichtbaren Bedien-, Status-, Encounter-, Board-, Build-, PWA- und Supernova-Texte aus `src/i18n.js`; Missionen, Fabriken und Mehrheitskarten besitzen strukturierte DE-/EN-Texte in `src/data/supernova.js`. `scripts/check-controller-state.js` prueft identische DE-/EN-Schluesselmengen. Ein E2E-Szenario startet eine englische Supernova-Partie mit drei Controllern, prueft Tabs, Fabriken, private Missionen, ausgewaehlte deutsche Restwoerter, dynamische Werte, `lang=en` und horizontalen Ueberlauf. Commit: `5b58e02`. Verifikation: `npm run check`, `npm test`, `npm run test:e2e` (14/14), `git diff --check`.
 
 ### PWA-002 - Reale LAN-Auslieferung ueber HTTP verhindert verlaessliche PWA-/Service-Worker-Nutzung
 
@@ -761,7 +762,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 | Hauptmenue | Bei 1920 x 1080 zusammenhaengender Hero-Screen, ein einzelner Titel, scharfer Hintergrund/Rahmen und vier klar fokussierbare Buttons. Bei 4K bleiben Titel und Controls relativ zu klein. | 1080p UMGESETZT; 4K VISUELL VERBESSERUNGSWÜRDIG | `UI-001`, `UI-003` |
 | Untermenues/Setup | Neues-Spiel-Setup verwendet denselben Space-/Gold-/Cyan-Stil; Auswahl, Fokus, Zurueck/Weiter sind klar. Zentrale Flaeche ist stark abgedunkelt, aber lesbar. | UMGESETZT im geprueften Browserpfad | `UI-001` fuer 4K-Hardwarewirkung |
 | QR-Lobby | Spieler-Cards, Farben, Status und QR-Flaechen sind gut lesbar. In der Nachpruefung waren beide QR-Codes nach dem asynchronen Rendern vollstaendig geladen. | UMGESETZT im Browser; reales TV-Scanning NICHT VERIFIZIERT | `TEST-001`, `FIRE-001` |
-| Controller | Keine kaputten Bilder oder Viewport-Ueberlaeufe bei 852 x 393; Drehhinweis bei 393 x 852 korrekt. Dunkle Panels verdecken den Hintergrund fast vollstaendig. | VISUELL VERBESSERUNGSWÜRDIG | `UI-002`, `CTRL-001` |
+| Controller | Keine kaputten Bilder oder Viewport-Ueberlaeufe bei 852 x 393; Drehhinweis bei 393 x 852 korrekt. Dunkle Panels verdecken den Hintergrund fast vollstaendig. | VISUELL VERBESSERUNGSWÜRDIG | `UI-002` |
 | Spielfeld | Frisches Startbrett lud alle 12 Startplaneten ohne beobachtete Assetfehler; Linien, Punkte und Chips wirkten im simulierten 1080p-Viewport scharf. Ein dicht belegtes spaetes Brett wurde nicht erzeugt. | TEILWEISE UMGESETZT / NICHT VERIFIZIERT fuer volle Partie | `TEST-001`, `PERF-001` |
 | Kolonieschiffe | 12 Asset-/VFX-Zuordnungen (4 Farben x 3 Varianten) vorhanden; normales Rendering greift auf den Schiffstyp zu. Nicht jede Variante wurde im realen Spiel einzeln visuell geprueft. | TEILWEISE UMGESETZT | `TEST-001` |
 | Handelsschiffe | 12 getrennte Asset-/VFX-Zuordnungen vorhanden; keine Vermischung mit Kolonieschiffdaten gefunden. Vollsatz nicht visuell durchgespielt. | TEILWEISE UMGESETZT | `TEST-001`, `PERF-001` |
@@ -884,9 +885,9 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 
 ## 16. Lokalisierungs- und Text-Audit
 
-- DE/EN-i18n ist fuer Host-/Menuebereiche breit vorhanden.
-- Der automatische Schluesselvergleich ergab 443 deutsche und 440 englische Schluessel. In EN fehlen `logBattleShipBuilt`, `logSupernovaFactoryBuilt` und `logSupernovaBattleResolved` (`CTRL-001`).
-- Direkte deutsche Controller-Literale verhindern vollstaendige Umschaltung (`CTRL-001`).
+- DE/EN-i18n ist fuer Host-, Menue- und Controllerbereiche breit vorhanden.
+- Der automatisierte Schluesselvergleich bestaetigt identische DE-/EN-Schluesselmengen. Die zuvor im Audit als fehlend genannten Supernova-Logschluessel waren bereits vorhanden; die eigentliche Luecke waren direkte Controller-Literale und fehlende strukturierte EN-Texte fuer Supernova-Inhalte (`CTRL-001`, erledigt).
+- Ein englisches Drei-Controller-Supernova-E2E prueft Bedien-/Statustexte, Fabriken, private Missionen, dynamische Werte und Viewport-Ueberlauf (`CTRL-001`, erledigt).
 - Die festgelegte Bezeichnung **halbe Medaille** wird im geprueften Supernova-/Encounter-State statt RR/Ruhmesring verwendet.
 - Fabriknamen verwenden `Nahrungsfabrik`; die Quelle nennt auch Farm/Treibstoff-Farm als missverstaendliche Varianten. Die aktuelle Benennung ist als bewusste Klarstellung vertretbar, sollte aber in einem versionierten Glossar festgehalten werden (`DOC-001`).
 - Die 25 Missionstexte entsprechen der verbindlichen Supernova-Markdown; M06 verwendet wieder die Quellanforderung "je eine Kolonie".
@@ -959,7 +960,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
    - Erledigt: `PWA-001` versioniert und revalidiert den Controller-Assetcache.
    - `PWA-002`: realer sicherer PWA-Betrieb.
    - `FIRE-001`: Release-Wrapper haerten und auf Hardware testen.
-   - `CTRL-001`: Controllertexte vollstaendig lokalisieren.
+   - Erledigt: `CTRL-001` lokalisiert Controllertexte und strukturierte Supernova-Inhalte vollstaendig und prueft EN mit drei Controllern.
 
 6. **Performance und Assets**
    - `PERF-001`: priorisierter, begrenzter Preload und Hardwareprofiling.
@@ -1024,7 +1025,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - [x] Jeder Controller erhaelt nur seine privaten Daten (`SN-002`).
 - [ ] Doppelverbindung/alter QR-Link besitzt sichere Replace-/Reconnect-Regel (`NET-001`).
 - [-] Netzwerkunterbrechung in Encounter/Kampf wurde mit realen Geraeten getestet (`TEST-001`).
-- [ ] Controller ist vollstaendig DE/EN-lokalisiert (`CTRL-001`).
+- [x] Controller ist vollstaendig DE/EN-lokalisiert (`CTRL-001`).
 
 ### Fire TV, PWA und Mobile
 
@@ -1106,7 +1107,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - Portabler Saveexport/-import (`OPS-001`).
 - Legacy-Assetbereinigung (`ASSET-001`) ist Polish/Wartbarkeit und kein Spielblocker.
 
-**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde und der konkrete P2-Encounter-Befund sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, Mehrgeraete-, Speicher-/Restore- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
+**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde sowie drei P2-Befunde einschliesslich Encounter-, Speicherfehler- und Controller-Lokalisierungsproblemen sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, Mehrgeraete-, Restore- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
 
 ## Implementation Progress
 
@@ -1128,3 +1129,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `SN-001` | P1 | ERLEDIGT | `a6a8887` | `npm run check`, `npm test`, `npm run test:e2e` (11/11), `git diff --check`; 25 explizite Offen-/Erfuellt-Faelle, Sonderfaelle, Legacyflag-Migration und Supernova-Sieg | reale Vollpartie bleibt unter `TEST-001` |
 | `ENC-004` | P2 | ERLEDIGT | `9918b04` | `npm run check`, `npm test`, `npm run test:e2e` (12/12), `git diff --check`; Karten 31/32, Sieger-/Nullfall, Save/Load und sichtbarer TV-/Controller-Ablauf | reale Fire-TV-Hardwaredarstellung bleibt unter `TEST-001` |
 | `SAVE-001` | P2 | ERLEDIGT | `917633f` | `npm run check`, `npm test`, `npm run test:e2e` (13/13), `git diff --check`; Quota-Fehler, sichtbare Warnung, keine falsche Erfolgsmeldung, Retry, Autosave und manueller Save | realer Browser-Privatmodus/geraetespezifische Quota bleibt Hardwareabnahme unter `TEST-001` |
+| `CTRL-001` | P2 | ERLEDIGT | `5b58e02` | `npm run check`, `npm test`, `npm run test:e2e` (14/14), `git diff --check`; identische DE-/EN-Schluesselmengen, englische Drei-Controller-Supernova-Partie, private Missionen, Fabriken, dynamische Werte und Viewport-Ueberlauf | weitere reale Geraete- und Langtextabnahme bleibt unter `TEST-001` |
