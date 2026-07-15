@@ -331,13 +331,14 @@ public class MainActivity extends Activity {
             return true;
         }
         int keyCode = event.getKeyCode();
-        if (keyCode == KeyEvent.KEYCODE_DPAD_UP
+        boolean isNavigationKey = keyCode == KeyEvent.KEYCODE_DPAD_UP
             || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
             || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
             || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
             || keyCode == KeyEvent.KEYCODE_DPAD_CENTER
             || keyCode == KeyEvent.KEYCODE_ENTER
-            || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER;
+        if (isNavigationKey && event.getAction() == KeyEvent.ACTION_DOWN && !webView.hasFocus()) {
             webView.requestFocus();
         }
         return super.dispatchKeyEvent(event);

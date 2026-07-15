@@ -173,18 +173,23 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   for (const [index, expectedSource] of menuIconSources.entries()) {
     const icon = menuIcons.nth(index);
     await expect(icon).toBeVisible();
-    await expect(icon).toHaveAttribute("src", new RegExp(`${expectedSource.replace(".", "\\.")}$`));
-    await expect.poll(() => icon.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
+    await expect(icon).toHaveAttribute("data-icon-source", new RegExp(`${expectedSource.replace(".", "\\.")}$`));
+    await expect(icon).toHaveCSS("box-shadow", "none");
+    await expect.poll(() => icon.evaluate((element) => getComputedStyle(element).webkitMaskImage)).not.toBe("none");
   }
   await expect(page.getByRole("button", { name: "EN", exact: true })).toHaveCount(0);
   await expect(page.getByText("Ein digitales Weltraum-Brettspiel")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Einstellungen" }).click();
   await expect(page.getByRole("heading", { name: "Menü" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "DE", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "EN", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Schließen" }).click();
 
   await page.getByRole("button", { name: "Neues Spiel" }).click();
   await expect(page.getByRole("heading", { name: "Spieleranzahl wählen" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "DE", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "EN", exact: true })).toHaveCount(0);
 
   await expect(page.getByRole("button", { name: "2 Spieler" })).toBeVisible();
   await page.getByRole("button", { name: "3 Spieler" }).click();
@@ -197,6 +202,8 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await page.getByRole("button", { name: "Weiter" }).click();
 
   await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "DE", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "EN", exact: true })).toHaveCount(0);
   const lobbyBack = page.getByRole("button", { name: "Zurück" });
   await expect(lobbyBack).toBeFocused();
   const controllerUrls = await page.locator(".qr-url").allTextContents();
@@ -301,8 +308,10 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
 
 test("English controllers render localized setup, tabs, factories, and missions", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Neues Spiel" }).click();
+  await page.getByRole("button", { name: "Einstellungen" }).click();
   await page.getByRole("button", { name: "EN", exact: true }).click();
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "New Game" }).click();
   await expect(page.getByRole("heading", { name: "Select number of players" })).toBeVisible();
   await page.getByRole("button", { name: "3 players" }).click();
   await page.getByRole("button", { name: "Supernova" }).click();
@@ -390,6 +399,19 @@ test("TV remote focus reaches setup and the controller PWA shell is valid", asyn
   const newGame = page.getByRole("button", { name: "Neues Spiel" });
   await expect(newGame).toBeFocused();
   await expect(page.getByRole("heading", { name: "Star Odyssey" })).toHaveCount(1);
+
+  await page.evaluate(() => {
+    const event = new KeyboardEvent("keydown", { bubbles: true, key: "Unidentified" });
+    Object.defineProperties(event, {
+      keyCode: { value: 20 },
+      which: { value: 20 }
+    });
+    document.dispatchEvent(event);
+  });
+  await expect(page.getByRole("button", { name: "Spiel laden" })).toBeFocused();
+  await page.waitForTimeout(150);
+  await expect(page.getByRole("button", { name: "Spiel laden" })).toBeFocused();
+  await page.keyboard.press("ArrowUp");
 
   await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("button", { name: "Spiel laden" })).toBeFocused();
@@ -598,10 +620,13 @@ test("menu preview loads processed assets and live layout controls", async ({ pa
   expect(manifestResponse.ok()).toBe(true);
   const manifest = await manifestResponse.json();
   expect(manifest.assets.length).toBeGreaterThanOrEqual(28);
-  for (const asset of manifest.assets) {
+  for (const asset of manifest.assets.filter((entry) => entry.category !== "reference")) {
     const response = await page.request.get(`/${asset.finalPath}`);
     expect(response.ok(), `${asset.assetKey} exists`).toBe(true);
   }
+  const referenceAsset = manifest.assets.find((entry) => entry.category === "reference");
+  const referenceResponse = await page.request.get(`/${referenceAsset.finalPath}`);
+  expect(referenceResponse.status()).toBe(404);
 
   await page.goto("/menu-button-preview.html");
   await expect(page.getByRole("heading", { name: "Button Preview" })).toBeVisible();

@@ -174,7 +174,6 @@ let gameAssetsPreloadRequestKey = "";
 let remoteFocusIndex = 0;
 let remoteFocusContext = "";
 let remoteFocusKey = "";
-let remoteFocusFrame = 0;
 
 const initialLanguage = loadLanguage();
 const startupAutosaveReset = consumeAutosaveResetUrlParam();
@@ -1273,12 +1272,15 @@ function findRemoteControlInDirection(controls, current, direction) {
 }
 
 function prepareRemoteNavigation() {
-  if (state.view === "board" && !state.modal && !state.hudPlayerId) return;
-  if (remoteFocusFrame) cancelAnimationFrame(remoteFocusFrame);
+  if (state.view === "board" && !state.modal && !state.hudPlayerId) {
+    remoteFocusContext = getRemoteFocusContext();
+    return;
+  }
   const controls = getRemoteFocusControls();
   if (controls.length === 0) return;
   const context = getRemoteFocusContext();
   const enteredContext = context !== remoteFocusContext;
+  if (!enteredContext && controls.includes(document.activeElement)) return;
   let target = null;
   if (enteredContext) {
     remoteFocusContext = context;
@@ -1289,14 +1291,7 @@ function prepareRemoteNavigation() {
     target = controls.find((control) => getRemoteControlKey(control, controls) === remoteFocusKey) ?? null;
   }
   target ??= controls[Math.min(remoteFocusIndex, controls.length - 1)] ?? controls[0];
-  const targetKey = getRemoteControlKey(target, controls);
-  remoteFocusFrame = requestAnimationFrame(() => {
-    remoteFocusFrame = 0;
-    if (context !== getRemoteFocusContext()) return;
-    const currentControls = getRemoteFocusControls();
-    const currentTarget = currentControls.find((control) => getRemoteControlKey(control, currentControls) === targetKey);
-    if (currentTarget) setRemoteFocus(currentTarget, currentControls);
-  });
+  setRemoteFocus(target, controls);
 }
 
 function handleRemoteBack() {
@@ -2144,12 +2139,10 @@ function renderMainMenuActionButton(definition, index) {
   button.setAttribute("aria-label", definition.label);
   if (index === 0) button.dataset.remoteAutofocus = "true";
 
-  const icon = document.createElement("img");
+  const icon = document.createElement("span");
   icon.className = "main-menu-action-icon";
-  icon.src = definition.icon;
-  icon.alt = "";
-  icon.decoding = "async";
-  icon.draggable = false;
+  icon.dataset.iconSource = definition.icon;
+  icon.style.setProperty("--main-menu-icon", `url("${definition.icon}")`);
   icon.setAttribute("aria-hidden", "true");
 
   const label = document.createElement("span");
@@ -2336,7 +2329,6 @@ function renderPlayerSelect() {
   );
 
   screen.append(
-    renderLanguageToggle(),
     title,
     options,
     variantLabel,
@@ -2392,7 +2384,7 @@ function renderControllerConnect() {
   backButton.dataset.remoteAutofocus = "true";
   actions.append(backButton);
 
-  screen.append(renderLanguageToggle(), title, qrGrid, hint, preloadStatus, actions);
+  screen.append(title, qrGrid, hint, preloadStatus, actions);
   return screen;
 }
 
@@ -2508,7 +2500,7 @@ function renderPlayerSetup() {
   });
 
   updateValidation();
-  screen.append(renderLanguageToggle(), title, form, hint, actions);
+  screen.append(title, form, hint, actions);
   return screen;
 }
 
