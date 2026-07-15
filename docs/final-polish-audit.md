@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `5b58e02`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `6e781a4`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -18,12 +18,12 @@ Der Stand ist trotzdem **nicht final polished**:
 - **Die bekannten Encounter-Abweichungen sind behoben.** Ausbau-Belohnungen ohne freien physischen Platz setzen den Flow kontrolliert fort (`ENC-001`), Hehlerei-/Piraten-Sonderwuerfe warten auf die aktive Controlleraktion (`ENC-002`), physische Ausbauten bleiben korrekt getrennt (`ENC-003`) und die Karten 31/32 zeigen ihre persistierten Rat-/Neumisch-Schritte vor der Folgekarte (`ENC-004`).
 - **Die kritischen Supernova-Systeme sind umgesetzt.** Alle 25 Missionen werden aus dem echten Spielzustand geprueft (`SN-001`); Fabriken (`SN-003`) und die interaktiven, save/load-faehigen Schlachtschiffkaempfe samt drei getrennten Folgepfaden (`SN-004`, `SN-005`) sind ebenfalls vervollstaendigt. Eine reale Vollpartie verhindert weiterhin die abschliessende Regelabnahme.
 - **Private Controllerdaten sind inzwischen getrennt.** Der Host erzeugt player-spezifische View-States; fremde Ressourcenarten, Freundschaftskarten, Missionen und private Auswahlentwuerfe werden nicht mehr serialisiert (`SN-002`).
-- **Das visuelle Niveau ist bei 1920 x 1080 bereits zusammenhaengend, aber nicht ueber alle Zielgeraete fertig.** Die 4K-Hauptmenue-Komposition bleibt wegen fester Obergrenzen zu klein; Controller-Panels verdecken den Space-Hintergrund weitgehend.
+- **Das visuelle Niveau ist in den simulierten Zielviewports zusammenhaengender.** Hauptmenue-Titel und Controls skalieren zwischen 1080p und 4K proportional; im schmalen Smartphone-Querformat bleibt der Buttonblock innerhalb des Rahmens. Controller-Panels lassen den Space-Hintergrund sichtbar, waehrend lokale Textflaechen abgedunkelt bleiben. Reale 4K-TV-, iOS- und Android-Hardwareabnahmen fehlen weiterhin.
 - **Deployment und reale Hardware bleiben Risikobereiche.** Der veraltete Assetcache ist korrigiert (`PWA-001`); die LAN-Auslieferung erfolgt aber weiterhin ueber HTTP, und echte Fire-TV-, PWA- und Langzeit-Performance wurden nicht vollstaendig auf Hardware verifiziert.
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 15 von 31 IDs erledigt (1 P0, 11 P1, 3 P2); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 17 von 31 IDs erledigt (1 P0, 11 P1, 5 P2); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -538,7 +538,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### UI-001 - Hauptmenue skaliert auf 4K nicht angemessen mit
 
 - **Bereich:** Hauptmenue / 4K-TV
-- **Status:** VISUELL VERBESSERUNGSWÜRDIG
+- **Status:** UMGESETZT
 - **Prioritaet:** P2 - Wichtig
 - **Aufwand:** S
 - **Betroffene Spielvariante:** ausserhalb des Spiels/UI
@@ -551,12 +551,13 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Stage-relative Groessen oder auf 4K passende `clamp()`-Obergrenzen verwenden; Fokus-/Touch-/Remote-Flaechen proportional halten; Layoutwerte nicht neu interpretieren.
 - **Abhaengigkeiten:** Menue-Layout-JSON/Assetseitenverhaeltnisse und Fire-TV-Screenshottest.
 - **Akzeptanzkriterien:** 1080p und 4K besitzen vergleichbare relative Komposition; Titel/Buttons sind aus TV-Entfernung lesbar; nichts clippt; 16:9 bleibt vollflaechig und Smartphone-Landscape wird nicht uebergross.
-- **Verifikationsstatus:** Visuell in simulierten Viewports verifiziert; realer 4K-Fire-TV-Screenshot **NICHT VERIFIZIERT**.
+- **Verifikationsstatus:** Automatisiert und visuell in simulierten Viewports verifiziert; realer 4K-Fire-TV-Screenshot **NICHT VERIFIZIERT**.
+- **Resolution (14.07.2026):** **ERLEDIGT.** Die 4K-spezifischen stage-relativen Groessen aus `bf8eeaf` entfernen die bisherigen `rem`-Deckel fuer Emblem, Titel, Buttonblock, Icons und Labels. `6e781a4` begrenzt zusaetzlich die Buttonhoehe im niedrigen Smartphone-Querformat, sodass der unterste Button den Rahmen nicht mehr ueberlagert. Der E2E-Test vergleicht 1920 x 1080 mit 3840 x 2160, prueft die proportionale Titel-/Button-Skalierung, Vollflaechigkeit, Clipping, Portrait-Hinweis und den sicheren Buttonabstand bei 844 x 390. Verifikation: `npm run check`, `npm test`, `npm run test:e2e` (14/14), `git diff --check`; Screenshots bei 1920 x 1080, 3840 x 2160 und 852 x 393.
 
 ### UI-002 - Controller-Panels verdecken den Space-Hintergrund fast vollstaendig
 
 - **Bereich:** Smartphone-Controller / visuelle Konsistenz
-- **Status:** VISUELL VERBESSERUNGSWÜRDIG
+- **Status:** UMGESETZT
 - **Prioritaet:** P2 - Wichtig
 - **Aufwand:** S
 - **Betroffene Spielvariante:** ausserhalb des Spiels/UI
@@ -569,7 +570,8 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Deckkraft und Flaechenhierarchie gezielt pro Panel reduzieren, Zwischenraeume/Hintergrundfenster schaffen und Lesbarkeit mit lokalem Overlay statt globaler Deckung sichern.
 - **Abhaengigkeiten:** Kontrasttest, lange Controllertexte, Browser ohne `backdrop-filter`.
 - **Akzeptanzkriterien:** Hintergrund ist im Querformat deutlich wahrnehmbar; Textkontrast bleibt WCAG-tauglich; Tabs/Buttons sind klar; lange Inhalte scrollen nur im vorgesehenen Bereich; Fallback ohne Blur bleibt lesbar.
-- **Verifikationsstatus:** Visuell im Chromium-Viewport verifiziert; iOS-/Android-Hardware **NICHT VERIFIZIERT**.
+- **Verifikationsstatus:** Visuell im Chromium-Viewport und technisch per E2E verifiziert; iOS-/Android-Hardware **NICHT VERIFIZIERT**.
+- **Resolution (14.07.2026):** **ERLEDIGT.** `src/controller.css` reduziert die gestapelte Abdunklung getrennt fuer Body-Overlay, Vollflaechenpanel, Header, Inhaltsbereich, Tabbar und lokale Cards. Der Space-Hintergrund bleibt dadurch im Querformat sichtbar; texttragende Header, Tabs und Cards behalten staerkere lokale Kontrastflaechen. Der vorhandene einzige Inhalts-Scroller bleibt unveraendert. Fuer Browser ohne `backdrop-filter` ersetzen explizite, deckendere Vollfarben die transparenten Gradienten. Verifikation: Screenshotvergleich bei 852 x 393, Portrait-Smoke, englischer Langtext-/Overflow-Smoke, `npm run check`, `npm test`, `npm run test:e2e` (14/14), `git diff --check`. Commit: `6e781a4`.
 
 ### PERF-001 - Asset-Preloader dekodiert alle grossen Schiff-/Planetenvarianten gleichzeitig
 
@@ -597,9 +599,9 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Aufwand:** L
 - **Betroffene Spielvariante:** beide
 - **Quelle bzw. Sollverhalten:** Release-Readiness erfordert automatisierte Nachweise fuer Kernzug, alle Regelvarianten, Encounter-Pending-State, Save/Load, Mehrgeraetefluss und Supernova-Kaempfe/Missionen.
-- **Aktuelles Istverhalten:** Struktur- und Game-State-Smokes sowie 13 Chromium-E2E-Tests laufen gruen. E2E deckt Hauptmenue, Lobby, Startbrett inklusive Neutralteilen, Controllerbasis, Orientation, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, den interaktiven Schlachtschiffkampf, die sichtbaren Zahn-der-Zeit-Phasen und den Storage-Quota-/Retry-Pfad ab. Supernova-Smokes pruefen alle 25 Missionsbedingungen, die vollstaendige Kampfmatrix, Gleichstaende, Teilnehmerbindung, Save/Load und Reconnect; weiterhin fehlen eine vollstaendige Spielpartie und weitere Save/Resume-Langzeitketten.
+- **Aktuelles Istverhalten:** Struktur- und Game-State-Smokes sowie 14 Chromium-E2E-Tests laufen gruen. E2E deckt Hauptmenue inklusive 1080p-/4K-/Mobile-Landscape-Messung, Lobby, Startbrett inklusive Neutralteilen, DE-/EN-Controllerbasis, Orientation, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, den interaktiven Schlachtschiffkampf, die sichtbaren Zahn-der-Zeit-Phasen und den Storage-Quota-/Retry-Pfad ab. Supernova-Smokes pruefen alle 25 Missionsbedingungen, die vollstaendige Kampfmatrix, Gleichstaende, Teilnehmerbindung, Save/Load und Reconnect; weiterhin fehlen eine vollstaendige Spielpartie und weitere Save/Resume-Langzeitketten.
 - **Konkrete Abweichung:** Gruene Tests belegen Seitenstart und Teilregeln, nicht die behauptete vollstaendige Classic-/Supernova-Partie.
-- **Beleg:** `scripts/check-game-state.js`; `scripts/check-controller-state.js`; `tests/e2e/smoke.spec.js` bzw. E2E-Ausgabe mit 13 Tests.
+- **Beleg:** `scripts/check-game-state.js`; `scripts/check-controller-state.js`; `tests/e2e/smoke.spec.js` bzw. E2E-Ausgabe mit 14 Tests.
 - **Auswirkung:** Noch ungetestete Missions-, Langzeit- und Mehrgeraetefolgen koennen trotz gruener Suite erst am Spielabend auffallen. Die frueheren kritischen Kampfabweichungen `SN-004`/`SN-005` und `ENC-001` besitzen inzwischen gezielte Regressionen.
 - **Reproduktionsschritte:** Testsuite ausfuehren; anschliessend Abdeckung gegen die in diesem Audit genannten Flows vergleichen.
 - **Empfohlene spaetere Massnahme:** Regelbasierte Szenariotests in priorisierter Reihenfolge ergaenzen: alle Missionen, vollstaendige Classic-/Supernova-Partien, weitere Pending-State-Save/Load-Faelle und reale Mehrgeraeteflows. Drei-Spieler-Aufbau, Kampfmatrix, Controllerprivacy, Cacheupgrade, P0-Encounter und Nachschubfrist sind inzwischen abgedeckt.
@@ -759,10 +761,10 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 
 | Bereich | Beobachtung | Bewertung | Zugeordnete IDs |
 |---|---|---|---|
-| Hauptmenue | Bei 1920 x 1080 zusammenhaengender Hero-Screen, ein einzelner Titel, scharfer Hintergrund/Rahmen und vier klar fokussierbare Buttons. Bei 4K bleiben Titel und Controls relativ zu klein. | 1080p UMGESETZT; 4K VISUELL VERBESSERUNGSWÜRDIG | `UI-001`, `UI-003` |
-| Untermenues/Setup | Neues-Spiel-Setup verwendet denselben Space-/Gold-/Cyan-Stil; Auswahl, Fokus, Zurueck/Weiter sind klar. Zentrale Flaeche ist stark abgedunkelt, aber lesbar. | UMGESETZT im geprueften Browserpfad | `UI-001` fuer 4K-Hardwarewirkung |
+| Hauptmenue | Bei 1920 x 1080 und 3840 x 2160 zusammenhaengender Hero-Screen, ein einzelner Titel, scharfer Hintergrund/Rahmen und proportional skalierte Buttons. Der schmale Landscape-Buttonblock bleibt innerhalb des Rahmens. | UMGESETZT in simulierten Viewports; reale 4K-Hardware NICHT VERIFIZIERT | `UI-003`, `TEST-001` |
+| Untermenues/Setup | Neues-Spiel-Setup verwendet denselben Space-/Gold-/Cyan-Stil; Auswahl, Fokus, Zurueck/Weiter sind klar. Zentrale Flaeche ist stark abgedunkelt, aber lesbar. | UMGESETZT im geprueften Browserpfad | `TEST-001` fuer 4K-Hardwarewirkung |
 | QR-Lobby | Spieler-Cards, Farben, Status und QR-Flaechen sind gut lesbar. In der Nachpruefung waren beide QR-Codes nach dem asynchronen Rendern vollstaendig geladen. | UMGESETZT im Browser; reales TV-Scanning NICHT VERIFIZIERT | `TEST-001`, `FIRE-001` |
-| Controller | Keine kaputten Bilder oder Viewport-Ueberlaeufe bei 852 x 393; Drehhinweis bei 393 x 852 korrekt. Dunkle Panels verdecken den Hintergrund fast vollstaendig. | VISUELL VERBESSERUNGSWÜRDIG | `UI-002` |
+| Controller | Keine kaputten Bilder oder Viewport-Ueberlaeufe bei 852 x 393; Drehhinweis bei 393 x 852 korrekt. Abgestufte transparente Vollflaechen und staerkere lokale Cards lassen den Space-Hintergrund sichtbar, ohne die Textflaechen aufzugeben. | UMGESETZT im Chromium-Viewport; reale Mobilhardware NICHT VERIFIZIERT | `TEST-001` |
 | Spielfeld | Frisches Startbrett lud alle 12 Startplaneten ohne beobachtete Assetfehler; Linien, Punkte und Chips wirkten im simulierten 1080p-Viewport scharf. Ein dicht belegtes spaetes Brett wurde nicht erzeugt. | TEILWEISE UMGESETZT / NICHT VERIFIZIERT fuer volle Partie | `TEST-001`, `PERF-001` |
 | Kolonieschiffe | 12 Asset-/VFX-Zuordnungen (4 Farben x 3 Varianten) vorhanden; normales Rendering greift auf den Schiffstyp zu. Nicht jede Variante wurde im realen Spiel einzeln visuell geprueft. | TEILWEISE UMGESETZT | `TEST-001` |
 | Handelsschiffe | 12 getrennte Asset-/VFX-Zuordnungen vorhanden; keine Vermischung mit Kolonieschiffdaten gefunden. Vollsatz nicht visuell durchgespielt. | TEILWEISE UMGESETZT | `TEST-001`, `PERF-001` |
@@ -902,7 +904,7 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 |---|---|---|
 | `npm run check` | PASS | Syntax/Projektcheck bestanden |
 | `npm test` | PASS | `Project structure check passed`; `Game state check passed` |
-| `npm run test:e2e` | PASS, 13 Chromium-Tests | Hauptmenue, Lobby/Start inklusive Neutralteilen, Controllerbasis, 16:9/Portrait, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, interaktiver Schlachtschiffkampf, Zahn-der-Zeit-Anzeigen und Storage-Quota-/Retry-Pfad |
+| `npm run test:e2e` | PASS, 14 Chromium-Tests | Hauptmenue inklusive 1080p-/4K-Proportion und Mobile-Landscape-Safe-Area, Lobby/Start inklusive Neutralteilen, DE-/EN-Controller, 16:9/Portrait, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, interaktiver Schlachtschiffkampf, Zahn-der-Zeit-Anzeigen und Storage-Quota-/Retry-Pfad |
 | `git diff --check` | PASS vor Audit-Erstellung | Keine vorbestehenden Whitespacefehler |
 | Statischer Assetpfad-Scan | PASS fuer konkrete Literalpfade | Keine fehlenden aktiven Dateien; Templatepfade separat bewertet |
 | Browser-Smoke auf bestehendem lokalen Server | PASS | Keine beobachteten Konsolenwarnungen/-fehler oder kaputten Bilder in den geprueften Seiten |
@@ -967,8 +969,8 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
    - `ASSET-001`: danach ungenutzte Webassets bereinigen.
 
 7. **Finales UI-/VFX-Polishing**
-   - `UI-001`: 4K-Skalierung.
-   - `UI-002`: Controller-Flaechenhierarchie/Transparenz.
+   - Erledigt: `UI-001` skaliert die Hauptmenue-Komposition proportional auf 4K und haelt Mobile-Landscape innerhalb des Rahmens.
+   - Erledigt: `UI-002` staffelt Controller-Flaechen und Fallbacks so, dass Hintergrund und Textflaechen gleichzeitig lesbar bleiben.
    - `UI-003`: konsistente Menueicons.
    - Vollstaendige 12er-Schiffs-/VFX-Sichtpruefung im Rahmen von `TEST-001`.
 
@@ -1041,9 +1043,9 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 ### Visuelles Niveau, Assets und VFX
 
 - [x] Hauptmenue zeigt den Titel nur einmal und wirkt bei 1080p zusammenhaengend.
-- [ ] Hauptmenue ist auf 4K proportional lesbar (`UI-001`).
+- [x] Hauptmenue ist im simulierten 4K-Viewport proportional lesbar (`UI-001`); reale Hardwareabnahme bleibt `TEST-001`.
 - [x] Setup und QR-Lobby verwenden dieselbe Designfamilie.
-- [ ] Controller macht den Space-Hintergrund deutlich sichtbar (`UI-002`).
+- [x] Controller macht den Space-Hintergrund im geprueften Landscape-Viewport deutlich sichtbar (`UI-002`).
 - [ ] Hauptmenueicons sind plattformunabhaengig und assetkonsistent (`UI-003`).
 - [~] Aktive Assets laden ohne beobachtete Fehler; Legacy-/Rawbestand bleibt (`ASSET-001`).
 - [~] VFX-Daten fuer 12 Kolonie-, 12 Handels- und 12 Schlachtschiffe sind vorhanden und technisch angebunden.
@@ -1055,7 +1057,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 - [x] `npm run check` ist gruen.
 - [x] `npm test` ist gruen.
-- [x] `npm run test:e2e` ist gruen (13 Chromium-Tests).
+- [x] `npm run test:e2e` ist gruen (14 Chromium-Tests).
 - [x] Gepruefte Browserseiten laden ohne beobachtete Konsolen-/Assetfehler.
 - [ ] P0- und P1-Akzeptanzkriterien besitzen Regressionstests (`TEST-001`).
 - [-] Vollstaendige reale Classic- und Supernova-Testpartien sind protokolliert.
@@ -1090,7 +1092,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### 7. Ist das visuelle Niveau konsistent und professionell?
 
-**Bei 1080p fuer Hauptmenue, Setup und Lobby weitgehend ja; insgesamt noch nicht.** 4K-Skalierung (`UI-001`), nahezu deckende Controller-Panels (`UI-002`), Unicode-Menueicons (`UI-003`) und nicht vollstaendig abgenommene Schiff-/VFX-Kombinationen verhindern ein durchgaengiges Final-Polish-Urteil.
+**In den geprueften Browserviewports fuer Hauptmenue, Setup, Lobby und Controller weitgehend ja; insgesamt noch nicht.** Die 4K-Skalierung (`UI-001`) und Controller-Flaechenhierarchie (`UI-002`) sind korrigiert. Unicode-Menueicons (`UI-003`) und nicht vollstaendig abgenommene Schiff-/VFX-Kombinationen verhindern weiterhin ein durchgaengiges Final-Polish-Urteil.
 
 ### 8. Welche Punkte verhindern aktuell die Bezeichnung "final polished"?
 
@@ -1098,7 +1100,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - Die kritischen Supernova-Befunde `SN-001` bis `SN-005` sind erledigt; offen bleiben Mehrgeraete- und Hardwareabnahmen.
 - Robuste Mehrgeraete-Wiederherstellung und Controllerberechtigung `NET-001`, `NET-002`; die Payload-Privatsphaere aus `SN-002` ist korrigiert.
 - PWA-/Fire-TV-Risiken `PWA-002` und `FIRE-001`; der stale Assetcache `PWA-001` ist korrigiert.
-- 4K-/Controller-/VFX-Abnahme und zu geringe End-to-End-Testabdeckung `UI-001`, `UI-002`, `TEST-001`, `PERF-001`.
+- Reale 4K-/Mobilhardware-/VFX-Abnahme und zu geringe End-to-End-Vollpartieabdeckung `TEST-001`, `PERF-001`; die browserseitigen Layoutbefunde `UI-001` und `UI-002` sind erledigt.
 
 ### 9. Welche Punkte sind nur optionaler Zusatzkomfort?
 
@@ -1107,7 +1109,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - Portabler Saveexport/-import (`OPS-001`).
 - Legacy-Assetbereinigung (`ASSET-001`) ist Polish/Wartbarkeit und kein Spielblocker.
 
-**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde sowie drei P2-Befunde einschliesslich Encounter-, Speicherfehler- und Controller-Lokalisierungsproblemen sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, Mehrgeraete-, Restore- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
+**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde sowie fuenf P2-Befunde einschliesslich Encounter-, Speicherfehler-, Controller-Lokalisierungs- und responsiven UI-Problemen sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, Mehrgeraete-, Restore- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
 
 ## Implementation Progress
 
@@ -1130,3 +1132,5 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `ENC-004` | P2 | ERLEDIGT | `9918b04` | `npm run check`, `npm test`, `npm run test:e2e` (12/12), `git diff --check`; Karten 31/32, Sieger-/Nullfall, Save/Load und sichtbarer TV-/Controller-Ablauf | reale Fire-TV-Hardwaredarstellung bleibt unter `TEST-001` |
 | `SAVE-001` | P2 | ERLEDIGT | `917633f` | `npm run check`, `npm test`, `npm run test:e2e` (13/13), `git diff --check`; Quota-Fehler, sichtbare Warnung, keine falsche Erfolgsmeldung, Retry, Autosave und manueller Save | realer Browser-Privatmodus/geraetespezifische Quota bleibt Hardwareabnahme unter `TEST-001` |
 | `CTRL-001` | P2 | ERLEDIGT | `5b58e02` | `npm run check`, `npm test`, `npm run test:e2e` (14/14), `git diff --check`; identische DE-/EN-Schluesselmengen, englische Drei-Controller-Supernova-Partie, private Missionen, Fabriken, dynamische Werte und Viewport-Ueberlauf | weitere reale Geraete- und Langtextabnahme bleibt unter `TEST-001` |
+| `UI-001` | P2 | ERLEDIGT | `bf8eeaf`, `6e781a4` | 1080p-/4K-Screenshots und Bounding-Box-Verhaeltnisse, 844-x-390-Safe-Area, Portrait-Hinweis, `npm run check`, `npm test`, `npm run test:e2e` (14/14), `git diff --check` | realer 4K-Fire-TV-Screenshot bleibt unter `TEST-001` |
+| `UI-002` | P2 | ERLEDIGT | `6e781a4` | 852-x-393-Screenshotvergleich, langer englischer Controller ohne horizontalen Ueberlauf, Portrait-Smoke, Blur-Fallback statisch geprueft, volle Check-/Test-/E2E-Suite | reale iOS-/Android-Kontrastabnahme bleibt unter `TEST-001` |
