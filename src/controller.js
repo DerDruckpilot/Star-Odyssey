@@ -2422,7 +2422,6 @@ function getEncounterJumpShipElement(element) {
 function findNearestPlacementTarget(content, clientX, clientY) {
   let nearest = null;
   let nearestDistance = Infinity;
-  let nearestThreshold = 0;
   content.querySelectorAll("[data-board-type='spacePoint'][data-board-id].is-placement-target").forEach((element) => {
     const rect = element.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
@@ -2433,16 +2432,7 @@ function findNearestPlacementTarget(content, clientX, clientY) {
     if (distance <= threshold && distance < nearestDistance) {
       nearest = element;
       nearestDistance = distance;
-      nearestThreshold = threshold;
     }
-  });
-  if (!nearest) return null;
-  console.debug("[controller] nearest placement target", {
-    playerId: selectedPlayerId,
-    placementStep: gameState?.placement?.step,
-    nodeId: nearest.dataset.boardId,
-    distance: Math.round(nearestDistance),
-    threshold: Math.round(nearestThreshold)
   });
   return nearest;
 }
@@ -2558,11 +2548,6 @@ function sendEncounterTargetSelection(nodeId) {
 
 function sendPlacementSelection(nodeId) {
   if (!nodeId) return;
-  console.debug("[controller] placement target clicked", {
-    playerId: selectedPlayerId,
-    placementStep: gameState?.placement?.step,
-    nodeId
-  });
   sendNamedAction("placement.select", { nodeId });
 }
 

@@ -1,4 +1,4 @@
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   importedOutpostVisualLayoutFiles,
@@ -32,12 +32,20 @@ const requiredPaths = [
 
 const missing = [];
 const layoutIssues = [];
+const productionSourceIssues = [];
 
 for (const projectPath of requiredPaths) {
   try {
     await access(path.join(process.cwd(), projectPath));
   } catch {
     missing.push(projectPath);
+  }
+}
+
+for (const projectPath of ["src/main.js", "src/controller.js", "src/remote/controllerState.js"]) {
+  const source = await readFile(path.join(process.cwd(), projectPath), "utf8");
+  if (source.includes("console.debug(")) {
+    productionSourceIssues.push(`${projectPath} contains unconditional console.debug output.`);
   }
 }
 
@@ -59,10 +67,11 @@ for (const outpostType of ["greenPeople", "diplomats", "traders", "wisePeople"])
   }
 }
 
-if (missing.length > 0 || layoutIssues.length > 0) {
+if (missing.length > 0 || layoutIssues.length > 0 || productionSourceIssues.length > 0) {
   const messages = [];
   if (missing.length > 0) messages.push(`Missing required project paths:\n${missing.join("\n")}`);
   if (layoutIssues.length > 0) messages.push(`Outpost layout issues:\n${layoutIssues.join("\n")}`);
+  if (productionSourceIssues.length > 0) messages.push(`Production source issues:\n${productionSourceIssues.join("\n")}`);
   console.error(messages.join("\n\n"));
   process.exitCode = 1;
 } else {

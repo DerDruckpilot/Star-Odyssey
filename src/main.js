@@ -9280,15 +9280,7 @@ function executeRemoteAction(actionId, payload = {}) {
       break;
     case "placement.select":
       if (isRemoteActionPlayerActive(playerId) && typeof payload.nodeId === "string") {
-        const previousStep = state.gameState?.placement?.step;
-        const placed = handlePlacementPointSelection(payload.nodeId);
-        console.debug("[host] placement target received", {
-          playerId,
-          nodeId: payload.nodeId,
-          previousStep,
-          placed,
-          nextStep: state.gameState?.placement?.step
-        });
+        handlePlacementPointSelection(payload.nodeId);
       }
       break;
     case "app.exit":
