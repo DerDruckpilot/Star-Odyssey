@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `2528d83`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `56cda42`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -18,12 +18,13 @@ Der Stand ist trotzdem **nicht final polished**:
 - **Die bekannten Encounter-Abweichungen sind behoben.** Ausbau-Belohnungen ohne freien physischen Platz setzen den Flow kontrolliert fort (`ENC-001`), Hehlerei-/Piraten-Sonderwuerfe warten auf die aktive Controlleraktion (`ENC-002`), physische Ausbauten bleiben korrekt getrennt (`ENC-003`) und die Karten 31/32 zeigen ihre persistierten Rat-/Neumisch-Schritte vor der Folgekarte (`ENC-004`).
 - **Die kritischen Supernova-Systeme sind umgesetzt.** Alle 25 Missionen werden aus dem echten Spielzustand geprueft (`SN-001`); Fabriken (`SN-003`) und die interaktiven, save/load-faehigen Schlachtschiffkaempfe samt drei getrennten Folgepfaden (`SN-004`, `SN-005`) sind ebenfalls vervollstaendigt. Eine reale Vollpartie verhindert weiterhin die abschliessende Regelabnahme.
 - **Private Controllerdaten sind inzwischen getrennt.** Der Host erzeugt player-spezifische View-States; fremde Ressourcenarten, Freundschaftskarten, Missionen und private Auswahlentwuerfe werden nicht mehr serialisiert (`SN-002`).
+- **Controllerzuordnung und Relay-Wiederanlauf sind abgesichert.** Pro Spieler ausgestellte Zugriffstoken binden QR-Link, Slot und Aktionen; ein zweiter Tab ersetzt den aktiven Controller nicht. Host und Controller registrieren dieselbe persistierte Sitzung nach einem Relay-Neustart erneut und erhalten den player-spezifischen Pending-State (`NET-001`, `NET-002`).
 - **Das visuelle Niveau ist in den simulierten Zielviewports zusammenhaengender.** Hauptmenue-Titel und Controls skalieren zwischen 1080p und 4K proportional; im schmalen Smartphone-Querformat bleibt der Buttonblock innerhalb des Rahmens. Controller-Panels lassen den Space-Hintergrund sichtbar, waehrend lokale Textflaechen abgedunkelt bleiben. Reale 4K-TV-, iOS- und Android-Hardwareabnahmen fehlen weiterhin.
 - **Deployment und reale Hardware bleiben Risikobereiche.** Der veraltete Assetcache ist korrigiert (`PWA-001`); die LAN-Auslieferung erfolgt aber weiterhin ueber HTTP, und echte Fire-TV-, PWA- und Langzeit-Performance wurden nicht vollstaendig auf Hardware verifiziert.
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 18 von 31 IDs erledigt (1 P0, 11 P1, 6 P2); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 20 von 31 IDs erledigt (1 P0, 11 P1, 8 P2); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -46,9 +47,9 @@ Die Zahlen bilden den Auditstichtag ab. Aktuell sind 18 von 31 IDs erledigt (1 P
 
 ### Groesste Risiken
 
-1. `NET-001` / `NET-002`: Controllerberechtigung, Doppelverbindung und Restore-Handshake bleiben offen.
-2. `STATE-001`: Eine Legacy-Normalisierung kann leere Strukturstaende fehlinterpretieren.
-3. `FIRE-001` / `TEST-001`: Reale Fire-TV-, Mehrgeraete- und Vollpartie-Abnahmen fehlen weiterhin.
+1. `STATE-001`: Eine Legacy-Normalisierung kann leere Strukturstaende fehlinterpretieren.
+2. `FIRE-001` / `TEST-001`: Reale Fire-TV-, Mehrgeraete- und Vollpartie-Abnahmen fehlen weiterhin.
+3. `PWA-002` / `PERF-001`: Sicherer Smartphone-Installationsweg und reale Geraetebudgets sind noch nicht abgenommen.
 
 ### Verifikationsgrenzen
 
@@ -486,7 +487,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### NET-001 - Controllerzuordnung besitzt keinen verbindungsspezifischen Berechtigungsnachweis
 
 - **Bereich:** Netzwerk / Controller-Sessions
-- **Status:** TECHNISCH RISKANT
+- **Status:** UMGESETZT
 - **Prioritaet:** P2 - Wichtig
 - **Aufwand:** M
 - **Betroffene Spielvariante:** beide
@@ -499,12 +500,13 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Kurzlebiges per Spieler ausgestelltes Join-Token plus kontrollierte Reconnect-/Replace-Policy einfuehren; Host und alter Controller erhalten klare Meldung.
 - **Abhaengigkeiten:** QR-Erzeugung, Reconnect-UX, serverseitige Statefilterung und Save/Resume.
 - **Akzeptanzkriterien:** Fremder/alter Link kann keinen aktiven Slot still ersetzen; legitimer Reconnect funktioniert nach expliziter Regel; Aktionen werden server-/hostseitig an Spieler und Token gebunden; Doppelverbindung ist getestet.
-- **Verifikationsstatus:** Serverpfad statisch verifiziert; Verhalten mit zwei realen Smartphones **NICHT VERIFIZIERT**.
+- **Resolution (`56cda42`):** **ERLEDIGT.** Der Host erzeugt fuer jeden Spielerslot ein kryptographisch zufaelliges Zugriffstoken, speichert es zusammen mit der stabilen Sitzung lokal und nimmt es in die QR-/Testfenster-URL auf. WebSocket-Relay und lokaler PC-Fallback pruefen Token, Spieler und konkrete Verbindung vor jeder Aktion. Ein bereits belegter Slot meldet `slotOccupied`, ohne den ersten Controller zu ersetzen; nach dessen sauberer Trennung kann derselbe gueltige Link explizit erneut verbinden. Ein neuer Spielaufbau rotiert bzw. widerruft alle alten Token.
+- **Verifikationsstatus:** **ERLEDIGT und automatisiert verifiziert.** `scripts/check-tv-server.js` prueft falsches Token, aktive Doppelbelegung, legitimen Reconnect und serverseitig gebundene Spieler-ID. Der Chromium-E2E-Smoke oeffnet denselben QR-Link in zwei Tabs, prueft die sichtbare Ablehnung und bestaetigt, dass der erste Controller verbunden bleibt. `npm run check`, `npm test`, `npm run test:e2e` (14/14) und `git diff --check` liefen gruen. Zwei reale Smartphones bleiben als Hardwareabnahme unter `TEST-001` offen.
 
 ### NET-002 - Relay-Sessions gehen bei Serverneustart verloren
 
 - **Bereich:** Netzwerk / Wiederverbindung
-- **Status:** TECHNISCH RISKANT
+- **Status:** UMGESETZT
 - **Prioritaet:** P2 - Wichtig
 - **Aufwand:** M
 - **Betroffene Spielvariante:** beide
@@ -517,7 +519,8 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Expliziten Restore-Handshake definieren: Host registriert neue Session/Spieler-Slots aus Save, UI zeigt neue QR-/Reconnect-Links, alte Clients werden eindeutig abgewiesen oder migriert.
 - **Abhaengigkeiten:** `NET-001`, Autosave/Load, Controller-URL und aktive Pending-Entscheidungen.
 - **Akzeptanzkriterien:** Dokumentierter Neustarttest stellt Spiel und korrekte Spielerzuordnung wieder her; alte Links haben vorhersehbares Verhalten; aktive Encounter-/Kampfentscheidung bleibt genau einmal ausfuehrbar.
-- **Verifikationsstatus:** Architektur statisch verifiziert; End-to-End-Neustart **NICHT VERIFIZIERT**.
+- **Resolution (`56cda42`):** **ERLEDIGT.** Sitzungs-ID und player-spezifische Zugriffstoken bleiben im Host-Browser erhalten. Nach einem Relay-Neustart registriert der Host diese Berechtigungen erneut und publiziert den aus Autosave/Current-State wiederhergestellten player-spezifischen Zustand; Controller mit demselben gueltigen Link verbinden kontrolliert neu. Links ohne/mit falschem Token werden eindeutig abgewiesen, waehrend ein neuer Spielaufbau alte Links widerruft.
+- **Verifikationsstatus:** **ERLEDIGT und automatisiert verifiziert.** `scripts/check-tv-server.js` beendet den echten Relay-Prozess, startet ihn auf demselben Port neu, registriert Host und Controller erneut, prueft einen wartenden Encounter-Zustand und bestaetigt genau eine weitergeleitete Kampfaktion. Bestehende Encounter-/Schlachtschiff-Reconnect-Smokes bleiben gruen. Ein kompletter PC-Neustart mit realen Geraeten bleibt als Hardware-/Langzeitabnahme unter `TEST-001` offen.
 
 ### SAVE-001 - Autosave-Fehler werden ohne sichtbare Warnung verworfen
 
@@ -845,9 +848,9 @@ Die Datenvollstaendigkeit und der normale interaktive Kampfpfad sind belegt; ein
 
 - QR-Erzeugung, lokale Testlinks, mehrere Spielerslots und Controller-Grundverbindung sind implementiert und im Chromium-E2E abgedeckt.
 - Controlleraktionen werden hostseitig gegen den Game State validiert; player-spezifische Zustandsansichten entfernen fremde private Daten (`SN-002`, erledigt).
-- Doppelverbindung/Reconnect besitzt keinen verbindungsspezifischen Berechtigungsnachweis (`NET-001`).
-- Relay-Neustart verliert Sessions (`NET-002`).
-- Netzwerkunterbrechung waehrend Encounter-/Kampf-Pending und mehrere Tabs auf demselben realen Smartphone sind **NICHT VERIFIZIERT** (`TEST-001`).
+- Player-spezifische Zugriffstoken binden Controllerlinks und Aktionen an den vorgesehenen Slot; ein zweiter Tab kann einen aktiven Controller nicht still ersetzen (`NET-001`, erledigt).
+- Nach einem Relay-Neustart registriert der Host die persistierte Sitzung samt Slots erneut und publiziert den wiederhergestellten player-spezifischen Pending-State (`NET-002`, erledigt).
+- Netzwerkunterbrechung waehrend Encounter-/Kampf-Pending und zwei physische Geraete fuer denselben Spieler sind **NICHT VERIFIZIERT** (`TEST-001`); Doppel-Tab und Relay-Prozessneustart sind automatisiert abgedeckt.
 
 ### Fire-TV-Remote
 
@@ -878,7 +881,7 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 ### Offene Risiken
 
 1. Autosave-/manuelle Schreibfehler werden sichtbar gemeldet und erneut versucht (`SAVE-001`, erledigt).
-2. Relay-Verbindungszustand ist nicht Teil des Saves (`NET-002`).
+2. Relay-Sitzung und Slotberechtigungen werden nach einem Prozessneustart durch Host-Neuregistrierung wiederhergestellt (`NET-002`, erledigt); ein kompletter PC-/Browser-Neustart auf realer Hardware bleibt unter `TEST-001` offen.
 3. Ein leerer moderner Strukturzustand kann als Legacyzustand fehlinterpretiert werden (`STATE-001`).
 4. Save/Load des wartenden Schlachtschiffkampfs, der Ausbauwahl, des frueheren `ENC-001`-Pending-Falls und der Karten-31/32-Zwischenphasen ist automatisiert abgedeckt; Fabrikmehrheitswechsel ueber eine lange Partie und weitere passive Controllerketten bleiben unvollstaendig abgedeckt (`TEST-001`).
 5. Browser-/Geraetewechsel besitzt keinen Saveexport (`OPS-001`, optional).
@@ -908,8 +911,8 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 | Check | Ergebnis | Aussagekraft |
 |---|---|---|
 | `npm run check` | PASS | Syntax/Projektcheck bestanden |
-| `npm test` | PASS | `Project structure check passed`; `Game state check passed` |
-| `npm run test:e2e` | PASS, 14 Chromium-Tests | Hauptmenue inklusive 1080p-/4K-Proportion und Mobile-Landscape-Safe-Area, Lobby/Start inklusive Neutralteilen, DE-/EN-Controller, 16:9/Portrait, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, interaktiver Schlachtschiffkampf, Zahn-der-Zeit-Anzeigen und Storage-Quota-/Retry-Pfad |
+| `npm test` | PASS | Struktur-, Game-State-, Controllerprivacy- sowie echter Relay-Zugriffs-/Neustarttest bestanden |
+| `npm run test:e2e` | PASS, 14 Chromium-Tests | Hauptmenue inklusive 1080p-/4K-Proportion und Mobile-Landscape-Safe-Area, Lobby/Start inklusive Token-URL und Doppel-Tab-Schutz, DE-/EN-Controller, 16:9/Portrait, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, interaktiver Schlachtschiffkampf, Zahn-der-Zeit-Anzeigen und Storage-Quota-/Retry-Pfad |
 | `git diff --check` | PASS vor Audit-Erstellung | Keine vorbestehenden Whitespacefehler |
 | Statischer Assetpfad-Scan | PASS fuer konkrete Literalpfade | Keine fehlenden aktiven Dateien; Templatepfade separat bewertet |
 | Browser-Smoke auf bestehendem lokalen Server | PASS | Keine beobachteten Konsolenwarnungen/-fehler oder kaputten Bilder in den geprueften Seiten |
@@ -932,10 +935,10 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 - Spaetes, dicht belegtes Brett mit Pan/Zoom und allen Overlays.
 - Fire-TV-Hardware: DPAD/Back, 4K-Skalierung, Keep-awake-Langzeitlauf, Framezeit/RAM.
 - Reale iOS-/Android-PWA-Installation, Safe Areas/Dynamic Island, Browserleisten und Fullscreen.
-- Netzwerkabbrueche, zwei Tabs/Geraete fuer denselben Spieler und Relay-Neustart.
+- Reale WLAN-/Mobilbrowser-Netzwerkabbrueche und zwei physische Geraete fuer denselben Spieler; Doppel-Tab und Relay-Prozessneustart sind automatisiert geprueft.
 - LocalStorage-Quota-/Korruptionsfall und Migration einer breiten Alt-Save-Stichprobe.
 
-Diese Luecken sind nicht als automatischer Fehler gewertet; wo sie ein relevantes Release-Risiko erzeugen, sind sie in `TEST-001`, `PERF-001`, `NET-002`, `PWA-002` oder `FIRE-001` konkretisiert.
+Diese Luecken sind nicht als automatischer Fehler gewertet; wo sie ein relevantes Release-Risiko erzeugen, sind sie in `TEST-001`, `PERF-001`, `PWA-002` oder `FIRE-001` konkretisiert.
 
 ## 18. Empfohlene spaetere Umsetzungsreihenfolge
 
@@ -959,7 +962,7 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
 
 4. **State, Save/Load und Privatsphaere**
    - Erledigt: `SN-002` verteilt player-spezifische Controllerpayloads und prueft rohe WebSocket-Frames samt Reconnect.
-   - `NET-001`, `NET-002`: Controllerberechtigung und Restore-Handshake.
+   - Erledigt: `NET-001`, `NET-002` binden QR-Links und Aktionen an player-spezifische Token, verhindern stilles Ersetzen und stellen die Sitzung nach Relay-Neustart wieder her.
    - Erledigt: `SAVE-001` meldet Speicherfehler sichtbar und wiederholt Current-State, Autosave und manuellen Save kontrolliert.
    - `STATE-001`: eindeutige Strukturmigration.
 
@@ -1021,7 +1024,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - [x] Encounter-Dualwurf und Antriebsvergleich werden persistiert.
 - [x] Autosave- und manuelle Speicherfehler werden sichtbar behandelt und koennen erneut versucht werden (`SAVE-001`).
 - [ ] Alle kritischen Pending-Zustaende besitzen Save/Resume-Regressionstests (`TEST-001`).
-- [ ] Relay-/Controllerzustand kann nach Serverneustart kontrolliert wiederhergestellt werden (`NET-002`).
+- [x] Relay-/Controllerzustand wird nach Serverneustart durch Host-Neuregistrierung und erneute State-Publikation kontrolliert wiederhergestellt (`NET-002`).
 - [ ] Strukturmigration unterscheidet fehlend von explizit leer (`STATE-001`).
 - [ ] Optionaler Saveexport/-import ist vorhanden (`OPS-001`, optional).
 
@@ -1030,7 +1033,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - [x] QR-Lobby und Controller-Grundverbindung funktionieren im Chromium-E2E.
 - [x] Alle sieben Controller-Tabs besitzen Render-/Aktionspfade.
 - [x] Jeder Controller erhaelt nur seine privaten Daten (`SN-002`).
-- [ ] Doppelverbindung/alter QR-Link besitzt sichere Replace-/Reconnect-Regel (`NET-001`).
+- [x] Doppelverbindung/alter QR-Link besitzt tokengebundene Ablehnungs-/Reconnect-Regel (`NET-001`).
 - [-] Netzwerkunterbrechung in Encounter/Kampf wurde mit realen Geraeten getestet (`TEST-001`).
 - [x] Controller ist vollstaendig DE/EN-lokalisiert (`CTRL-001`).
 
@@ -1081,7 +1084,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### 3. Gibt es bekannte Faelle von Datenverlust oder festhaengenden Spielzustaenden?
 
-**Kein weiterhin offener, konkret nachgewiesener Softlock oder Datenverlust.** Der Encounter-Softlock `ENC-001` ist korrigiert; Autosave-/manuelle Schreibfehler werden sichtbar gemeldet und wiederholt (`SAVE-001`). Relay-Neustart/Controllerrestore ist weiterhin nicht abgesichert (`NET-002`); daraus bleibt ein Wiederaufnahme-Risiko.
+**Kein weiterhin offener, konkret nachgewiesener Softlock oder Datenverlust.** Der Encounter-Softlock `ENC-001` ist korrigiert; Autosave-/manuelle Schreibfehler werden sichtbar gemeldet und wiederholt (`SAVE-001`). Der automatisierte Relay-Neustart stellt Sitzung, Spielerzuordnung und einen wartenden Encounter-State wieder her (`NET-002`); reale Langzeit- und PC-Neustarttests bleiben unter `TEST-001` offen.
 
 ### 4. Sind alle notwendigen Spielobjekte, Karten und Assets vorhanden?
 
@@ -1093,7 +1096,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### 6. Sind die Smartphone-Controller fuer reale Mehrspieler-Partien geeignet?
 
-**Funktional grundlegend ja, releasefertig nein.** Verbindung, Tabs, Orientation, Grundaktionen und player-spezifische private Payloads funktionieren. Reconnect/Doppelverbindung ist ausserhalb des verifizierten gleichen Controllerlinks noch nicht robust abgesichert (`NET-001`, `NET-002`), und PWA ueber reales HTTP-LAN ist nicht bestaetigt (`PWA-002`).
+**Funktional grundlegend ja, releasefertig nein.** Verbindung, Tabs, Orientation, Grundaktionen und player-spezifische private Payloads funktionieren. Tokengebundene Doppelverbindung, legitimer Reconnect und Relay-Wiederanlauf sind automatisiert abgesichert (`NET-001`, `NET-002`); zwei reale Smartphones, echte WLAN-Abbrueche und PWA ueber reales HTTP-LAN sind noch nicht abgenommen (`TEST-001`, `PWA-002`).
 
 ### 7. Ist das visuelle Niveau konsistent und professionell?
 
@@ -1103,7 +1106,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 - Fehlende reale Classic-/Supernova-Vollpartien und Langzeit-Save/Resume-Abnahme (`TEST-001`); die bekannten Classic-/Encounter-Abweichungen sind erledigt.
 - Die kritischen Supernova-Befunde `SN-001` bis `SN-005` sind erledigt; offen bleiben Mehrgeraete- und Hardwareabnahmen.
-- Robuste Mehrgeraete-Wiederherstellung und Controllerberechtigung `NET-001`, `NET-002`; die Payload-Privatsphaere aus `SN-002` ist korrigiert.
+- Reale Mehrgeraete-, WLAN-Abbruch- und Host-Neustartabnahmen (`TEST-001`); Controllerberechtigung und Relay-Wiederanlauf `NET-001`/`NET-002` sowie Payload-Privatsphaere `SN-002` sind automatisiert abgesichert.
 - PWA-/Fire-TV-Risiken `PWA-002` und `FIRE-001`; der stale Assetcache `PWA-001` ist korrigiert.
 - Reale 4K-/Mobilhardware-/VFX-Abnahme und zu geringe End-to-End-Vollpartieabdeckung `TEST-001`, `PERF-001`; die browserseitigen Layoutbefunde `UI-001` und `UI-002` sind erledigt.
 
@@ -1114,7 +1117,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - Portabler Saveexport/-import (`OPS-001`).
 - Legacy-Assetbereinigung (`ASSET-001`) ist Polish/Wartbarkeit und kein Spielblocker.
 
-**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde sowie sechs P2-Befunde einschliesslich Encounter-, Speicherfehler-, Controller-Lokalisierungs-, Quellen- und responsiven UI-Problemen sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, Mehrgeraete-, Restore- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
+**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde sowie acht P2-Befunde einschliesslich Encounter-, Speicherfehler-, Controller-Lokalisierungs-, Quellen-, Session- und responsiven UI-Problemen sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, reale Mehrgeraete- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
 
 ## Implementation Progress
 
@@ -1126,7 +1129,7 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `ENC-003` | P1 | ERLEDIGT | `d1964fe` | `npm run check`, `npm test`, `git diff --check`; physische Frachtringmehrheit im Zahn-der-Zeit-Smoke | keiner |
 | `CLS-003` | P1 | ERLEDIGT | `affdc7f` | `npm run check`, `npm test`, `git diff --check`; Classic vor/nach Flugwurf, Save/Load vor/nach Verbrauch und Supernova-3-Karten-Smoke | keiner |
 | `PWA-001` | P1 | ERLEDIGT | `a028c6a` | `npm run check`, `npm test`, vollstaendiger E2E-Smoke sowie gezielter Chromium-v1/v2-Cacheupgrade-Test | realer installierter iOS-/Android-PWA-Upgrade bleibt Hardwareabnahme unter `PWA-002`/`TEST-001` |
-| `SN-002` | P1 | ERLEDIGT | `1943a2d` | `npm run check`, `npm test`, `npm run test:e2e` (8/8), `git diff --check`; rohe WebSocket-Payloads beider Spieler, Host-Darstellung und Reconnect | Controller-Authentisierung/Doppelverbindung bleiben getrennt unter `NET-001`/`NET-002` |
+| `SN-002` | P1 | ERLEDIGT | `1943a2d` | `npm run check`, `npm test`, `npm run test:e2e` (8/8), `git diff --check`; rohe WebSocket-Payloads beider Spieler, Host-Darstellung und Reconnect | Controller-Authentisierung/Doppelverbindung wurden anschliessend unter `NET-001`/`NET-002` erledigt |
 | `SN-003` | P1 | ERLEDIGT | `d8fabc6` | `npm run check`, `npm test`, `npm run test:e2e` (9/9), `git diff --check`; Fabriklimit, unveraenderter State, Save/Load, Classic-Isolation sowie identische TV-/Controllerdarstellung | keiner |
 | `ENC-002` | P1 | ERLEDIGT | `38a5b35` | `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; aktive Einzelausloesung, sichtbare Hostanimation, Save/Load, reine Kugelwertung und Wiederholungsschutz | keiner |
 | `CLS-001` | P1 | ERLEDIGT | `7a267f2` | `npm run check`, `npm test`, `npm run test:e2e` (10/10), `git diff --check`; nur 3/4 im Neuspielpfad, Drei-Controller-Lobby, Fire-TV-Fokus und Erhalt expliziter 2-Spieler-Legacy-Saves | keiner |
@@ -1140,3 +1143,5 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `UI-001` | P2 | ERLEDIGT | `bf8eeaf`, `6e781a4` | 1080p-/4K-Screenshots und Bounding-Box-Verhaeltnisse, 844-x-390-Safe-Area, Portrait-Hinweis, `npm run check`, `npm test`, `npm run test:e2e` (14/14), `git diff --check` | realer 4K-Fire-TV-Screenshot bleibt unter `TEST-001` |
 | `UI-002` | P2 | ERLEDIGT | `6e781a4` | 852-x-393-Screenshotvergleich, langer englischer Controller ohne horizontalen Ueberlauf, Portrait-Smoke, Blur-Fallback statisch geprueft, volle Check-/Test-/E2E-Suite | reale iOS-/Android-Kontrastabnahme bleibt unter `TEST-001` |
 | `DOC-001` | P2 | ERLEDIGT | `2528d83` | `npm run check`, `npm test`, `git diff --check`; Quellenrangfolge, Supernova-Dateihashes, Statusmarker und Required-Path-Struktur | offizielle PDFs bleiben aus Lizenz-/Groessengruenden lokal, sind aber eindeutig referenziert |
+| `NET-001` | P2 | ERLEDIGT | `56cda42` | `npm run check`, `npm test`, `npm run test:e2e` (14/14), `git diff --check`; falsches Token, Doppel-Tab, unveraenderter Erstcontroller, legitimer Reconnect und serverseitig gebundene Spieler-ID | zwei reale Smartphones bleiben unter `TEST-001` |
+| `NET-002` | P2 | ERLEDIGT | `56cda42` | echter Relay-Prozessneustart auf demselben Port, Host-Neuregistrierung, restaurierter Pending-Encounter-State und genau eine Aktion; volle Check-/Test-/E2E-Suite | realer PC-/Hardware-Neustart bleibt unter `TEST-001` |
