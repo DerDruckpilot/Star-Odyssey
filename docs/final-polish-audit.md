@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `9918b04`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `917633f`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -23,7 +23,7 @@ Der Stand ist trotzdem **nicht final polished**:
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 13 von 31 IDs erledigt (1 P0, 11 P1, 1 P2); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 14 von 31 IDs erledigt (1 P0, 11 P1, 2 P2); die verbleibenden Zahlen werden im Fortschrittsabschnitt fortgeschrieben.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -47,7 +47,7 @@ Die Zahlen bilden den Auditstichtag ab. Aktuell sind 13 von 31 IDs erledigt (1 P
 ### Groesste Risiken
 
 1. `NET-001` / `NET-002`: Controllerberechtigung, Doppelverbindung und Restore-Handshake bleiben offen.
-2. `SAVE-001` / `STATE-001`: Speicherfehler bleiben unsichtbar; eine Legacy-Normalisierung kann leere Strukturstaende fehlinterpretieren.
+2. `STATE-001`: Eine Legacy-Normalisierung kann leere Strukturstaende fehlinterpretieren.
 3. `FIRE-001` / `TEST-001`: Reale Fire-TV-, Mehrgeraete- und Vollpartie-Abnahmen fehlen weiterhin.
 
 ### Verifikationsgrenzen
@@ -516,7 +516,7 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### SAVE-001 - Autosave-Fehler werden ohne sichtbare Warnung verworfen
 
 - **Bereich:** Save/Load / Fehlerbehandlung
-- **Status:** TECHNISCH RISKANT
+- **Status:** UMGESETZT
 - **Prioritaet:** P2 - Wichtig
 - **Aufwand:** S
 - **Betroffene Spielvariante:** beide
@@ -529,7 +529,10 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Autosave-Erfolg/-fehler im Hoststatus fuehren, einmalig sichtbar warnen, erneuten Versuch anbieten und manuelles Save nicht als erfolgreich bestaetigen, wenn Schreiben scheitert.
 - **Abhaengigkeiten:** Save-UI, Fehlertexte/i18n, optional Speichergroessenmonitoring.
 - **Akzeptanzkriterien:** Simulierter `setItem`-Fehler erzeugt klaren Hinweis und keinen falschen Erfolgsstatus; nach Wiederherstellung wird erneut gespeichert; normale Autosaves bleiben unaufdringlich; Classic/Supernova-State ist identisch serialisierbar.
-- **Verifikationsstatus:** Fehlerpfad statisch verifiziert; Quota-Test im Browser nicht ausgefuehrt.
+- **Verifikationsstatus:** Quota-/Schreibfehler, sichtbare Hostwarnung, manueller Save, Retry und persistierte Daten automatisiert im Browser verifiziert.
+- **Resolution (`917633f`):** **ERLEDIGT.** Current-State-, Autosave- und manuelle Save-Schreibfehler werden getrennt erfasst. Eine persistente, DE/EN-lokalisierte Hostwarnung bietet eine Wiederholen-Aktion; fehlgeschlagene manuelle Daten bleiben bis zum erfolgreichen Retry im Arbeitsspeicher. Ein manueller Save meldet nur nach erfolgreichem `localStorage`-Schreiben Erfolg. Automatische Wiederholungen laufen unaufdringlich weiter und die Warnung verschwindet erst, wenn alle fehlgeschlagenen Schreibpfade wieder funktionieren.
+- **Geaenderte Dateien:** `src/main.js`, `src/i18n.js`, `src/space-ui.css`, `tests/e2e/smoke.spec.js`.
+- **Verifikation:** `npm run check`, `npm test`, `npm run test:e2e` (13/13), gezielter Chromium-Quota-Test und `git diff --check`; der Retry erhaelt Classic-Game-State und manuellen Save, waehrend bestehende Supernova-Save/Load-Smokes gruen bleiben.
 
 ### UI-001 - Hauptmenue skaliert auf 4K nicht angemessen mit
 
@@ -593,9 +596,9 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Aufwand:** L
 - **Betroffene Spielvariante:** beide
 - **Quelle bzw. Sollverhalten:** Release-Readiness erfordert automatisierte Nachweise fuer Kernzug, alle Regelvarianten, Encounter-Pending-State, Save/Load, Mehrgeraetefluss und Supernova-Kaempfe/Missionen.
-- **Aktuelles Istverhalten:** Struktur- und Game-State-Smokes sowie 12 Chromium-E2E-Tests laufen gruen. E2E deckt Hauptmenue, Lobby, Startbrett inklusive Neutralteilen, Controllerbasis, Orientation, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, den interaktiven Schlachtschiffkampf und die sichtbaren Zahn-der-Zeit-Phasen auf TV/Controllern ab. Supernova-Smokes pruefen alle 25 Missionsbedingungen, die vollstaendige Kampfmatrix, Gleichstaende, Teilnehmerbindung, Save/Load und Reconnect; weiterhin fehlen eine vollstaendige Spielpartie und weitere Save/Resume-Langzeitketten.
+- **Aktuelles Istverhalten:** Struktur- und Game-State-Smokes sowie 13 Chromium-E2E-Tests laufen gruen. E2E deckt Hauptmenue, Lobby, Startbrett inklusive Neutralteilen, Controllerbasis, Orientation, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, den interaktiven Schlachtschiffkampf, die sichtbaren Zahn-der-Zeit-Phasen und den Storage-Quota-/Retry-Pfad ab. Supernova-Smokes pruefen alle 25 Missionsbedingungen, die vollstaendige Kampfmatrix, Gleichstaende, Teilnehmerbindung, Save/Load und Reconnect; weiterhin fehlen eine vollstaendige Spielpartie und weitere Save/Resume-Langzeitketten.
 - **Konkrete Abweichung:** Gruene Tests belegen Seitenstart und Teilregeln, nicht die behauptete vollstaendige Classic-/Supernova-Partie.
-- **Beleg:** `scripts/check-game-state.js`; `scripts/check-controller-state.js`; `tests/e2e/smoke.spec.js` bzw. E2E-Ausgabe mit 12 Tests.
+- **Beleg:** `scripts/check-game-state.js`; `scripts/check-controller-state.js`; `tests/e2e/smoke.spec.js` bzw. E2E-Ausgabe mit 13 Tests.
 - **Auswirkung:** Noch ungetestete Missions-, Langzeit- und Mehrgeraetefolgen koennen trotz gruener Suite erst am Spielabend auffallen. Die frueheren kritischen Kampfabweichungen `SN-004`/`SN-005` und `ENC-001` besitzen inzwischen gezielte Regressionen.
 - **Reproduktionsschritte:** Testsuite ausfuehren; anschliessend Abdeckung gegen die in diesem Audit genannten Flows vergleichen.
 - **Empfohlene spaetere Massnahme:** Regelbasierte Szenariotests in priorisierter Reihenfolge ergaenzen: alle Missionen, vollstaendige Classic-/Supernova-Partien, weitere Pending-State-Save/Load-Faelle und reale Mehrgeraeteflows. Drei-Spieler-Aufbau, Kampfmatrix, Controllerprivacy, Cacheupgrade, P0-Encounter und Nachschubfrist sind inzwischen abgedeckt.
@@ -866,7 +869,7 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 
 ### Offene Risiken
 
-1. Autosave-Schreibfehler sind unsichtbar (`SAVE-001`).
+1. Autosave-/manuelle Schreibfehler werden sichtbar gemeldet und erneut versucht (`SAVE-001`, erledigt).
 2. Relay-Verbindungszustand ist nicht Teil des Saves (`NET-002`).
 3. Ein leerer moderner Strukturzustand kann als Legacyzustand fehlinterpretiert werden (`STATE-001`).
 4. Save/Load des wartenden Schlachtschiffkampfs, der Ausbauwahl, des frueheren `ENC-001`-Pending-Falls und der Karten-31/32-Zwischenphasen ist automatisiert abgedeckt; Fabrikmehrheitswechsel ueber eine lange Partie und weitere passive Controllerketten bleiben unvollstaendig abgedeckt (`TEST-001`).
@@ -898,7 +901,7 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 |---|---|---|
 | `npm run check` | PASS | Syntax/Projektcheck bestanden |
 | `npm test` | PASS | `Project structure check passed`; `Game state check passed` |
-| `npm run test:e2e` | PASS, 12 Chromium-Tests | Hauptmenue, Lobby/Start inklusive Neutralteilen, Controllerbasis, 16:9/Portrait, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, interaktiver Schlachtschiffkampf und Zahn-der-Zeit-Anzeigen |
+| `npm run test:e2e` | PASS, 13 Chromium-Tests | Hauptmenue, Lobby/Start inklusive Neutralteilen, Controllerbasis, 16:9/Portrait, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, interaktiver Schlachtschiffkampf, Zahn-der-Zeit-Anzeigen und Storage-Quota-/Retry-Pfad |
 | `git diff --check` | PASS vor Audit-Erstellung | Keine vorbestehenden Whitespacefehler |
 | Statischer Assetpfad-Scan | PASS fuer konkrete Literalpfade | Keine fehlenden aktiven Dateien; Templatepfade separat bewertet |
 | Browser-Smoke auf bestehendem lokalen Server | PASS | Keine beobachteten Konsolenwarnungen/-fehler oder kaputten Bilder in den geprueften Seiten |
@@ -949,7 +952,8 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
 4. **State, Save/Load und Privatsphaere**
    - Erledigt: `SN-002` verteilt player-spezifische Controllerpayloads und prueft rohe WebSocket-Frames samt Reconnect.
    - `NET-001`, `NET-002`: Controllerberechtigung und Restore-Handshake.
-   - `SAVE-001`, `STATE-001`: sichtbare Speicherfehler und eindeutige Migration.
+   - Erledigt: `SAVE-001` meldet Speicherfehler sichtbar und wiederholt Current-State, Autosave und manuellen Save kontrolliert.
+   - `STATE-001`: eindeutige Strukturmigration.
 
 5. **Controller, Fire TV und PWA**
    - Erledigt: `PWA-001` versioniert und revalidiert den Controller-Assetcache.
@@ -1007,7 +1011,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 - [x] Classic-/Supernova-Kerndaten werden normalisiert.
 - [x] Encounter-Dualwurf und Antriebsvergleich werden persistiert.
-- [ ] Autosavefehler werden sichtbar behandelt (`SAVE-001`).
+- [x] Autosave- und manuelle Speicherfehler werden sichtbar behandelt und koennen erneut versucht werden (`SAVE-001`).
 - [ ] Alle kritischen Pending-Zustaende besitzen Save/Resume-Regressionstests (`TEST-001`).
 - [ ] Relay-/Controllerzustand kann nach Serverneustart kontrolliert wiederhergestellt werden (`NET-002`).
 - [ ] Strukturmigration unterscheidet fehlend von explizit leer (`STATE-001`).
@@ -1050,7 +1054,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 - [x] `npm run check` ist gruen.
 - [x] `npm test` ist gruen.
-- [x] `npm run test:e2e` ist gruen (12 Chromium-Tests).
+- [x] `npm run test:e2e` ist gruen (13 Chromium-Tests).
 - [x] Gepruefte Browserseiten laden ohne beobachtete Konsolen-/Assetfehler.
 - [ ] P0- und P1-Akzeptanzkriterien besitzen Regressionstests (`TEST-001`).
 - [-] Vollstaendige reale Classic- und Supernova-Testpartien sind protokolliert.
@@ -1069,7 +1073,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 ### 3. Gibt es bekannte Faelle von Datenverlust oder festhaengenden Spielzustaenden?
 
-**Kein weiterhin offener, konkret nachgewiesener Softlock oder Datenverlust.** Der Encounter-Softlock `ENC-001` ist korrigiert. Autosavefehler sind aber unsichtbar (`SAVE-001`), und Relay-Neustart/Controllerrestore ist nicht abgesichert (`NET-002`); daraus bleiben Datenverlust- und Wiederaufnahme-Risiken.
+**Kein weiterhin offener, konkret nachgewiesener Softlock oder Datenverlust.** Der Encounter-Softlock `ENC-001` ist korrigiert; Autosave-/manuelle Schreibfehler werden sichtbar gemeldet und wiederholt (`SAVE-001`). Relay-Neustart/Controllerrestore ist weiterhin nicht abgesichert (`NET-002`); daraus bleibt ein Wiederaufnahme-Risiko.
 
 ### 4. Sind alle notwendigen Spielobjekte, Karten und Assets vorhanden?
 
@@ -1123,3 +1127,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `SN-005` | P1 | ERLEDIGT | `323f519` | `npm run check`, `npm test`, `npm run test:e2e` (11/11), `git diff --check`; Angreifer-/Verteidigersieg aller drei Zieltypen, Ein-Rohstoff-Fall, Ausbauwahl und eindeutige Feldbelegung | keiner |
 | `SN-001` | P1 | ERLEDIGT | `a6a8887` | `npm run check`, `npm test`, `npm run test:e2e` (11/11), `git diff --check`; 25 explizite Offen-/Erfuellt-Faelle, Sonderfaelle, Legacyflag-Migration und Supernova-Sieg | reale Vollpartie bleibt unter `TEST-001` |
 | `ENC-004` | P2 | ERLEDIGT | `9918b04` | `npm run check`, `npm test`, `npm run test:e2e` (12/12), `git diff --check`; Karten 31/32, Sieger-/Nullfall, Save/Load und sichtbarer TV-/Controller-Ablauf | reale Fire-TV-Hardwaredarstellung bleibt unter `TEST-001` |
+| `SAVE-001` | P2 | ERLEDIGT | `917633f` | `npm run check`, `npm test`, `npm run test:e2e` (13/13), `git diff --check`; Quota-Fehler, sichtbare Warnung, keine falsche Erfolgsmeldung, Retry, Autosave und manueller Save | realer Browser-Privatmodus/geraetespezifische Quota bleibt Hardwareabnahme unter `TEST-001` |
