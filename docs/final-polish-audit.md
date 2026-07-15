@@ -4,7 +4,7 @@ Audit-Stand: 14.07.2026
 
 Gepruefte Revision: `d2c68e2` auf `main`
 
-Implementierungsfortschritt: bis `64f5c99`; Details stehen unter `Implementation Progress`.
+Implementierungsfortschritt: bis `5fc9534`; Details stehen unter `Implementation Progress`.
 
 Zweck: belastbare Abschluss-Checkliste; dieser Audit nimmt keine Produktionsaenderungen vor.
 
@@ -19,12 +19,13 @@ Der Stand ist trotzdem **nicht final polished**:
 - **Die Supernova-Systeme einschliesslich Profivariante sind umgesetzt.** Alle 25 Missionen werden aus dem echten Spielzustand geprueft (`SN-001`); Fabriken (`SN-003`) und die interaktiven, save/load-faehigen Schlachtschiffkaempfe samt drei getrennten Folgepfaden (`SN-004`, `SN-005`) sind ebenfalls vervollstaendigt. Die optionale Profivariante zieht zwei statt drei verschiedenfarbige Missionen und bleibt ueber Save/Load, private Controllerdaten und Wiederverbindung erhalten (`SN-006`). Eine reale Vollpartie verhindert weiterhin die abschliessende Regelabnahme.
 - **Private Controllerdaten sind inzwischen getrennt.** Der Host erzeugt player-spezifische View-States; fremde Ressourcenarten, Freundschaftskarten, Missionen und private Auswahlentwuerfe werden nicht mehr serialisiert (`SN-002`).
 - **Controllerzuordnung und Relay-Wiederanlauf sind abgesichert.** Pro Spieler ausgestellte Zugriffstoken binden QR-Link, Slot und Aktionen; ein zweiter Tab ersetzt den aktiven Controller nicht. Host und Controller registrieren dieselbe persistierte Sitzung nach einem Relay-Neustart erneut und erhalten den player-spezifischen Pending-State (`NET-001`, `NET-002`).
+- **Spielstaende sind dateibasiert portierbar.** Einzelne Classic-/Supernova-Spielstaende lassen sich als versioniertes JSON exportieren und nach Schema- und Groessenpruefung wieder importieren. Pending-State bleibt erhalten; Controller-Sitzung, Zugriffstoken und laufender Spielstand werden weder exportiert noch beim Import veraendert (`OPS-001`).
 - **Das visuelle Niveau ist in den simulierten Zielviewports zusammenhaengender.** Hauptmenue-Titel und Controls skalieren zwischen 1080p und 4K proportional; im schmalen Smartphone-Querformat bleibt der Buttonblock innerhalb des Rahmens. Controller-Panels lassen den Space-Hintergrund sichtbar, waehrend lokale Textflaechen abgedunkelt bleiben. Reale 4K-TV-, iOS- und Android-Hardwareabnahmen fehlen weiterhin.
 - **Deployment und reale Hardware bleiben Risikobereiche.** Der veraltete Assetcache ist korrigiert (`PWA-001`); Roh- und Reviewassets werden nicht mehr ausgeliefert (`ASSET-001`). Die LAN-Auslieferung erfolgt aber weiterhin ueber HTTP, und echte Fire-TV-, PWA- und Langzeit-Performance wurden nicht vollstaendig auf Hardware verifiziert.
 
 ### Urspruengliche Befundzahlen
 
-Die Zahlen bilden den Auditstichtag ab. Aktuell sind 25 von 31 IDs erledigt (1 P0, 11 P1, 8 P2, 4 P3, 1 P4). Offen bzw. nur teilweise erledigt bleiben 4 P2- und 2 P4-IDs; Details stehen im Fortschrittsabschnitt.
+Die Zahlen bilden den Auditstichtag ab. Aktuell sind 26 von 31 IDs erledigt (1 P0, 11 P1, 8 P2, 4 P3, 2 P4). Offen bzw. nur teilweise erledigt bleiben 4 P2- und 1 P4-ID; Details stehen im Fortschrittsabschnitt.
 
 | Prioritaet | Anzahl |
 |---|---:|
@@ -608,9 +609,9 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Aufwand:** L
 - **Betroffene Spielvariante:** beide
 - **Quelle bzw. Sollverhalten:** Release-Readiness erfordert automatisierte Nachweise fuer Kernzug, alle Regelvarianten, Encounter-Pending-State, Save/Load, Mehrgeraetefluss und Supernova-Kaempfe/Missionen.
-- **Aktuelles Istverhalten:** Struktur- und Game-State-Smokes sowie 14 Chromium-E2E-Tests laufen gruen. E2E deckt Hauptmenue inklusive 1080p-/4K-/Mobile-Landscape-Messung, Lobby, Startbrett inklusive Neutralteilen, DE-/EN-Controllerbasis, Orientation, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, den interaktiven Schlachtschiffkampf, die sichtbaren Zahn-der-Zeit-Phasen und den Storage-Quota-/Retry-Pfad ab. Supernova-Smokes pruefen alle 25 Missionsbedingungen, die vollstaendige Kampfmatrix, Gleichstaende, Teilnehmerbindung, Save/Load und Reconnect; weiterhin fehlen eine vollstaendige Spielpartie und weitere Save/Resume-Langzeitketten.
+- **Aktuelles Istverhalten:** Struktur- und Game-State-Smokes sowie 16 Chromium-E2E-Tests laufen gruen. E2E deckt Hauptmenue inklusive 1080p-/4K-/Mobile-Landscape-Messung, Lobby, Startbrett inklusive Neutralteilen, DE-/EN-Controllerbasis, Orientation, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, den interaktiven Schlachtschiffkampf, die sichtbaren Zahn-der-Zeit-Phasen, den Storage-Quota-/Retry-Pfad und portablen Saveexport/-import ab. Supernova-Smokes pruefen alle 25 Missionsbedingungen, die vollstaendige Kampfmatrix, Gleichstaende, Teilnehmerbindung, Save/Load und Reconnect; weiterhin fehlen eine vollstaendige Spielpartie und weitere Save/Resume-Langzeitketten.
 - **Konkrete Abweichung:** Gruene Tests belegen Seitenstart und Teilregeln, nicht die behauptete vollstaendige Classic-/Supernova-Partie.
-- **Beleg:** `scripts/check-game-state.js`; `scripts/check-controller-state.js`; `tests/e2e/smoke.spec.js` bzw. E2E-Ausgabe mit 14 Tests.
+- **Beleg:** `scripts/check-game-state.js`; `scripts/check-controller-state.js`; `scripts/check-save-portability.js`; `tests/e2e/smoke.spec.js` bzw. E2E-Ausgabe mit 16 Tests.
 - **Auswirkung:** Noch ungetestete Missions-, Langzeit- und Mehrgeraetefolgen koennen trotz gruener Suite erst am Spielabend auffallen. Die frueheren kritischen Kampfabweichungen `SN-004`/`SN-005` und `ENC-001` besitzen inzwischen gezielte Regressionen.
 - **Reproduktionsschritte:** Testsuite ausfuehren; anschliessend Abdeckung gegen die in diesem Audit genannten Flows vergleichen.
 - **Empfohlene spaetere Massnahme:** Regelbasierte Szenariotests in priorisierter Reihenfolge ergaenzen: alle Missionen, vollstaendige Classic-/Supernova-Partien, weitere Pending-State-Save/Load-Faelle und reale Mehrgeraeteflows. Drei-Spieler-Aufbau, Kampfmatrix, Controllerprivacy, Cacheupgrade, P0-Encounter und Nachschubfrist sind inzwischen abgedeckt.
@@ -757,12 +758,12 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 ### OPS-001 - Spielstaende sind ausschliesslich an den Hostbrowser gebunden
 
 - **Bereich:** Betrieb / Save-Portabilitaet
-- **Status:** TECHNISCH RISKANT
+- **Status:** UMGESETZT
 - **Prioritaet:** P4 - Optional
 - **Aufwand:** L
 - **Betroffene Spielvariante:** beide
 - **Quelle bzw. Sollverhalten:** Nicht regelnotwendig, aber fuer robusten Spielabend waere ein exportierbarer/portabler Save oder kontrolliertes Backup hilfreich.
-- **Aktuelles Istverhalten:** Saves und Autosave liegen in LocalStorage des Hostbrowsers. Der Relay-Server persistiert nichts; Browserdatenloeschung, Profilwechsel oder Hostwechsel verlieren den Stand.
+- **Aktuelles Istverhalten (Auditstichtag):** Saves und Autosave lagen ausschliesslich in LocalStorage des Hostbrowsers. Der Relay-Server persistiert nichts; Browserdatenloeschung, Profilwechsel oder Hostwechsel verloren den Stand.
 - **Konkrete Abweichung:** Keine geraeteuebergreifende oder dateibasierte Wiederherstellung. Dies ist eine bewusste statische-Web-App-Grenze, aber nicht explizit als Produktgrenze kommuniziert.
 - **Beleg:** Savepfade in `src/main.js`; In-Memory-Relay `tools/tv-server.mjs:26-38`.
 - **Auswirkung:** Optionaler Komfort-/Resilienzverlust, kein unmittelbarer Regelblocker.
@@ -770,7 +771,10 @@ Die folgenden Punkte sind belegt beabsichtigt und werden in diesem Audit **nicht
 - **Empfohlene spaetere Massnahme:** Optional JSON-Export/Import mit Schemaversion und Validierung oder klar dokumentiertes Backup anbieten; kein Backend ist zwingend.
 - **Abhaengigkeiten:** Save-Schema, Datenschutz, Migrationen.
 - **Akzeptanzkriterien:** Falls umgesetzt: Export/Import erhaelt Classic/Supernova/Pending-State, lehnt ungueltige Versionen sicher ab und veraendert lokale URL-/Wrapper-Preferences nicht.
-- **Verifikationsstatus:** Architektur vollstaendig verifiziert; bewusst optional.
+- **Verifikationsstatus:** **ERLEDIGT und automatisiert verifiziert.** Classic-Roundtrip, Supernova-Profimodus, ein persistierter offener Encounter-Schritt, Ablehnung falscher Formate/Versionen, Import als neuer lokaler Save sowie unveraenderte Controller-Sitzung/Zugriffstoken sind abgedeckt.
+- **Resolution (`5fc9534`):** Der Laden-Dialog exportiert jeden modernen Spielstand als versioniertes `star-odyssey-save-backup`-JSON und importiert Backups bis 5 MiB nach Format-, Versions- und Grundstrukturpruefung. Importierte Spielstaende laufen durch `normalizeGameState` und `repairLoadedGameState`, erhalten eine kollisionsfreie lokale ID und werden nicht automatisch gestartet. Das Backup enthaelt nur den Save; Hostsprache, URL, Controller-Sitzung, Zugriffstoken und Wrapperdaten bleiben lokal. Fehlerhafte oder zukuenftige Versionen erzeugen eine sichtbare DE-/EN-Meldung und keinen neuen Save.
+- **Geaenderte Dateien:** `src/save-portability.js`, `src/main.js`, `src/i18n.js`, `src/styles.css`, `scripts/check-save-portability.js`, `tests/e2e/smoke.spec.js`, `package.json`.
+- **Verifikation:** `npm run check`, `npm test`, `npm run test:e2e` (16/16), `git diff --check`; exakter Classic-/Supernova-Datenroundtrip, Download/Upload im echten Browserdialog, Pending-Encounter, Profimissionszahl, Nicht-Autostart, unveraenderte Controllerdaten und Ablehnung von Version 999.
 
 ## 12. Visueller Asset-Audit
 
@@ -891,7 +895,7 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 2. Relay-Sitzung und Slotberechtigungen werden nach einem Prozessneustart durch Host-Neuregistrierung wiederhergestellt (`NET-002`, erledigt); ein kompletter PC-/Browser-Neustart auf realer Hardware bleibt unter `TEST-001` offen.
 3. Fehlende Legacy-Strukturen werden migriert, waehrend explizit leere moderne Listen erhalten bleiben (`STATE-001`, erledigt).
 4. Save/Load des wartenden Schlachtschiffkampfs, der Ausbauwahl, des frueheren `ENC-001`-Pending-Falls und der Karten-31/32-Zwischenphasen ist automatisiert abgedeckt; Fabrikmehrheitswechsel ueber eine lange Partie und weitere passive Controllerketten bleiben unvollstaendig abgedeckt (`TEST-001`).
-5. Browser-/Geraetewechsel besitzt keinen Saveexport (`OPS-001`, optional).
+5. Browser-/Geraetewechsel ist ueber einen versionierten Einzelspielstand-Export/-Import abgesichert (`OPS-001`, erledigt); ein serverseitiges Cloud-Backup bleibt bewusst ausserhalb der statischen App.
 
 ### Zustandsuebergaenge
 
@@ -919,7 +923,7 @@ Beleg: `src/game/gameState.js:2515-2636,2814-2851,3149+` sowie die jeweiligen No
 |---|---|---|
 | `npm run check` | PASS | Syntax/Projektcheck bestanden |
 | `npm test` | PASS | Struktur-, Game-State-, Controllerprivacy- sowie echter Relay-Zugriffs-/Neustarttest bestanden |
-| `npm run test:e2e` | PASS, 14 Chromium-Tests | Hauptmenue inklusive 1080p-/4K-Proportion und Mobile-Landscape-Safe-Area, Lobby/Start inklusive Token-URL und Doppel-Tab-Schutz, DE-/EN-Controller, 16:9/Portrait, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, interaktiver Schlachtschiffkampf, Zahn-der-Zeit-Anzeigen und Storage-Quota-/Retry-Pfad |
+| `npm run test:e2e` | PASS, 16 Chromium-Tests | Hauptmenue inklusive 1080p-/4K-Proportion und Mobile-Landscape-Safe-Area, Lobby/Start inklusive Token-URL und Doppel-Tab-Schutz, DE-/EN-Controller, 16:9/Portrait, Remoteweg, Debugseiten, Controllerprivacy, Fabrikdarstellung, interaktiver Schlachtschiffkampf, Zahn-der-Zeit-Anzeigen, Storage-Quota-/Retry-Pfad sowie versionierter Saveexport/-import mit Pending-Supernova-State |
 | `git diff --check` | PASS vor Audit-Erstellung | Keine vorbestehenden Whitespacefehler |
 | Statischer Assetpfad-Scan | PASS fuer konkrete Literalpfade | Keine fehlenden aktiven Dateien; Templatepfade separat bewertet |
 | Browser-Smoke auf bestehendem lokalen Server | PASS | Keine beobachteten Konsolenwarnungen/-fehler oder kaputten Bilder in den geprueften Seiten |
@@ -997,8 +1001,8 @@ Noch keine Umsetzung; die Reihenfolge minimiert Regel-/State-Rueckarbeit.
 
 9. **Optionale Erweiterungen nach Release-Reife**
    - Erledigt: `SN-006` stellt die Profivariantenoption bereit.
+   - Erledigt: `OPS-001` stellt versionierten Saveexport/-import bereit.
    - `AUDIO-001`: Audiosystem.
-   - `OPS-001`: Saveexport/-import.
 
 ## 19. Release-Readiness-Checkliste
 
@@ -1034,7 +1038,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 - [ ] Alle kritischen Pending-Zustaende besitzen Save/Resume-Regressionstests (`TEST-001`).
 - [x] Relay-/Controllerzustand wird nach Serverneustart durch Host-Neuregistrierung und erneute State-Publikation kontrolliert wiederhergestellt (`NET-002`).
 - [x] Strukturmigration unterscheidet fehlend von explizit leer (`STATE-001`).
-- [ ] Optionaler Saveexport/-import ist vorhanden (`OPS-001`, optional).
+- [x] Optionaler versionierter Saveexport/-import erhaelt Classic-, Supernova- und Pending-State, lehnt inkompatible Versionen ab und veraendert keine Controllerdaten (`OPS-001`).
 
 ### Controller und Netzwerk
 
@@ -1073,7 +1077,7 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 
 - [x] `npm run check` ist gruen.
 - [x] `npm test` ist gruen.
-- [x] `npm run test:e2e` ist gruen (15 Chromium-Tests).
+- [x] `npm run test:e2e` ist gruen (16 Chromium-Tests).
 - [x] Gepruefte Browserseiten laden ohne beobachtete Konsolen-/Assetfehler.
 - [ ] P0- und P1-Akzeptanzkriterien besitzen Regressionstests (`TEST-001`).
 - [-] Vollstaendige reale Classic- und Supernova-Testpartien sind protokolliert.
@@ -1121,10 +1125,10 @@ Legende: `[x]` sicher erfuellt, `[ ]` offen, `[-]` nicht verifiziert, `[~]` teil
 ### 9. Welche Punkte sind nur optionaler Zusatzkomfort?
 
 - Audio-/Lautstaerkesystem (`AUDIO-001`).
-- Portabler Saveexport/-import (`OPS-001`).
-- Audio und portabler Saveexport/-import bleiben Zusatzkomfort; die optionale Profivariante ist umgesetzt.
+- Portabler Saveexport/-import ist umgesetzt (`OPS-001`); serverseitige Cloud-Synchronisation bleibt bewusst ausserhalb der statischen App.
+- Damit bleibt nur Audio als offener optionaler Zusatzkomfort; Profivariante und Saveportabilitaet sind umgesetzt.
 
-**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde, acht P2-Befunde, alle vier P3-Befunde sowie die optionale Profivariante `SN-006` sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, reale Mehrgeraete- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
+**Gesamturteil:** Der aktuelle Stand ist ein fortgeschrittener, technisch lauffaehiger Prototyp mit guter 1080p-/simulierter-4K-Praesentation. Der urspruengliche P0-Softlock, alle elf P1-Befunde, acht P2-Befunde, alle vier P3-Befunde sowie die optionalen Punkte `SN-006` und `OPS-001` sind behoben. Nicht abgeschlossene Vollpartie-, Hardware-, reale Mehrgeraete- und visuelle Abnahmen verhindern weiterhin Release- und Final-Polish-Reife.
 
 ## Implementation Progress
 
@@ -1159,3 +1163,4 @@ Diese Tabelle dokumentiert die Abarbeitung nach dem urspruenglichen Audit. Die P
 | `UI-003` | P3 | ERLEDIGT | `59ec00c` | `npm run check`, `npm test`, Hauptmenue-E2E (2/2), `git diff --check`; alle vier PNGs geladen, 1080p visuell und 4K-Geometrie geprueft | reale 4K-Fire-TV-Hardware bleibt unter `TEST-001` |
 | `ASSET-001` | P3 | ERLEDIGT | `d742daf` | Assetpipeline aus `assets/source`, Manifest mit 29 vorhandenen Quellen/Zielen, Server-200/404-Grenztest, `npm run check`, `npm test`, `npm run test:e2e` (15/15), `git diff --check` | keiner |
 | `SN-006` | P4 | ERLEDIGT | `64f5c99` | `npm run check`, `npm test`, `npm run test:e2e` (15/15), `git diff --check`; Default/Profi, Kategorien, Classic-Isolation, Save/Load, Legacy-Fallback, Sieg, private Drei-Controller-Payloads, Reconnect und D-Pad | keiner |
+| `OPS-001` | P4 | ERLEDIGT | `5fc9534` | `npm run check`, `npm test`, `npm run test:e2e` (16/16), `git diff --check`; Classic-/Supernova-Roundtrip, Pending-Encounter, Profimissionen, Nicht-Autostart, private lokale Daten und Versionsablehnung | keiner |
