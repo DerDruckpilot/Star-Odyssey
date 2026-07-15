@@ -120,6 +120,7 @@ const savesStorageKey = "star-odyssey-saves";
 const autosaveStorageKey = "starOdyssey.autosave.v1";
 const autosaveVersion = 1;
 const controllerSessionStorageKey = "star-odyssey-controller-session";
+const controllerAccessStoragePrefix = "star-odyssey-controller-access-v1";
 const svgNamespace = "http://www.w3.org/2000/svg";
 const showBoardDebugLabels = false;
 const showBoardNodeDebugLabels = false;
@@ -188,8 +189,10 @@ const state = {
   supernovaBattleRevealKey: null
 };
 
+const controllerSessionId = loadOrCreateControllerSessionId();
 const remoteHost = {
-  sessionId: loadOrCreateControllerSessionId(),
+  sessionId: controllerSessionId,
+  controllerTokensByPlayerId: loadControllerAccessTokens(controllerSessionId),
   socket: null,
   localChannel: null,
   localTransport: "",
@@ -198,7 +201,8 @@ const remoteHost = {
   controllerCount: 0,
   controllerSlots: [],
   reconnectTimer: null,
-  lastStateJson: ""
+  lastStateJson: "",
+  lastAccessJson: ""
 };
 
 const controllerReconnectMs = 1600;
@@ -521,9 +525,15 @@ function clearAutosave() {
 
 function loadOrCreateControllerSessionId() {
   try {
-    const existingSessionId = sessionStorage.getItem(controllerSessionStorageKey);
-    if (existingSessionId) return existingSessionId;
+    const existingSessionId = localStorage.getItem(controllerSessionStorageKey)
+      || sessionStorage.getItem(controllerSessionStorageKey);
+    if (existingSessionId) {
+      localStorage.setItem(controllerSessionStorageKey, existingSessionId);
+      sessionStorage.setItem(controllerSessionStorageKey, existingSessionId);
+      return existingSessionId;
+    }
     const nextSessionId = Math.random().toString(36).slice(2, 8).toUpperCase();
+    localStorage.setItem(controllerSessionStorageKey, nextSessionId);
     sessionStorage.setItem(controllerSessionStorageKey, nextSessionId);
     return nextSessionId;
   } catch {
@@ -531,10 +541,104 @@ function loadOrCreateControllerSessionId() {
   }
 }
 
+function getControllerAccessStorageKey(sessionId = "") {
+  return `${controllerAccessStoragePrefix}:${sessionId || controllerSessionId}`;
+}
+
+function loadControllerAccessTokens(sessionId) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(getControllerAccessStorageKey(sessionId)) || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([playerId, token]) => (
+      /^player-\d+$/.test(playerId)
+      && typeof token === "string"
+      && token.length >= 16
+    )));
+  } catch {
+    return {};
+  }
+}
+
+function saveControllerAccessTokens() {
+  try {
+    localStorage.setItem(
+      getControllerAccessStorageKey(remoteHost.sessionId),
+      JSON.stringify(remoteHost.controllerTokensByPlayerId)
+    );
+  } catch {
+    // Controller URLs still work for the current page when persistent storage is unavailable.
+  }
+}
+
+function createControllerAccessToken() {
+  try {
+    const bytes = new Uint8Array(24);
+    globalThis.crypto.getRandomValues(bytes);
+    return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+function getControllerAccessPlayerIds() {
+  const lobbyPlayerIds = (state.controllerLobby?.slots ?? []).map((slot) => slot.playerId).filter(Boolean);
+  if (lobbyPlayerIds.length > 0) return lobbyPlayerIds;
+  const gamePlayerIds = (state.gameState?.players ?? []).map((player) => player.id).filter(Boolean);
+  if (gamePlayerIds.length > 0) return gamePlayerIds;
+  return [];
+}
+
+function ensureControllerAccessTokens(playerIds = getControllerAccessPlayerIds()) {
+  const allowedPlayerIds = new Set(playerIds);
+  let changed = false;
+  for (const playerId of Object.keys(remoteHost.controllerTokensByPlayerId)) {
+    if (allowedPlayerIds.has(playerId)) continue;
+    delete remoteHost.controllerTokensByPlayerId[playerId];
+    changed = true;
+  }
+  for (const playerId of playerIds) {
+    if (remoteHost.controllerTokensByPlayerId[playerId]) continue;
+    remoteHost.controllerTokensByPlayerId[playerId] = createControllerAccessToken();
+    changed = true;
+  }
+  if (changed) saveControllerAccessTokens();
+  return { ...remoteHost.controllerTokensByPlayerId };
+}
+
+function replaceControllerAccessTokens(playerIds) {
+  remoteHost.controllerTokensByPlayerId = Object.fromEntries(
+    playerIds.map((playerId) => [playerId, createControllerAccessToken()])
+  );
+  saveControllerAccessTokens();
+  revokeInvalidLocalControllers();
+  syncRemoteControllerAccess({ force: true });
+}
+
+function syncRemoteControllerAccess({ force = false } = {}) {
+  const controllerTokensByPlayerId = ensureControllerAccessTokens();
+  const accessJson = JSON.stringify(controllerTokensByPlayerId);
+  if (
+    remoteHost.socket?.readyState === 1
+    && (force || accessJson !== remoteHost.lastAccessJson)
+  ) {
+    remoteHost.socket.send(JSON.stringify({
+      type: "controllerAccess",
+      sessionId: remoteHost.sessionId,
+      controllerTokensByPlayerId
+    }));
+    remoteHost.lastAccessJson = accessJson;
+  }
+}
+
 function getControllerUrl(playerId = null) {
   const url = new URL("controller.html", document.baseURI);
   url.searchParams.set("session", remoteHost.sessionId);
-  if (playerId) url.searchParams.set("player", getControllerSlotNumber(playerId));
+  if (playerId) {
+    const playerIds = [...new Set([...getControllerAccessPlayerIds(), playerId])];
+    ensureControllerAccessTokens(playerIds);
+    url.searchParams.set("player", getControllerSlotNumber(playerId));
+    url.searchParams.set("token", remoteHost.controllerTokensByPlayerId[playerId]);
+  }
   return url.toString();
 }
 
@@ -779,6 +883,7 @@ function startNewGameSetup() {
   state.selectedPlayers = null;
   state.selectedGameVariant = gameVariants.classic;
   state.playerSetup = [];
+  replaceControllerAccessTokens([]);
   setView("players");
 }
 
@@ -787,6 +892,7 @@ function enterControllerLobby() {
   state.controllerMode = true;
   state.controllerLobby = createControllerLobby(state.selectedPlayers, state.selectedGameVariant);
   state.playerSetup = [];
+  replaceControllerAccessTokens(state.controllerLobby.slots.map((slot) => slot.playerId));
   setView("controllers");
   startControllerLobbyAssetPreload();
 }
@@ -8024,11 +8130,14 @@ function connectRemoteHost() {
 
   socket.addEventListener("open", () => {
     remoteHost.connected = true;
+    const controllerTokensByPlayerId = ensureControllerAccessTokens();
     socket.send(JSON.stringify({
       type: "hello",
       role: "host",
-      sessionId: remoteHost.sessionId
+      sessionId: remoteHost.sessionId,
+      controllerTokensByPlayerId
     }));
+    remoteHost.lastAccessJson = JSON.stringify(controllerTokensByPlayerId);
     remoteHost.lastStateJson = "";
     publishRemoteHostState();
     render();
@@ -8039,7 +8148,9 @@ function connectRemoteHost() {
     if (remoteHost.socket !== socket) return;
     remoteHost.connected = false;
     remoteHost.controllerCount = 0;
+    remoteHost.controllerSlots = [];
     remoteHost.socket = null;
+    remoteHost.lastAccessJson = "";
     remoteHost.reconnectTimer = setTimeout(connectRemoteHost, controllerReconnectMs);
     if (state.modal === "controllers") render();
   });
@@ -8059,7 +8170,7 @@ function handleRemoteHostMessage(rawData) {
   if (message.type === "helloAck" || message.type === "controllerCount") {
     remoteHost.controllerCount = message.controllerCount ?? remoteHost.controllerCount;
     remoteHost.controllerSlots = Array.isArray(message.controllerSlots) ? message.controllerSlots : remoteHost.controllerSlots;
-    updateControllerLobbyConnections();
+    syncLocalControllerSlots();
     if (state.modal === "controllers" || state.view === "controllers") render();
     return;
   }
@@ -8090,7 +8201,7 @@ function publishRemoteHostState() {
         type: "state",
         sessionId: remoteHost.sessionId,
         state: controllerState
-      });
+      }, controller.connectionId);
     }
   }
 }
@@ -8119,15 +8230,33 @@ function handleLocalControllerMessage(message) {
   if (message.type === "hello") {
     const controllerId = message.controllerId || `controller-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const playerId = message.playerId || null;
-    if (!getControllerLobbySlot(playerId)) return;
-    for (const [existingControllerId, controller] of remoteHost.localControllers.entries()) {
-      if (existingControllerId !== controllerId && controller.playerId === playerId) {
-        remoteHost.localControllers.delete(existingControllerId);
-      }
+    const connectionId = message.connectionId || controllerId;
+    const expectedAccessToken = ensureControllerAccessTokens()[playerId];
+    if (!expectedAccessToken || message.accessToken !== expectedAccessToken) {
+      sendLocalControllerMessage({
+        type: "accessDenied",
+        sessionId: remoteHost.sessionId,
+        targetControllerId: controllerId,
+        targetConnectionId: connectionId
+      });
+      return;
     }
-    remoteHost.localControllers.set(controllerId, {
+    const occupiedSlot = remoteHost.controllerSlots.some((slot) => slot.connected && slot.playerId === playerId)
+      || [...remoteHost.localControllers.values()].some((controller) => controller.playerId === playerId);
+    if (occupiedSlot) {
+      sendLocalControllerMessage({
+        type: "slotOccupied",
+        sessionId: remoteHost.sessionId,
+        targetControllerId: controllerId,
+        targetConnectionId: connectionId
+      });
+      return;
+    }
+    remoteHost.localControllers.set(connectionId, {
       controllerId,
+      connectionId,
       playerId,
+      accessToken: message.accessToken,
       lastSeen: Date.now()
     });
     syncLocalControllerSlots();
@@ -8135,6 +8264,7 @@ function handleLocalControllerMessage(message) {
       type: "helloAck",
       sessionId: remoteHost.sessionId,
       targetControllerId: controllerId,
+      targetConnectionId: connectionId,
       controllerId,
       controllerCount: remoteHost.controllerCount,
       controllerSlots: remoteHost.controllerSlots
@@ -8146,13 +8276,36 @@ function handleLocalControllerMessage(message) {
   }
 
   if (message.type === "action") {
-    const controller = remoteHost.localControllers.get(message.controllerId);
-    if (!controller) return;
+    const controller = remoteHost.localControllers.get(message.connectionId);
+    if (!controller || controller.controllerId !== message.controllerId) return;
     executeRemoteAction(message.actionId, {
       ...(message.payload || {}),
       playerId: controller.playerId
     });
+    return;
   }
+
+  if (message.type === "disconnect") {
+    const controller = remoteHost.localControllers.get(message.connectionId);
+    if (!controller || controller.controllerId !== message.controllerId) return;
+    remoteHost.localControllers.delete(message.connectionId);
+    syncLocalControllerSlots();
+    if (state.modal === "controllers" || state.view === "controllers") render();
+  }
+}
+
+function revokeInvalidLocalControllers() {
+  let changed = false;
+  for (const [connectionId, controller] of remoteHost.localControllers.entries()) {
+    if (remoteHost.controllerTokensByPlayerId[controller.playerId] === controller.accessToken) continue;
+    sendLocalPrivateControllerMessage(controller.controllerId, {
+      type: "accessRevoked",
+      sessionId: remoteHost.sessionId
+    }, controller.connectionId);
+    remoteHost.localControllers.delete(connectionId);
+    changed = true;
+  }
+  if (changed) syncLocalControllerSlots();
 }
 
 function syncLocalControllerSlots() {
@@ -8188,11 +8341,12 @@ function sendLocalControllerMessage(message) {
   }
 }
 
-function sendLocalPrivateControllerMessage(controllerId, message) {
+function sendLocalPrivateControllerMessage(controllerId, message, connectionId = "") {
   const payload = {
     ...message,
     source: "host",
     targetControllerId: controllerId,
+    targetConnectionId: connectionId,
     sentAt: Date.now()
   };
   if (remoteHost.localTransport === "broadcast") {

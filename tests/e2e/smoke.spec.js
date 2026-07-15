@@ -33,6 +33,31 @@ function expectPrivateControllerState(state, ownPlayerId, foreignPlayerId) {
   expect(foreignPlayer.resourceCount).toBeGreaterThanOrEqual(0);
 }
 
+async function getAuthorizedControllerUrl(page, playerNumber) {
+  await page.waitForFunction((slotNumber) => {
+    const sessionId = localStorage.getItem("star-odyssey-controller-session")
+      || sessionStorage.getItem("star-odyssey-controller-session");
+    if (!sessionId) return false;
+    try {
+      const tokens = JSON.parse(localStorage.getItem(`star-odyssey-controller-access-v1:${sessionId}`) || "{}");
+      return Boolean(tokens[`player-${slotNumber}`]);
+    } catch {
+      return false;
+    }
+  }, playerNumber);
+
+  return page.evaluate((slotNumber) => {
+    const sessionId = localStorage.getItem("star-odyssey-controller-session")
+      || sessionStorage.getItem("star-odyssey-controller-session");
+    const tokens = JSON.parse(localStorage.getItem(`star-odyssey-controller-access-v1:${sessionId}`) || "{}");
+    const url = new URL("/controller.html", window.location.origin);
+    url.searchParams.set("session", sessionId);
+    url.searchParams.set("player", String(slotNumber));
+    url.searchParams.set("token", tokens[`player-${slotNumber}`]);
+    return url.toString();
+  }, playerNumber);
+}
+
 test("main menu, QR controller lobby, board, and phone menu work", async ({ page }) => {
   await page.goto("/");
 
@@ -64,6 +89,7 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   expect(controllerUrls).toHaveLength(3);
   expect(controllerUrls[0]).toContain("/controller.html?session=");
   expect(controllerUrls[0]).toContain("player=1");
+  expect(new URL(controllerUrls[0]).searchParams.get("token")).toMatch(/^[a-f0-9]{48}$/);
   expect(controllerUrls[0]).not.toContain("localhost");
 
   const popupPromise = page.waitForEvent("popup");
@@ -92,6 +118,12 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await expect(controllerTwo.getByText("Verbunden als Spieler 2")).toBeVisible();
   await expect(controllerThree.getByText("Verbunden als Spieler 3")).toBeVisible();
   await expect(lobbyBack).toBeFocused();
+
+  const duplicateController = await page.context().newPage();
+  await duplicateController.goto(controllerUrls[0]);
+  await expect(duplicateController.locator(".controller-status")).toHaveText("Spieler bereits verbunden");
+  await expect(controllerOne.locator(".controller-status")).toHaveText("Verbunden");
+  await duplicateController.close();
 
   await controllerOne.getByLabel("Name").fill("Alice");
   await controllerOne.getByRole("button", { name: "Rot" }).click();
@@ -555,9 +587,8 @@ test("Supernova factories render on the board", async ({ page }) => {
   await expect(marker).toHaveCount(1);
   await expect(marker.locator("title")).toContainText("Spieler 1");
 
-  const sessionId = await page.evaluate(() => sessionStorage.getItem("star-odyssey-controller-session"));
   const controller = await page.context().newPage();
-  await controller.goto(`/controller.html?session=${sessionId}&player=1`);
+  await controller.goto(await getAuthorizedControllerUrl(page, 1));
   await expect(controller.getByRole("heading", { name: "Spieler 1" })).toBeVisible();
   await expect(controller.locator(".controller-status")).toHaveText("Verbunden");
   await controller.getByRole("button", { name: "Spielfeld" }).click();
@@ -623,9 +654,8 @@ test("active controller starts a visible single-player encounter roll", async ({
   await expect(page.locator(".board-screen")).toBeVisible();
   await expect(page.locator(".mothership-speed-overlay")).toHaveCount(0);
 
-  const sessionId = await page.evaluate(() => sessionStorage.getItem("star-odyssey-controller-session"));
   const controller = await page.context().newPage();
-  await controller.goto(`/controller.html?session=${sessionId}&player=1`);
+  await controller.goto(await getAuthorizedControllerUrl(page, 1));
   const rollButton = controller.getByRole("button", { name: "Mit Mutterschiff würfeln" });
   await expect(rollButton).toBeVisible();
   await rollButton.click();
@@ -704,9 +734,8 @@ test("Tooth of Time shows its saved result phases before drawing again", async (
   await expect(page.locator(".encounter-message-step h2")).toHaveText("Galaktischer Rat");
   await expect(page.locator(".encounter-message-step")).toContainText("Spieler 2 erhält eine halbe Medaille.");
 
-  const sessionId = await page.evaluate(() => sessionStorage.getItem("star-odyssey-controller-session"));
   const controller = await page.context().newPage();
-  await controller.goto(`/controller.html?session=${sessionId}&player=1`);
+  await controller.goto(await getAuthorizedControllerUrl(page, 1));
   await expect(controller.locator(".encounter-message-step h3")).toHaveText("Galaktischer Rat");
   await controller.getByRole("button", { name: "Weiter" }).click();
 
@@ -824,11 +853,12 @@ test("both controllers must roll before a Supernova ship battle is shown", async
   await expect(page.locator(".board-screen")).toBeVisible();
   await expect(page.locator(".supernova-battle-overlay")).toHaveCount(0);
 
-  const sessionId = await page.evaluate(() => sessionStorage.getItem("star-odyssey-controller-session"));
   const attackerController = await page.context().newPage();
   const defenderController = await page.context().newPage();
-  await attackerController.goto(`/controller.html?session=${sessionId}&player=1`);
-  await defenderController.goto(`/controller.html?session=${sessionId}&player=2`);
+  const attackerUrl = await getAuthorizedControllerUrl(page, 1);
+  const defenderUrl = await getAuthorizedControllerUrl(page, 2);
+  await attackerController.goto(attackerUrl);
+  await defenderController.goto(defenderUrl);
 
   const attackerRoll = attackerController.getByRole("button", { name: "Mit Mutterschiff würfeln" });
   const defenderRoll = defenderController.getByRole("button", { name: "Mit Mutterschiff würfeln" });
@@ -841,7 +871,7 @@ test("both controllers must roll before a Supernova ship battle is shown", async
 
   await attackerController.close();
   const reconnectedAttacker = await page.context().newPage();
-  await reconnectedAttacker.goto(`/controller.html?session=${sessionId}&player=1`);
+  await reconnectedAttacker.goto(attackerUrl);
   await expect(reconnectedAttacker.getByText("Du hast gewürfelt. Warte auf den anderen Spieler.")).toBeVisible();
   await expect(reconnectedAttacker.getByRole("button", { name: "Mit Mutterschiff würfeln" })).toHaveCount(0);
 

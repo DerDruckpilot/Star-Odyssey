@@ -12,6 +12,7 @@ import { getText } from "./i18n.js";
 const root = document.querySelector("#controller-root");
 const params = new URLSearchParams(window.location.search);
 const sessionId = params.get("session") || "";
+const accessToken = params.get("token") || "";
 const reconnectDelayMs = 1400;
 const localControllerStoragePrefix = "star-odyssey-controller-channel";
 const iosInstallHintStorageKey = "star-odyssey-ios-install-hint-dismissed";
@@ -25,8 +26,11 @@ let webSocketConnectedOnce = false;
 let reconnectTimer = null;
 let selectedPlayerId = normalizePlayerParam(params.get("player"));
 let controllerId = loadStoredControllerId(selectedPlayerId);
+const connectionId = createControllerConnectionId();
 let connectionStatus = "connecting";
 let replacedByReconnect = false;
+let connectionRetryBlocked = false;
+let waitingForHostAccess = false;
 let gameState = null;
 let activeTab = "turn";
 let boardFullscreen = false;
@@ -66,6 +70,14 @@ function loadStoredControllerId(playerId) {
   }
 }
 
+function createControllerConnectionId() {
+  try {
+    return globalThis.crypto.randomUUID();
+  } catch {
+    return `connection-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
 function normalizePlayerParam(value) {
   if (!value) return "";
   return /^\d+$/.test(value) ? `player-${value}` : value;
@@ -82,9 +94,20 @@ function getWebSocketUrl() {
   return `${protocol}//${window.location.host}/ws`;
 }
 
-function connect() {
+function connect(manualRetry = false) {
+  if (manualRetry === true) {
+    connectionRetryBlocked = false;
+    replacedByReconnect = false;
+  } else if (connectionRetryBlocked) {
+    return;
+  }
   if (!sessionId) {
     connectionStatus = "missing-session";
+    render();
+    return;
+  }
+  if (!accessToken) {
+    connectionStatus = "missing-access";
     render();
     return;
   }
@@ -97,6 +120,7 @@ function connect() {
   clearTimeout(reconnectTimer);
   localFallbackActive = false;
   webSocketConnectedOnce = false;
+  waitingForHostAccess = false;
   connectionStatus = "connecting";
   render();
 
@@ -117,9 +141,9 @@ function connect() {
     handleMessage(event.data);
   });
   socket.addEventListener("close", () => {
-    if (replacedByReconnect) return;
+    if (replacedByReconnect || connectionRetryBlocked) return;
     if (webSocketConnectedOnce) {
-      connectionStatus = "lost";
+      connectionStatus = waitingForHostAccess ? "waiting" : "lost";
       render();
       reconnectTimer = setTimeout(connect, reconnectDelayMs);
     } else {
@@ -137,7 +161,9 @@ function sendHello() {
     role: "controller",
     sessionId,
     controllerId,
-    playerId: selectedPlayerId
+    playerId: selectedPlayerId,
+    accessToken,
+    connectionId
   });
 }
 
@@ -153,6 +179,7 @@ function send(data) {
 
 function activateLocalFallback() {
   if (!sessionId) return;
+  if (localFallbackActive) return;
   initializeLocalControllerChannel();
   localFallbackActive = true;
   connectionStatus = "waiting";
@@ -189,7 +216,9 @@ function sendLocalHostMessage(data) {
     ...data,
     source: "controller",
     controllerId,
+    connectionId,
     playerId: selectedPlayerId,
+    accessToken,
     sessionId,
     sentAt: Date.now()
   };
@@ -209,6 +238,7 @@ function sendLocalHostMessage(data) {
 function handleLocalHostMessage(message) {
   if (!message || message.source !== "host" || message.sessionId !== sessionId) return;
   if (message.targetControllerId && message.targetControllerId !== controllerId) return;
+  if (message.targetConnectionId && message.targetConnectionId !== connectionId) return;
   handleMessage(JSON.stringify(message));
 }
 
@@ -238,6 +268,8 @@ function handleMessage(rawData) {
 
   if (message.type === "helloAck") {
     controllerId = message.controllerId || controllerId;
+    connectionRetryBlocked = false;
+    waitingForHostAccess = false;
     connectionStatus = "connected";
     render();
     return;
@@ -256,7 +288,25 @@ function handleMessage(rawData) {
 
   if (message.type === "replaced") {
     replacedByReconnect = true;
+    connectionRetryBlocked = true;
     connectionStatus = "replaced";
+    render();
+    socket?.close();
+    return;
+  }
+
+  if (message.type === "accessPending") {
+    waitingForHostAccess = true;
+    connectionStatus = "waiting";
+    render();
+    socket?.close();
+    return;
+  }
+
+  if (["accessDenied", "accessRevoked", "slotOccupied"].includes(message.type)) {
+    connectionRetryBlocked = true;
+    waitingForHostAccess = false;
+    connectionStatus = message.type === "slotOccupied" ? "occupied" : "access-denied";
     render();
     socket?.close();
   }
@@ -457,7 +507,11 @@ function renderControllerHeader(player) {
   const statusLabel = document.createElement("span");
   statusLabel.className = "controller-status";
   statusLabel.textContent = getStatusLabel();
-  status.append(statusDot, statusLabel, createButton(t("controllerReconnect"), connect, "small-button controller-reconnect-inline"));
+  status.append(statusDot, statusLabel, createButton(
+    t("controllerReconnect"),
+    () => connect(true),
+    "small-button controller-reconnect-inline"
+  ));
 
   titleGroup.append(title, status, renderControllerResources(player));
 
@@ -2669,8 +2723,11 @@ function getStatusLabel() {
   if (connectionStatus === "waiting") return t("controllerStatusWaiting");
   if (connectionStatus === "lost") return t("controllerStatusLost");
   if (connectionStatus === "replaced") return t("controllerStatusReplaced");
+  if (connectionStatus === "occupied") return t("controllerStatusOccupied");
+  if (connectionStatus === "access-denied") return t("controllerStatusAccessDenied");
   if (connectionStatus === "missing-session") return t("controllerStatusMissingSession");
   if (connectionStatus === "missing-player") return t("controllerStatusMissingPlayer");
+  if (connectionStatus === "missing-access") return t("controllerStatusMissingAccess");
   return t("controllerStatusConnecting");
 }
 
@@ -2685,6 +2742,10 @@ window.addEventListener("orientationchange", updateControllerViewportHeight);
 window.visualViewport?.addEventListener("resize", updateControllerViewportHeight);
 window.visualViewport?.addEventListener("scroll", updateControllerViewportHeight);
 document.addEventListener("fullscreenchange", render);
+window.addEventListener("pagehide", () => {
+  if (!localFallbackActive) return;
+  sendLocalHostMessage({ type: "disconnect" });
+});
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {

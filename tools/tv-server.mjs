@@ -32,6 +32,7 @@ function getSession(sessionId) {
   if (!sessions.has(safeSessionId)) {
     sessions.set(safeSessionId, {
       controllers: new Map(),
+      controllerTokensByPlayerId: new Map(),
       host: null,
       lastStatesByPlayerId: {}
     });
@@ -71,6 +72,29 @@ function getControllerSlots(session) {
 function findControllerByPlayerId(session, playerId) {
   return [...session.controllers.entries()]
     .find(([, controller]) => controller.playerId === playerId) ?? null;
+}
+
+function normalizeControllerTokens(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return new Map();
+  return new Map(Object.entries(value)
+    .filter(([playerId, token]) => (
+      /^player-\d+$/.test(playerId)
+      && typeof token === "string"
+      && token.length >= 16
+    )));
+}
+
+function applyControllerAccess(session, value) {
+  const nextTokens = normalizeControllerTokens(value);
+  session.controllerTokensByPlayerId = nextTokens;
+
+  for (const [controllerId, controller] of session.controllers.entries()) {
+    if (nextTokens.get(controller.playerId) === controller.accessToken) continue;
+    sendJson(controller.socket, { type: "accessRevoked" });
+    controller.socket.close();
+    session.controllers.delete(controllerId);
+  }
+  notifyHost(session);
 }
 
 function cleanupSocket(socket) {
@@ -116,6 +140,7 @@ function handleSocketMessage(socket, rawMessage) {
 
     if (socket.starOdysseyRole === "host") {
       session.host = { socket };
+      applyControllerAccess(session, message.controllerTokensByPlayerId);
       sendJson(socket, {
         type: "helloAck",
         role: "host",
@@ -133,18 +158,32 @@ function handleSocketMessage(socket, rawMessage) {
       return;
     }
 
+    if (!session.host) {
+      sendJson(socket, { type: "accessPending", message: "Game display not connected yet." });
+      socket.close();
+      return;
+    }
+
+    const accessToken = typeof message.accessToken === "string" ? message.accessToken : "";
+    if (!accessToken || session.controllerTokensByPlayerId.get(playerId) !== accessToken) {
+      sendJson(socket, { type: "accessDenied", message: "Invalid controller access." });
+      socket.close();
+      return;
+    }
+
     const existingSlot = findControllerByPlayerId(session, playerId);
-    if (existingSlot && existingSlot[0] !== controllerId) {
-      sendJson(existingSlot[1].socket, { type: "replaced", message: "Slot reconnected." });
-      existingSlot[1].socket.close();
-      session.controllers.delete(existingSlot[0]);
+    if (existingSlot) {
+      sendJson(socket, { type: "slotOccupied", message: "Player slot already connected." });
+      socket.close();
+      return;
     }
 
     socket.starOdysseyClientId = controllerId;
     session.controllers.set(controllerId, {
       controllerId,
       socket,
-      playerId
+      playerId,
+      accessToken
     });
     sendJson(socket, {
       type: "helloAck",
@@ -173,7 +212,17 @@ function handleSocketMessage(socket, rawMessage) {
     return;
   }
 
+  if (message.type === "controllerAccess" && socket.starOdysseyRole === "host") {
+    applyControllerAccess(session, message.controllerTokensByPlayerId);
+    return;
+  }
+
   if (message.type === "action" && socket.starOdysseyRole === "controller") {
+    const controller = session.controllers.get(socket.starOdysseyClientId);
+    if (!controller || controller.socket !== socket) {
+      sendJson(socket, { type: "accessDenied", message: "Controller is not registered." });
+      return;
+    }
     if (!session.host) {
       sendJson(socket, { type: "error", message: "No game display connected." });
       return;
@@ -183,10 +232,10 @@ function handleSocketMessage(socket, rawMessage) {
       actionId: message.actionId,
       payload: {
         ...(message.payload || {}),
-        playerId: session.controllers.get(socket.starOdysseyClientId)?.playerId ?? null
+        playerId: controller.playerId
       },
       controllerId: socket.starOdysseyClientId,
-      playerId: session.controllers.get(socket.starOdysseyClientId)?.playerId ?? null
+      playerId: controller.playerId
     });
   }
 }
@@ -294,5 +343,7 @@ webSocketServer.on("connection", (socket) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`Star Odyssey TV server listening on http://${host}:${port}/`);
+  const address = server.address();
+  const listeningPort = typeof address === "object" && address ? address.port : port;
+  console.log(`Star Odyssey TV server listening on http://${host}:${listeningPort}/`);
 });
