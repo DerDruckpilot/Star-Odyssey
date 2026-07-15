@@ -2081,22 +2081,19 @@ function runMainMenuAction(actionId) {
 }
 
 function renderMainMenuActionButton(definition, index) {
-  const iconLabels = {
-    newGame: "✦",
-    loadGame: "▣",
-    quitGame: "⏻",
-    settings: "⚙"
-  };
   const button = createButton("", () => runMainMenuAction(definition.id), "menu-composite-button main-menu-action-button");
   button.dataset.action = definition.id;
   button.dataset.remoteId = `menu-${definition.id}`;
   button.setAttribute("aria-label", definition.label);
   if (index === 0) button.dataset.remoteAutofocus = "true";
 
-  const icon = document.createElement("span");
+  const icon = document.createElement("img");
   icon.className = "main-menu-action-icon";
+  icon.src = definition.icon;
+  icon.alt = "";
+  icon.decoding = "async";
+  icon.draggable = false;
   icon.setAttribute("aria-hidden", "true");
-  icon.textContent = iconLabels[definition.id] ?? "✦";
 
   const label = document.createElement("span");
   label.className = "main-menu-action-label";

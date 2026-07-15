@@ -816,14 +816,12 @@ textarea {
 }
 
 .main-menu-action-icon {
-  display: grid;
-  place-items: center;
+  display: block;
   width: min(5.5vh, 3.5rem);
   height: min(5.5vh, 3.5rem);
-  color: #7edcff;
-  font-size: min(3.8vh, 2.2rem);
-  line-height: 1;
-  text-shadow: 0 0 14px rgba(50, 202, 255, 0.88);
+  object-fit: contain;
+  object-position: center;
+  filter: drop-shadow(0 0 9px rgba(50, 202, 255, 0.62));
 }
 
 .main-menu-action-label {
@@ -1247,7 +1245,6 @@ textarea:focus-visible {
   .main-menu-action-icon {
     width: 5.5vh;
     height: 5.5vh;
-    font-size: 3.8vh;
   }
 
   .main-menu-action-label {

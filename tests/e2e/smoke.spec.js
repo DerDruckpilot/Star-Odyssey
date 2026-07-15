@@ -122,6 +122,20 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await expect(page.getByRole("button", { name: "Spiel laden" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Spiel beenden" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Einstellungen" })).toBeVisible();
+  const menuIconSources = [
+    "icon_new_game.png",
+    "icon_load_game.png",
+    "icon_quit_game.png",
+    "icon_settings.png"
+  ];
+  const menuIcons = page.locator(".main-menu-action-icon");
+  await expect(menuIcons).toHaveCount(menuIconSources.length);
+  for (const [index, expectedSource] of menuIconSources.entries()) {
+    const icon = menuIcons.nth(index);
+    await expect(icon).toBeVisible();
+    await expect(icon).toHaveAttribute("src", new RegExp(`${expectedSource.replace(".", "\\.")}$`));
+    await expect.poll(() => icon.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
+  }
   await expect(page.getByRole("button", { name: "EN", exact: true })).toHaveCount(0);
   await expect(page.getByText("Ein digitales Weltraum-Brettspiel")).toHaveCount(0);
 
