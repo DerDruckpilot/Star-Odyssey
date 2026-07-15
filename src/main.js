@@ -45,7 +45,8 @@ import {
   gameVariants,
   getSupernovaLocalizedTitle,
   supernovaFactoryLimitPerPlayer,
-  supernovaFactoryTypes
+  supernovaFactoryTypes,
+  supernovaMissionCounts
 } from "./data/supernova.js";
 import { menuButtonDefinitions } from "./menu-button-utils.js";
 import {
@@ -171,6 +172,7 @@ const state = {
   view: initialGame.gameState ? "board" : "menu",
   selectedPlayers: initialGame.gameState?.playerCount ?? null,
   selectedGameVariant: initialGame.gameState?.gameVariant ?? gameVariants.classic,
+  selectedSupernovaMissionCount: initialGame.gameState?.supernova?.missionCount ?? supernovaMissionCounts.standard,
   playerSetup: [],
   gameState: initialGame.gameState,
   tradeFromResource: "ore",
@@ -923,6 +925,7 @@ function startNewGameSetup() {
   state.controllerLobby = null;
   state.selectedPlayers = null;
   state.selectedGameVariant = gameVariants.classic;
+  state.selectedSupernovaMissionCount = supernovaMissionCounts.standard;
   state.playerSetup = [];
   replaceControllerAccessTokens([]);
   setView("players");
@@ -931,17 +934,26 @@ function startNewGameSetup() {
 function enterControllerLobby() {
   if (!state.selectedPlayers) return;
   state.controllerMode = true;
-  state.controllerLobby = createControllerLobby(state.selectedPlayers, state.selectedGameVariant);
+  state.controllerLobby = createControllerLobby(
+    state.selectedPlayers,
+    state.selectedGameVariant,
+    state.selectedSupernovaMissionCount
+  );
   state.playerSetup = [];
   replaceControllerAccessTokens(state.controllerLobby.slots.map((slot) => slot.playerId));
   setView("controllers");
   startControllerLobbyAssetPreload();
 }
 
-function createControllerLobby(playerCount, gameVariant = gameVariants.classic) {
+function createControllerLobby(
+  playerCount,
+  gameVariant = gameVariants.classic,
+  supernovaMissionCount = supernovaMissionCounts.standard
+) {
   return {
     playerCount,
     gameVariant,
+    supernovaMissionCount,
     started: false,
     slots: Array.from({ length: playerCount }, (_, index) => ({
       playerId: `player-${index + 1}`,
@@ -960,6 +972,8 @@ function createControllerReconnectLobby(gameState) {
   const playerCount = players.length || gameState?.playerCount || 2;
   return {
     playerCount,
+    gameVariant: gameState?.gameVariant ?? gameVariants.classic,
+    supernovaMissionCount: gameState?.supernova?.missionCount ?? supernovaMissionCounts.standard,
     started: true,
     slots: Array.from({ length: playerCount }, (_, index) => {
       const player = players[index] ?? {};
@@ -1065,6 +1079,7 @@ function maybeStartControllerGame() {
   }));
   state.selectedPlayers = state.controllerLobby.playerCount;
   state.selectedGameVariant = state.controllerLobby.gameVariant ?? gameVariants.classic;
+  state.selectedSupernovaMissionCount = state.controllerLobby.supernovaMissionCount ?? supernovaMissionCounts.standard;
   startGameNow({ fromControllerLobby: true, skipAssetPreload: true });
 }
 
@@ -1088,7 +1103,8 @@ async function startGameNow(options = {}) {
     playerCount: state.selectedPlayers,
     boardLayout,
     playerSetup: getSanitizedPlayerSetup(),
-    gameVariant: state.selectedGameVariant
+    gameVariant: state.selectedGameVariant,
+    supernovaMissionCount: state.selectedSupernovaMissionCount
   });
   resetTradeOfferDraft();
   state.selectedPlayers = state.gameState.playerCount;
@@ -2242,6 +2258,30 @@ function renderPlayerSelect() {
     variantGroup.append(button);
   }
 
+  const supernovaMissionElements = [];
+  if (state.selectedGameVariant === gameVariants.supernova) {
+    const missionModeLabel = document.createElement("h2");
+    missionModeLabel.className = "setup-section-label";
+    missionModeLabel.textContent = t("selectSupernovaMissionMode");
+
+    const missionModeGroup = document.createElement("div");
+    missionModeGroup.className = "player-options variant-options mission-mode-options";
+    const missionModes = [
+      ["standard", supernovaMissionCounts.standard],
+      ["professional", supernovaMissionCounts.professional]
+    ];
+    for (const [mode, missionCount] of missionModes) {
+      const button = createButton(t(`supernovaMissionMode_${mode}`), () => {
+        state.selectedSupernovaMissionCount = missionCount;
+        render();
+      }, "player-button variant-button mission-mode-button");
+      button.dataset.remoteId = `missions-${mode}`;
+      button.setAttribute("aria-pressed", String(missionCount === state.selectedSupernovaMissionCount));
+      missionModeGroup.append(button);
+    }
+    supernovaMissionElements.push(missionModeLabel, missionModeGroup);
+  }
+
   const actions = document.createElement("div");
   actions.className = "setup-actions";
   const continueButton = createButton(t("continue"), enterControllerLobby, "menu-button");
@@ -2254,13 +2294,26 @@ function renderPlayerSelect() {
     continueButton
   );
 
-  screen.append(renderLanguageToggle(), title, options, variantLabel, variantGroup, actions, renderNotice());
+  screen.append(
+    renderLanguageToggle(),
+    title,
+    options,
+    variantLabel,
+    variantGroup,
+    ...supernovaMissionElements,
+    actions,
+    renderNotice()
+  );
   return screen;
 }
 
 function renderControllerConnect() {
   if (!state.controllerLobby && state.selectedPlayers) {
-    state.controllerLobby = createControllerLobby(state.selectedPlayers, state.selectedGameVariant);
+    state.controllerLobby = createControllerLobby(
+      state.selectedPlayers,
+      state.selectedGameVariant,
+      state.selectedSupernovaMissionCount
+    );
   }
   updateControllerLobbyConnections();
 
@@ -8021,7 +8074,8 @@ function saveCurrentGame(name, options = {}) {
       language: state.language,
       playerCount: state.selectedPlayers || 3,
       boardLayout,
-      gameVariant: state.selectedGameVariant
+      gameVariant: state.selectedGameVariant,
+      supernovaMissionCount: state.selectedSupernovaMissionCount
     });
   }
 
@@ -8079,6 +8133,7 @@ function loadSave(save) {
   saveLanguage(language);
   state.selectedPlayers = state.gameState.playerCount;
   state.selectedGameVariant = state.gameState.gameVariant ?? gameVariants.classic;
+  state.selectedSupernovaMissionCount = state.gameState.supernova?.missionCount ?? supernovaMissionCounts.standard;
   resetTradeOfferDraft();
   state.view = "board";
   state.modal = null;
@@ -8588,6 +8643,7 @@ function getControllerLobbyStateForRemote() {
   return {
     playerCount: state.controllerLobby.playerCount,
     gameVariant: state.controllerLobby.gameVariant ?? gameVariants.classic,
+    supernovaMissionCount: state.controllerLobby.supernovaMissionCount ?? supernovaMissionCounts.standard,
     started: state.controllerLobby.started,
     colors: playerPieceColors.map((color) => ({
       id: color,

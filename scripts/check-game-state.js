@@ -58,7 +58,12 @@ import {
 import { getEncounterCardById, getEncounterDeckIds } from "../src/data/encounterCards.js";
 import { isActiveSpecialToken } from "../src/data/numberTokens.js";
 import { shipVfxData } from "../src/data/shipVfxData.js";
-import { gameVariants, supernovaFactoryLimitPerPlayer, supernovaMissionCards } from "../src/data/supernova.js";
+import {
+  gameVariants,
+  supernovaFactoryLimitPerPlayer,
+  supernovaMissionCards,
+  supernovaMissionCounts
+} from "../src/data/supernova.js";
 
 function getResourceTotal(player) {
   return Object.values(player.resources ?? {}).reduce((sum, value) => sum + value, 0);
@@ -2059,6 +2064,13 @@ assert(noShipsFlightState.log.at(-1)?.messageKey === "logNoShipsInSpace", "Fligh
 const classicVariantGame = createGameState({ language: "de", playerCount: 2, boardLayout });
 assert(classicVariantGame.gameVariant === gameVariants.classic, "Classic should remain the default game variant.");
 assert(classicVariantGame.supernova === null, "Classic games should not initialize Supernova state.");
+const classicWithProfessionalMissionOption = createGameState({
+  language: "de",
+  playerCount: 2,
+  boardLayout,
+  supernovaMissionCount: supernovaMissionCounts.professional
+});
+assert(classicWithProfessionalMissionOption.supernova === null, "Supernova mission options must not initialize variant state in Classic games.");
 
 const supernovaStartGame = createGameState({
   language: "de",
@@ -2073,6 +2085,48 @@ for (const player of supernovaStartGame.players) {
   assert(missions.length === 3, "Each Supernova player should receive 3 mission cards.");
   assert(new Set(missions.map((mission) => mission.category)).size === missions.length, "Initial Supernova missions should use different categories.");
 }
+assert(
+  supernovaStartGame.supernova.missionCount === supernovaMissionCounts.standard,
+  "Standard Supernova games should persist the default 3-mission mode."
+);
+
+const professionalSupernovaGame = createGameState({
+  language: "de",
+  playerCount: 3,
+  boardLayout,
+  gameVariant: gameVariants.supernova,
+  supernovaMissionCount: supernovaMissionCounts.professional
+});
+assert(
+  professionalSupernovaGame.supernova.missionCount === supernovaMissionCounts.professional,
+  "Professional Supernova games should persist the 2-mission mode."
+);
+for (const player of professionalSupernovaGame.players) {
+  const missions = getSupernovaMissionsForPlayer(professionalSupernovaGame, player.id);
+  assert(missions.length === 2, "Each professional Supernova player should receive 2 mission cards.");
+  assert(new Set(missions.map((mission) => mission.category)).size === missions.length, "Professional Supernova missions should use different categories.");
+}
+const restoredProfessionalSupernovaGame = normalizeGameState(JSON.parse(JSON.stringify(professionalSupernovaGame)), {
+  language: "de",
+  playerCount: 3,
+  boardLayout
+});
+assert(
+  restoredProfessionalSupernovaGame.supernova.missionCount === supernovaMissionCounts.professional
+    && restoredProfessionalSupernovaGame.players.every((player) => getSupernovaMissionsForPlayer(restoredProfessionalSupernovaGame, player.id).length === 2),
+  "Professional mission count and assignments should survive save/load normalization."
+);
+const legacySupernovaGame = JSON.parse(JSON.stringify(supernovaStartGame));
+delete legacySupernovaGame.supernova.missionCount;
+const restoredLegacySupernovaGame = normalizeGameState(legacySupernovaGame, {
+  language: "de",
+  playerCount: 3,
+  boardLayout
+});
+assert(
+  restoredLegacySupernovaGame.supernova.missionCount === supernovaMissionCounts.standard,
+  "Older Supernova saves without a mission count should default to the standard 3-mission mode."
+);
 
 assert(getSupplyDrawCount({
   ...supernovaStartGame,
@@ -2450,7 +2504,8 @@ let supernovaMissionWinGame = createGameState({
   language: "de",
   playerCount: 2,
   boardLayout,
-  gameVariant: gameVariants.supernova
+  gameVariant: gameVariants.supernova,
+  supernovaMissionCount: supernovaMissionCounts.professional
 });
 supernovaMissionWinGame = normalizeGameState({
   ...supernovaMissionWinGame,
@@ -2460,7 +2515,7 @@ supernovaMissionWinGame = normalizeGameState({
     ...supernovaMissionWinGame.supernova,
     missionsByPlayerId: {
       ...supernovaMissionWinGame.supernova.missionsByPlayerId,
-      "player-1": ["mission-freighter"]
+      "player-1": ["mission-freighter", "mission-gunner"]
     },
     fulfilledMissionIdsByPlayerId: {
       "player-1": ["mission-freighter"]
@@ -2500,7 +2555,7 @@ supernovaMissionWinGame = normalizeGameState({
 });
 assert(
   supernovaMissionWinGame.gameOver && supernovaMissionWinGame.winnerPlayerId === "player-1",
-  "Supernova should end at 15 points only after an assigned mission is genuinely fulfilled."
+  "Professional Supernova should end at 15 points only after an assigned mission is genuinely fulfilled."
 );
 
 if (process.exitCode !== 1) {

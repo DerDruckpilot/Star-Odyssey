@@ -3,6 +3,11 @@ export const gameVariants = {
   supernova: "supernova"
 };
 
+export const supernovaMissionCounts = {
+  standard: 3,
+  professional: 2
+};
+
 export const supernovaFactoryLimitPerPlayer = 5;
 
 export const supernovaMissionCards = [

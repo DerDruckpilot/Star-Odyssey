@@ -19,12 +19,12 @@ function getLatestPlayerState(states) {
   return [...states].reverse().find((state) => state.players?.length > 0) ?? null;
 }
 
-function expectPrivateControllerState(state, ownPlayerId, foreignPlayerId) {
+function expectPrivateControllerState(state, ownPlayerId, foreignPlayerId, expectedMissionCount = 3) {
   expect(state.viewerPlayerId).toBe(ownPlayerId);
   const ownPlayer = state.players.find((player) => player.id === ownPlayerId);
   const foreignPlayer = state.players.find((player) => player.id === foreignPlayerId);
   expect(ownPlayer).toHaveProperty("resources");
-  expect(ownPlayer.supernovaMissions).toHaveLength(3);
+  expect(ownPlayer.supernovaMissions).toHaveLength(expectedMissionCount);
   expect(ownPlayer.friendship).toHaveProperty("cards");
   expect(foreignPlayer).not.toHaveProperty("resources");
   expect(foreignPlayer).not.toHaveProperty("supernovaMissions");
@@ -149,6 +149,11 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await expect(page.getByRole("button", { name: "2 Spieler" })).toHaveCount(0);
   await page.getByRole("button", { name: "3 Spieler" }).click();
   await page.getByRole("button", { name: "Supernova" }).click();
+  const standardMissionMode = page.getByRole("button", { name: "Standard · 3 Missionen" });
+  const professionalMissionMode = page.getByRole("button", { name: "Profi (optional) · 2 Missionen" });
+  await expect(standardMissionMode).toHaveAttribute("aria-pressed", "true");
+  await professionalMissionMode.click();
+  await expect(professionalMissionMode).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Weiter" }).click();
 
   await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
@@ -218,9 +223,9 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await expect.poll(() => Boolean(getLatestPlayerState(controllerOneStates))).toBe(true);
   await expect.poll(() => Boolean(getLatestPlayerState(controllerTwoStates))).toBe(true);
   await expect.poll(() => Boolean(getLatestPlayerState(controllerThreeStates))).toBe(true);
-  expectPrivateControllerState(getLatestPlayerState(controllerOneStates), "player-1", "player-2");
-  expectPrivateControllerState(getLatestPlayerState(controllerTwoStates), "player-2", "player-1");
-  expectPrivateControllerState(getLatestPlayerState(controllerThreeStates), "player-3", "player-1");
+  expectPrivateControllerState(getLatestPlayerState(controllerOneStates), "player-1", "player-2", 2);
+  expectPrivateControllerState(getLatestPlayerState(controllerTwoStates), "player-2", "player-1", 2);
+  expectPrivateControllerState(getLatestPlayerState(controllerThreeStates), "player-3", "player-1", 2);
   expect(getLatestPlayerState(controllerOneStates).gameVariant).toBe("supernova");
 
   await expect(page.locator(".supernova-missions")).toHaveCount(0);
@@ -247,7 +252,7 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await expect(reconnectedControllerOne.getByRole("heading", { name: "Alice" })).toBeVisible();
   await expect(reconnectedControllerOne.locator(".controller-status")).toHaveText("Verbunden");
   await expect.poll(() => Boolean(getLatestPlayerState(reconnectedControllerOneStates))).toBe(true);
-  expectPrivateControllerState(getLatestPlayerState(reconnectedControllerOneStates), "player-1", "player-2");
+  expectPrivateControllerState(getLatestPlayerState(reconnectedControllerOneStates), "player-1", "player-2", 2);
 
   await reconnectedControllerOne.close();
   await controllerTwo.close();
@@ -370,6 +375,24 @@ test("TV remote focus reaches setup and the controller PWA shell is valid", asyn
   await expect(page.getByRole("button", { name: "4 Spieler" })).toBeFocused();
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("button", { name: "Klassisches Spiel" })).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("button", { name: "Supernova" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(150);
+  await expect(page.getByRole("button", { name: "Supernova" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("button", { name: "Profi (optional) · 2 Missionen" })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("button", { name: "Standard · 3 Missionen" })).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("button", { name: "Profi (optional) · 2 Missionen" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(150);
+  await expect(page.getByRole("button", { name: "Profi (optional) · 2 Missionen" })).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(page.getByRole("button", { name: "Supernova" })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
   await expect(page.getByRole("button", { name: "Klassisches Spiel" })).toBeFocused();
   await page.keyboard.press("Enter");
   await page.waitForTimeout(150);

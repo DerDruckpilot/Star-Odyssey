@@ -10,6 +10,7 @@ import {
   supernovaFactoryLimitPerPlayer,
   supernovaFactoryTypes,
   supernovaFactoryVictoryCards,
+  supernovaMissionCounts,
   supernovaMissionCards
 } from "../data/supernova.js";
 import {
@@ -184,7 +185,14 @@ export function getCannonValueForPlayer(gameState, playerId) {
   return getEffectiveUpgradeValue(gameState, playerId, "cannon");
 }
 
-export function createGameState({ language, playerCount, boardLayout, playerSetup = [], gameVariant = gameVariants.classic }) {
+export function createGameState({
+  language,
+  playerCount,
+  boardLayout,
+  playerSetup = [],
+  gameVariant = gameVariants.classic,
+  supernovaMissionCount = supernovaMissionCounts.standard
+}) {
   const now = new Date().toISOString();
   const safePlayerCount = [2, 3, 4].includes(playerCount) ? playerCount : 3;
   const normalizedGameVariant = normalizeGameVariant(gameVariant);
@@ -231,7 +239,9 @@ export function createGameState({ language, playerCount, boardLayout, playerSetu
     activeTradeOffer: null,
     sevenResolution: null,
     placement: createPlacementState(safePlayerCount),
-    supernova: normalizedGameVariant === gameVariants.supernova ? createInitialSupernovaState(players) : null,
+    supernova: normalizedGameVariant === gameVariants.supernova
+      ? createInitialSupernovaState(players, supernovaMissionCount)
+      : null,
     board: {
       layoutVersion: boardLayout.layoutVersion,
       selectedElement: null,
@@ -2731,7 +2741,8 @@ export function normalizeGameState(gameState, { language, playerCount, boardLayo
     language: gameState.language || language,
     playerCount: gameState.playerCount || playerCount,
     boardLayout,
-    gameVariant: normalizeGameVariant(gameState.gameVariant)
+    gameVariant: normalizeGameVariant(gameState.gameVariant),
+    supernovaMissionCount: gameState.supernova?.missionCount
   });
 
   const normalizedPlayerCount = [2, 3, 4].includes(gameState.playerCount)
@@ -2986,11 +2997,13 @@ export function isSupernovaGame(gameState) {
   return normalizeGameVariant(gameState?.gameVariant) === gameVariants.supernova;
 }
 
-function createInitialSupernovaState(players) {
+function createInitialSupernovaState(players, missionCount = supernovaMissionCounts.standard) {
+  const normalizedMissionCount = normalizeSupernovaMissionCount(missionCount);
   return {
+    missionCount: normalizedMissionCount,
     missionsByPlayerId: Object.fromEntries(players.map((player, index) => [
       player.id,
-      drawInitialSupernovaMissions(index).map((mission) => mission.id)
+      drawInitialSupernovaMissions(index, normalizedMissionCount).map((mission) => mission.id)
     ])),
     factories: [],
     factoryMajorityCards: Object.fromEntries(supernovaFactoryVictoryCards.map((card) => [card.id, null])),
@@ -3000,7 +3013,8 @@ function createInitialSupernovaState(players) {
   };
 }
 
-function drawInitialSupernovaMissions(playerIndex = 0) {
+function drawInitialSupernovaMissions(playerIndex = 0, missionCount = supernovaMissionCounts.standard) {
+  const normalizedMissionCount = normalizeSupernovaMissionCount(missionCount);
   const shuffled = shuffle(supernovaMissionCards);
   const selected = [];
   const usedCategories = new Set();
@@ -3009,20 +3023,21 @@ function drawInitialSupernovaMissions(playerIndex = 0) {
     if (usedCategories.has(mission.category)) continue;
     selected.push(mission);
     usedCategories.add(mission.category);
-    if (selected.length === 3) return selected;
+    if (selected.length === normalizedMissionCount) return selected;
   }
 
   for (const mission of shuffled) {
     if (selected.some((candidate) => candidate.id === mission.id)) continue;
     selected.push(mission);
-    if (selected.length === 3) break;
+    if (selected.length === normalizedMissionCount) break;
   }
 
   return selected;
 }
 
 function normalizeSupernovaState(supernova, players = [], ships = []) {
-  const fallback = createInitialSupernovaState(players);
+  const missionCount = normalizeSupernovaMissionCount(supernova?.missionCount);
+  const fallback = createInitialSupernovaState(players, missionCount);
   if (!supernova || typeof supernova !== "object") return fallback;
   const playerIds = new Set(players.map((player) => player.id));
   const validMissionIds = new Set(supernovaMissionCards.map((mission) => mission.id));
@@ -3036,6 +3051,7 @@ function normalizeSupernovaState(supernova, players = [], ships = []) {
   ]));
 
   return {
+    missionCount,
     missionsByPlayerId: normalizeMissionMap(supernova.missionsByPlayerId, fallback.missionsByPlayerId),
     factories: Array.isArray(supernova.factories)
       ? supernova.factories
@@ -3059,6 +3075,12 @@ function normalizeSupernovaState(supernova, players = [], ships = []) {
       : [],
     shipBattle: normalizeSupernovaShipBattle(supernova.shipBattle, players, ships)
   };
+}
+
+function normalizeSupernovaMissionCount(missionCount) {
+  return missionCount === supernovaMissionCounts.professional
+    ? supernovaMissionCounts.professional
+    : supernovaMissionCounts.standard;
 }
 
 function normalizeSupernovaShipBattle(shipBattle, players = [], ships = []) {
