@@ -45,7 +45,6 @@ import {
   getRealUpgradeValue,
   submitEncounterPending,
   submitSupernovaShipBattleRoll,
-  toggleSupernovaMissionFulfilled,
   tradeWithSupply,
   useBoughtFame,
   useRichHelpsPoor,
@@ -59,7 +58,7 @@ import {
 import { getEncounterCardById, getEncounterDeckIds } from "../src/data/encounterCards.js";
 import { isActiveSpecialToken } from "../src/data/numberTokens.js";
 import { shipVfxData } from "../src/data/shipVfxData.js";
-import { gameVariants, supernovaFactoryLimitPerPlayer } from "../src/data/supernova.js";
+import { gameVariants, supernovaFactoryLimitPerPlayer, supernovaMissionCards } from "../src/data/supernova.js";
 
 function getResourceTotal(player) {
   return Object.values(player.resources ?? {}).reduce((sum, value) => sum + value, 0);
@@ -2324,6 +2323,8 @@ assert(
 );
 assert(defenderWinsBattleShipGame.players[1].halfMedals === 1, "A defending battleship winner should receive one half medal.");
 
+runSupernovaMissionChecks();
+
 let supernovaMissionWinGame = createGameState({
   language: "de",
   playerCount: 2,
@@ -2334,6 +2335,16 @@ supernovaMissionWinGame = normalizeGameState({
   ...supernovaMissionWinGame,
   phase: "tradeBuild",
   currentPlayerIndex: 0,
+  supernova: {
+    ...supernovaMissionWinGame.supernova,
+    missionsByPlayerId: {
+      ...supernovaMissionWinGame.supernova.missionsByPlayerId,
+      "player-1": ["mission-freighter"]
+    },
+    fulfilledMissionIdsByPlayerId: {
+      "player-1": ["mission-freighter"]
+    }
+  },
   players: supernovaMissionWinGame.players.map((player, index) => index === 0
     ? {
       ...player,
@@ -2345,10 +2356,31 @@ supernovaMissionWinGame = normalizeGameState({
   playerCount: 2,
   boardLayout
 });
-assert(!supernovaMissionWinGame.gameOver, "Supernova should not end at 15 points without a fulfilled mission.");
-const firstMissionId = getSupernovaMissionsForPlayer(supernovaMissionWinGame, "player-1")[0]?.id;
-supernovaMissionWinGame = toggleSupernovaMissionFulfilled(supernovaMissionWinGame, "player-1", firstMissionId);
-assert(supernovaMissionWinGame.gameOver && supernovaMissionWinGame.winnerPlayerId === "player-1", "Supernova should end at 15 points only after a mission is fulfilled.");
+assert(!supernovaMissionWinGame.gameOver, "Supernova should not end at 15 points without a genuinely fulfilled mission.");
+assert(
+  !("fulfilledMissionIdsByPlayerId" in supernovaMissionWinGame.supernova),
+  "Legacy manual mission flags should be discarded during save/load normalization."
+);
+supernovaMissionWinGame = normalizeGameState({
+  ...supernovaMissionWinGame,
+  players: supernovaMissionWinGame.players.map((player, index) => index === 0
+    ? {
+      ...player,
+      upgrades: {
+        ...player.upgrades,
+        cargo: 5
+      }
+    }
+    : player)
+}, {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(
+  supernovaMissionWinGame.gameOver && supernovaMissionWinGame.winnerPlayerId === "player-1",
+  "Supernova should end at 15 points only after an assigned mission is genuinely fulfilled."
+);
 
 if (process.exitCode !== 1) {
   console.log("Game state check passed.");
@@ -2419,6 +2451,384 @@ function findFreeLaunchPoint(gameState, playerId) {
 
   return (boardLayout.spaceportLaunchPoints ?? [])
     .find((point) => spaceportLocations.has(point.spaceportLocationId) && !occupied.has(point.id));
+}
+
+function runSupernovaMissionChecks() {
+  const baseState = createSupernovaMissionTestState();
+  const testedMissionIds = new Set();
+  const checkMission = (missionId, incompleteState, completeState) => {
+    testedMissionIds.add(missionId);
+    assert(!isSupernovaMissionFulfilledForTest(incompleteState, missionId), `${missionId} should remain open before its condition is met.`);
+    assert(isSupernovaMissionFulfilledForTest(completeState, missionId), `${missionId} should be fulfilled after its condition is met.`);
+  };
+  const upgradeMissionCases = [
+    ["mission-freighter", "cargo", 5],
+    ["mission-gunner", "cannon", 6],
+    ["mission-engine", "drive", 6]
+  ];
+  for (const [missionId, upgrade, required] of upgradeMissionCases) {
+    checkMission(
+      missionId,
+      withSupernovaMissionPlayer(baseState, { upgrades: { [upgrade]: required - 1 } }),
+      withSupernovaMissionPlayer(baseState, { upgrades: { [upgrade]: required } })
+    );
+  }
+
+  const factoryCardCases = [
+    ["mission-food-factory", "factory-majority-food"],
+    ["mission-goods-factory", "factory-majority-goods"],
+    ["mission-fuel-factory", "factory-majority-fuel"],
+    ["mission-ore-factory", "factory-majority-ore"],
+    ["mission-carbon-factory", "factory-majority-carbon"]
+  ];
+  for (const [missionId, cardId] of factoryCardCases) {
+    checkMission(
+      missionId,
+      baseState,
+      withSupernovaMissionState(baseState, {
+        factoryMajorityCards: {
+          ...baseState.supernova.factoryMajorityCards,
+          [cardId]: "player-1"
+        }
+      })
+    );
+  }
+
+  const resourceMissionCases = [
+    ["mission-goods-trader", "goods"],
+    ["mission-carbon-miner", "carbon"],
+    ["mission-fuel-depot", "fuel"],
+    ["mission-food-supplier", "food"],
+    ["mission-mining", "ore"]
+  ];
+  for (const [missionId, resource] of resourceMissionCases) {
+    const colonies = createSupernovaResourceMissionColonies(baseState, resource, 3);
+    checkMission(
+      missionId,
+      withSupernovaMissionStructures(baseState, colonies.slice(0, 2)),
+      withSupernovaMissionStructures(baseState, colonies)
+    );
+  }
+  const startColonies = boardLayout.startSites.slice(0, 3).map((site, index) => ({
+    id: `mission-start-colony-${index}`,
+    ownerPlayerId: "player-1",
+    type: "colony",
+    locationId: site.nodeId,
+    systemId: site.systemId,
+    adjacentPlanetIds: [...(site.adjacentPlanetIds ?? [])]
+  }));
+  assert(
+    !isSupernovaMissionFulfilledForTest(withSupernovaMissionStructures(baseState, startColonies), "mission-mining"),
+    "Colonies in starting systems must not fulfill wild-space resource missions."
+  );
+
+  const farthestSystems = getFarthestSupernovaMissionSystemsForTest(baseState.board.placedSystems);
+  const farthestColonies = farthestSystems.map((system, index) => createSupernovaMissionColony(system, system.colonySites[0], `far-${index}`));
+  checkMission(
+    "mission-explorer",
+    withSupernovaMissionStructures(baseState, farthestColonies.slice(0, -1)),
+    withSupernovaMissionStructures(baseState, farthestColonies)
+  );
+  assert(
+    supernovaMissionCards.find((mission) => mission.id === "mission-explorer")?.originalText ===
+      "Es muss mindestens je eine Kolonie an den entferntesten Systemen gegründet werden.",
+    "The explorer mission should retain the exact plural source text."
+  );
+
+  const fullSystem = baseState.board.placedSystems.find((system) => (system.colonySites ?? []).length === 3);
+  const fullSystemColonies = fullSystem.colonySites.map((site, index) => createSupernovaMissionColony(fullSystem, site, `full-${index}`));
+  checkMission(
+    "mission-star-empire",
+    withSupernovaMissionStructures(baseState, fullSystemColonies.slice(0, 2)),
+    withSupernovaMissionStructures(baseState, fullSystemColonies)
+  );
+
+  const hermitSystems = baseState.board.placedSystems.slice(0, 2);
+  const hermitValidColonies = hermitSystems.map((system, index) => createSupernovaMissionColony(system, system.colonySites[0], `hermit-valid-${index}`));
+  const hermitInvalidColonies = hermitSystems[0].colonySites.slice(0, 2)
+    .map((site, index) => createSupernovaMissionColony(hermitSystems[0], site, `hermit-invalid-${index}`));
+  checkMission(
+    "mission-hermit",
+    withSupernovaMissionStructures(baseState, hermitInvalidColonies),
+    withSupernovaMissionStructures(baseState, hermitValidColonies)
+  );
+
+  const factories = Array.from({ length: 3 }, (_, index) => ({
+    id: `mission-factory-${index}`,
+    ownerPlayerId: "player-1",
+    type: "ore",
+    resource: "ore",
+    planetId: baseState.board.placedSystems[index].planets[0].id,
+    systemId: baseState.board.placedSystems[index].id
+  }));
+  checkMission(
+    "mission-big-manufacturer",
+    withSupernovaMissionState(baseState, { factories: factories.slice(0, 2) }),
+    withSupernovaMissionState(baseState, { factories })
+  );
+
+  const activeFleet = [
+    createSupernovaMissionShip(baseState, "colonyShip", 0, "active"),
+    createSupernovaMissionShip(baseState, "tradeShip", 1, "active")
+  ];
+  checkMission(
+    "mission-large-fleet",
+    withSupernovaMissionShips(withSupernovaMissionPlayer(baseState, { victoryPoints: 14 }), activeFleet),
+    withSupernovaMissionShips(withSupernovaMissionPlayer(baseState, { victoryPoints: 15 }), activeFleet)
+  );
+  assert(
+    !isSupernovaMissionFulfilledForTest(
+      withSupernovaMissionShips(
+        withSupernovaMissionPlayer(baseState, { victoryPoints: 15 }),
+        [activeFleet[0], { ...activeFleet[1], status: "docked" }]
+      ),
+      "mission-large-fleet"
+    ),
+    "A docked ship must not count as a ship in flight for the large fleet mission."
+  );
+
+  const battleShips = Array.from({ length: 3 }, (_, index) => createSupernovaMissionShip(baseState, "battleShip", index, "active"));
+  checkMission(
+    "mission-prestige-fleet",
+    withSupernovaMissionShips(baseState, battleShips.slice(0, 2)),
+    withSupernovaMissionShips(baseState, battleShips)
+  );
+
+  checkMission(
+    "mission-conqueror",
+    withSupernovaMissionPlayer(baseState, { specialMedals: ["planet-1:pirate:2"] }),
+    withSupernovaMissionPlayer(baseState, { specialMedals: ["planet-1:pirate:2", "planet-2:ice:3"] })
+  );
+  assert(
+    !isSupernovaMissionFulfilledForTest(
+      withSupernovaMissionPlayer(baseState, { specialMedals: ["legacy-special-1", "bonus-medal-2"] }),
+      "mission-conqueror"
+    ),
+    "Unrelated special medals must not count as planet-conquest victory points."
+  );
+
+  const outposts = baseState.board.placedOutposts;
+  const threePeopleStations = outposts.slice(0, 3).map((outpost, index) => createSupernovaMissionTradeStation(outpost, index));
+  checkMission(
+    "mission-trade-almost-everyone",
+    withSupernovaMissionStructures(baseState, threePeopleStations.slice(0, 2)),
+    withSupernovaMissionStructures(baseState, threePeopleStations)
+  );
+
+  const tradeProductionStructures = createSupernovaTradeProductionStructures(baseState, 2);
+  checkMission(
+    "mission-trade-production",
+    withSupernovaMissionStructures(baseState, tradeProductionStructures.slice(0, 2)),
+    withSupernovaMissionStructures(baseState, tradeProductionStructures)
+  );
+
+  checkMission(
+    "mission-fame-honor",
+    withSupernovaMissionPlayer(baseState, { halfMedals: 6 }),
+    withSupernovaMissionPlayer(baseState, { halfMedals: 7 })
+  );
+
+  const spaceports = Array.from({ length: 3 }, (_, index) => ({
+    id: `mission-spaceport-${index}`,
+    ownerPlayerId: "player-1",
+    type: "spaceport",
+    locationId: boardLayout.startSites[index].nodeId,
+    systemId: boardLayout.startSites[index].systemId,
+    adjacentPlanetIds: boardLayout.startSites[index].adjacentPlanetIds
+  }));
+  checkMission(
+    "mission-bases",
+    withSupernovaMissionStructures(baseState, spaceports.slice(0, 2)),
+    withSupernovaMissionStructures(baseState, spaceports)
+  );
+
+  const oneOutpost = outposts[0];
+  const concentratedStations = oneOutpost.docks.slice(0, 3)
+    .map((dock, index) => createSupernovaMissionTradeStation(oneOutpost, index, dock));
+  checkMission(
+    "mission-trade-fleet",
+    withSupernovaMissionStructures(baseState, concentratedStations.slice(0, 2)),
+    withSupernovaMissionStructures(baseState, concentratedStations)
+  );
+
+  assert(
+    testedMissionIds.size === supernovaMissionCards.length &&
+      supernovaMissionCards.every((mission) => testedMissionIds.has(mission.id)),
+    "Every Supernova mission should have an explicit incomplete and fulfilled smoke check."
+  );
+}
+
+function createSupernovaMissionTestState() {
+  const gameState = createGameState({
+    language: "de",
+    playerCount: 2,
+    boardLayout,
+    gameVariant: gameVariants.supernova
+  });
+  const placement = boardLayout.createDefaultPlacement();
+  return {
+    ...gameState,
+    phase: "tradeBuild",
+    players: gameState.players.map((player) => ({
+      ...player,
+      victoryPoints: 0,
+      upgrades: { drive: 0, cargo: 0, cannon: 0 },
+      halfMedals: 0,
+      specialMedals: [],
+      structures: [],
+      ships: []
+    })),
+    supernova: {
+      ...gameState.supernova,
+      missionsByPlayerId: {
+        ...gameState.supernova.missionsByPlayerId,
+        "player-1": []
+      },
+      factories: [],
+      factoryMajorityCards: Object.fromEntries(Object.keys(gameState.supernova.factoryMajorityCards).map((cardId) => [cardId, null]))
+    },
+    board: {
+      ...gameState.board,
+      placedSystems: placement.placedSystems,
+      placedOutposts: placement.placedOutposts,
+      emptySlots: placement.emptySlots,
+      placedQuadrants: placement.placedQuadrants,
+      structures: [],
+      ships: []
+    }
+  };
+}
+
+function isSupernovaMissionFulfilledForTest(gameState, missionId) {
+  const stateWithMission = withSupernovaMissionState(gameState, {
+    missionsByPlayerId: {
+      ...gameState.supernova.missionsByPlayerId,
+      "player-1": [missionId]
+    }
+  });
+  return Boolean(getSupernovaMissionsForPlayer(stateWithMission, "player-1")[0]?.fulfilled);
+}
+
+function withSupernovaMissionPlayer(gameState, patch) {
+  return {
+    ...gameState,
+    players: gameState.players.map((player) => player.id === "player-1"
+      ? {
+        ...player,
+        ...patch,
+        upgrades: patch.upgrades ? { ...player.upgrades, ...patch.upgrades } : player.upgrades
+      }
+      : player)
+  };
+}
+
+function withSupernovaMissionState(gameState, patch) {
+  return {
+    ...gameState,
+    supernova: {
+      ...gameState.supernova,
+      ...patch
+    }
+  };
+}
+
+function withSupernovaMissionStructures(gameState, structures) {
+  return {
+    ...gameState,
+    board: {
+      ...gameState.board,
+      structures
+    }
+  };
+}
+
+function withSupernovaMissionShips(gameState, ships) {
+  return {
+    ...gameState,
+    board: {
+      ...gameState.board,
+      ships
+    }
+  };
+}
+
+function createSupernovaResourceMissionColonies(gameState, resource, count) {
+  const colonies = [];
+  for (const system of gameState.board.placedSystems) {
+    const planetIds = new Set(system.planets.filter((planet) => planet.resource === resource).map((planet) => planet.id));
+    const site = system.colonySites.find((candidate) => candidate.adjacentPlanetIds.some((planetId) => planetIds.has(planetId)));
+    if (!site) continue;
+    colonies.push(createSupernovaMissionColony(system, site, `${resource}-${colonies.length}`));
+    if (colonies.length === count) break;
+  }
+  assert(colonies.length === count, `Mission tests require ${count} colony sites adjacent to ${resource} planets.`);
+  return colonies;
+}
+
+function createSupernovaMissionColony(system, site, suffix) {
+  return {
+    id: `mission-colony-${suffix}`,
+    ownerPlayerId: "player-1",
+    type: "colony",
+    locationId: site.nodeId,
+    systemId: system.id,
+    adjacentPlanetIds: [...site.adjacentPlanetIds]
+  };
+}
+
+function getFarthestSupernovaMissionSystemsForTest(systems) {
+  const laneHeight = boardLayout.height / 3;
+  const farthestByLane = new Map();
+  for (const system of systems) {
+    const lane = Math.min(2, Math.max(0, Math.floor(system.y / laneHeight)));
+    const current = farthestByLane.get(lane);
+    if (!current || system.x > current.x) farthestByLane.set(lane, system);
+  }
+  return [...farthestByLane.values()];
+}
+
+function createSupernovaMissionShip(gameState, type, pointIndex, status) {
+  return {
+    id: `mission-${type}-${pointIndex}`,
+    ownerPlayerId: "player-1",
+    type,
+    shipVariant: Math.min(3, pointIndex + 1),
+    coilCount: Math.min(3, pointIndex + 1),
+    locationId: boardLayout.points[pointIndex].id,
+    status
+  };
+}
+
+function createSupernovaMissionTradeStation(outpost, index, dock = null) {
+  const selectedDock = dock ?? outpost.docks[index % outpost.docks.length];
+  return {
+    id: `mission-station-${outpost.id}-${index}`,
+    ownerPlayerId: "player-1",
+    type: "tradeStation",
+    locationId: selectedDock.nodeId,
+    dockId: selectedDock.id,
+    outpostId: outpost.id,
+    adjacentPlanetIds: []
+  };
+}
+
+function createSupernovaTradeProductionStructures(gameState, peopleCount) {
+  const structures = [];
+  const usedColonySites = new Set();
+  for (const [index, outpost] of gameState.board.placedOutposts.slice(0, peopleCount).entries()) {
+    structures.push(createSupernovaMissionTradeStation(outpost, index));
+    const system = getClosestSupernovaMissionSystemForTest(outpost, gameState.board.placedSystems);
+    const site = system.colonySites.find((candidate) => !usedColonySites.has(candidate.nodeId)) ?? system.colonySites[0];
+    usedColonySites.add(site.nodeId);
+    structures.push(createSupernovaMissionColony(system, site, `trade-production-${index}`));
+  }
+  return structures;
+}
+
+function getClosestSupernovaMissionSystemForTest(outpost, systems) {
+  return [...systems].sort((left, right) => (
+    Math.hypot(left.x - outpost.x, left.y - outpost.y) - Math.hypot(right.x - outpost.x, right.y - outpost.y)
+  ))[0];
 }
 
 function createSupernovaBattleMovementState(defenderShipType, options = {}) {

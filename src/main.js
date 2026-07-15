@@ -100,7 +100,6 @@ import {
   startPendingSpaceportUpgrade,
   submitSevenDiscard,
   touchGameState,
-  toggleSupernovaMissionFulfilled,
   tradeWithSupply,
   updateSevenDiscardSelection,
   updateEncounterResourceSelection,
@@ -8669,10 +8668,6 @@ function getRemoteControllerActions() {
     actions.push(createRemoteAction("app.exit", t("exitGame"), {}, { adminOnly: true }));
   }
 
-  if (isSupernovaGame(state.gameState)) {
-    actions.push(createRemoteAction("supernova.toggleMission", t("supernovaToggleMission"), {}, { requiresActivePlayer: false }));
-  }
-
   return actions;
 }
 
@@ -8871,13 +8866,6 @@ function executeRemoteAction(actionId, payload = {}) {
     case "supernova.factory":
       if (isRemoteActionPlayerActive(playerId) && payload.factoryType) {
         buildActivePlayerSupernovaFactory(payload.factoryType, payload.planetId ?? null);
-      }
-      break;
-    case "supernova.toggleMission":
-      if (payload.missionId && payload.targetPlayerId === playerId) {
-        state.gameState = toggleSupernovaMissionFulfilled(state.gameState, playerId, payload.missionId);
-        saveCurrentGameState();
-        render();
       }
       break;
     case "supernova.battle.roll": {

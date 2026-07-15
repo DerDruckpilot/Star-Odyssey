@@ -2991,7 +2991,6 @@ function createInitialSupernovaState(players) {
       player.id,
       drawInitialSupernovaMissions(index).map((mission) => mission.id)
     ])),
-    fulfilledMissionIdsByPlayerId: Object.fromEntries(players.map((player) => [player.id, []])),
     factories: [],
     factoryMajorityCards: Object.fromEntries(supernovaFactoryVictoryCards.map((card) => [card.id, null])),
     pendingFactoryPlacement: null,
@@ -3037,7 +3036,6 @@ function normalizeSupernovaState(supernova, players = [], ships = []) {
 
   return {
     missionsByPlayerId: normalizeMissionMap(supernova.missionsByPlayerId, fallback.missionsByPlayerId),
-    fulfilledMissionIdsByPlayerId: normalizeMissionMap(supernova.fulfilledMissionIdsByPlayerId, fallback.fulfilledMissionIdsByPlayerId),
     factories: Array.isArray(supernova.factories)
       ? supernova.factories
         .filter((factory) => factory && validFactoryTypes.has(factory.type) && playerIds.has(factory.ownerPlayerId) && typeof factory.planetId === "string")
@@ -3144,13 +3142,12 @@ function countSupernovaFactoryVictoryPoints(gameState, playerId) {
 
 export function getSupernovaMissionsForPlayer(gameState, playerId) {
   const missionIds = gameState?.supernova?.missionsByPlayerId?.[playerId] ?? [];
-  const fulfilledIds = new Set(gameState?.supernova?.fulfilledMissionIdsByPlayerId?.[playerId] ?? []);
   return missionIds
     .map((missionId) => supernovaMissionCards.find((mission) => mission.id === missionId))
     .filter(Boolean)
     .map((mission) => ({
       ...mission,
-      fulfilled: fulfilledIds.has(mission.id) || isSupernovaMissionAutomaticallyFulfilled(gameState, playerId, mission)
+      fulfilled: isSupernovaMissionAutomaticallyFulfilled(gameState, playerId, mission)
     }));
 }
 
@@ -3161,14 +3158,20 @@ function hasFulfilledSupernovaMission(gameState, playerId) {
 function isSupernovaMissionAutomaticallyFulfilled(gameState, playerId, mission) {
   const player = getPlayerById(gameState, playerId);
   if (!player || !mission?.conditionKey) return false;
+  const conditionParts = mission.conditionKey.split(":");
+  const structures = (gameState.board?.structures ?? [])
+    .filter((structure) => structure.ownerPlayerId === playerId);
+  const ships = normalizeShips(gameState.board?.ships)
+    .filter((ship) => ship.ownerPlayerId === playerId);
+  const systems = getPlacedPlanetSystems(gameState, defaultBoardLayout);
+  const colonies = getSupernovaMissionColonies(structures, systems);
+
   if (mission.conditionKey === "allCargo") return getRealUpgradeValue(player, "cargo") >= 5;
   if (mission.conditionKey === "allCannons") return getRealUpgradeValue(player, "cannon") >= 6;
   if (mission.conditionKey === "allDrives") return getRealUpgradeValue(player, "drive") >= 6;
   if (mission.conditionKey === "halfMedals:7") return (player.halfMedals ?? 0) >= 7;
   if (mission.conditionKey === "spaceports:3") {
-    return (gameState.board?.structures ?? [])
-      .filter((structure) => structure.ownerPlayerId === playerId && structure.type === "spaceport")
-      .length >= 3;
+    return structures.filter((structure) => structure.type === "spaceport").length >= 3;
   }
   if (mission.conditionKey === "factories:3") {
     return (gameState.supernova?.factories ?? [])
@@ -3176,38 +3179,146 @@ function isSupernovaMissionAutomaticallyFulfilled(gameState, playerId, mission) 
       .length >= 3;
   }
   if (mission.conditionKey === "battleShips:3") {
-    return normalizeShips(gameState.board?.ships)
-      .filter((ship) => ship.ownerPlayerId === playerId && ship.type === "battleShip")
-      .length >= 3;
+    return ships.filter((ship) => ship.type === "battleShip").length >= 3;
   }
   if (mission.conditionKey.startsWith("factoryCard:")) {
-    const type = mission.conditionKey.split(":")[1];
+    const type = conditionParts[1];
     const card = supernovaFactoryVictoryCards.find((candidate) => candidate.type === type);
     return Boolean(card && gameState.supernova?.factoryMajorityCards?.[card.id] === playerId);
+  }
+  if (conditionParts[0] === "coloniesOnResource") {
+    return countSupernovaMissionColoniesOnResource(colonies, systems, conditionParts[1]) >= Number(conditionParts[2] ?? 0);
+  }
+  if (mission.conditionKey === "farSystemsColony") {
+    const farthestSystems = getFarthestSupernovaMissionSystems(systems, defaultBoardLayout);
+    return farthestSystems.length > 0 && farthestSystems.every((system) => (
+      colonies.some((colony) => colony.systemId === system.id)
+    ));
+  }
+  if (mission.conditionKey === "fullNonStartSystem") {
+    return systems.some((system) => isSupernovaMissionSystemFullyColonized(system, colonies));
+  }
+  if (mission.conditionKey === "oneColonyPerNonStartSystem") {
+    return systems.every((system) => colonies.filter((colony) => colony.systemId === system.id).length <= 1);
+  }
+  if (mission.conditionKey === "twoShipsInFlightAtWin") {
+    return player.victoryPoints >= 15 && ships
+      .filter((ship) => ["colonyShip", "tradeShip"].includes(ship.type) && ship.status === "active")
+      .length >= 2;
+  }
+  if (mission.conditionKey === "conquestVp:2") {
+    return normalizeSpecialMedals(player.specialMedals)
+      .filter(isPlanetConquestMedalId)
+      .length >= 2;
+  }
+  if (mission.conditionKey === "tradeStationsAtPeople:3") {
+    return countSupernovaMissionTradeStationPeoples(structures, gameState) >= 3;
+  }
+  if (mission.conditionKey === "tradeStationsAndAdjacentColony") {
+    return countSupernovaMissionTradeAndProductionPeoples(structures, colonies, systems, gameState) >= 2;
+  }
+  if (mission.conditionKey === "tradeShipsAtPeople:3") {
+    const stationsByOutpostId = new Map();
+    for (const station of structures.filter((structure) => structure.type === "tradeStation" && structure.outpostId)) {
+      stationsByOutpostId.set(station.outpostId, (stationsByOutpostId.get(station.outpostId) ?? 0) + 1);
+    }
+    return [...stationsByOutpostId.values()].some((stationCount) => stationCount >= 3);
   }
   return false;
 }
 
-export function toggleSupernovaMissionFulfilled(gameState, playerId, missionId) {
-  if (isGameOverState(gameState) || !isSupernovaGame(gameState)) return gameState;
-  const missionIds = gameState.supernova?.missionsByPlayerId?.[playerId] ?? [];
-  if (!missionIds.includes(missionId)) return gameState;
-  const fulfilledIds = new Set(gameState.supernova?.fulfilledMissionIdsByPlayerId?.[playerId] ?? []);
-  if (fulfilledIds.has(missionId)) {
-    fulfilledIds.delete(missionId);
-  } else {
-    fulfilledIds.add(missionId);
-  }
+function getSupernovaMissionColonies(structures, systems) {
+  return structures
+    .filter((structure) => structure.type === "colony")
+    .map((structure) => {
+      const system = systems.find((candidate) => (
+        candidate.id === structure.systemId ||
+        (candidate.colonySites ?? []).some((site) => site.nodeId === structure.locationId)
+      ));
+      const site = system?.colonySites?.find((candidate) => candidate.nodeId === structure.locationId);
+      return {
+        id: structure.id,
+        locationId: structure.locationId,
+        systemId: system?.id ?? structure.systemId ?? null,
+        adjacentPlanetIds: structure.adjacentPlanetIds?.length > 0
+          ? structure.adjacentPlanetIds
+          : (site?.adjacentPlanetIds ?? [])
+      };
+    })
+    .filter((colony) => colony.systemId);
+}
 
-  return updateGameState(gameState, {
-    supernova: {
-      ...gameState.supernova,
-      fulfilledMissionIdsByPlayerId: {
-        ...(gameState.supernova?.fulfilledMissionIdsByPlayerId ?? {}),
-        [playerId]: [...fulfilledIds]
-      }
+function countSupernovaMissionColoniesOnResource(colonies, systems, resource) {
+  const planetResources = new Map(systems
+    .flatMap((system) => (system.planets ?? []).map((planet) => [planet.id, planet.resource])));
+  return colonies.filter((colony) => (
+    colony.adjacentPlanetIds.some((planetId) => planetResources.get(planetId) === resource)
+  )).length;
+}
+
+function getFarthestSupernovaMissionSystems(systems, boardLayout) {
+  const laneHeight = boardLayout.height / 3;
+  const farthestByLane = new Map();
+  for (const system of systems) {
+    const laneIndex = Math.min(2, Math.max(0, Math.floor((system.y ?? 0) / laneHeight)));
+    const current = farthestByLane.get(laneIndex);
+    if (!current || (system.x ?? 0) > (current.x ?? 0)) farthestByLane.set(laneIndex, system);
+  }
+  return [...farthestByLane.values()];
+}
+
+function isSupernovaMissionSystemFullyColonized(system, colonies) {
+  if ((system.planets ?? []).length !== 3) return false;
+  const ownLocations = new Set(colonies
+    .filter((colony) => colony.systemId === system.id)
+    .map((colony) => colony.locationId));
+  const colonySites = system.colonySites ?? [];
+  return colonySites.length === 3 && colonySites.every((site) => ownLocations.has(site.nodeId));
+}
+
+function isPlanetConquestMedalId(medalId) {
+  return /(^|[:_-])(pirate|ice|diplomacy)([:_-]|$)/i.test(medalId);
+}
+
+function countSupernovaMissionTradeStationPeoples(structures, gameState) {
+  const outpostById = new Map(getPlacedOutposts(gameState, defaultBoardLayout)
+    .map((outpost) => [outpost.id, outpost]));
+  return new Set(structures
+    .filter((structure) => structure.type === "tradeStation")
+    .map((station) => outpostById.get(station.outpostId)?.outpostType)
+    .filter(Boolean)).size;
+}
+
+function countSupernovaMissionTradeAndProductionPeoples(structures, colonies, systems, gameState) {
+  const outposts = getPlacedOutposts(gameState, defaultBoardLayout);
+  const stationOutpostIds = new Set(structures
+    .filter((structure) => structure.type === "tradeStation" && structure.outpostId)
+    .map((structure) => structure.outpostId));
+  const colonizedSystemIds = new Set(colonies.map((colony) => colony.systemId));
+  const completedPeople = new Set();
+
+  for (const outpost of outposts.filter((candidate) => stationOutpostIds.has(candidate.id))) {
+    const adjacentSystemIds = getClosestSupernovaMissionSystemIds(outpost, systems);
+    if (adjacentSystemIds.some((systemId) => colonizedSystemIds.has(systemId))) {
+      completedPeople.add(outpost.outpostType);
     }
-  });
+  }
+  return completedPeople.size;
+}
+
+function getClosestSupernovaMissionSystemIds(outpost, systems) {
+  const explicitIds = Array.isArray(outpost.adjacentSystemIds)
+    ? outpost.adjacentSystemIds
+    : (outpost.adjacentSystemId ? [outpost.adjacentSystemId] : []);
+  if (explicitIds.length > 0) return explicitIds;
+  const distances = systems.map((system) => ({
+    id: system.id,
+    distance: Math.hypot((system.x ?? 0) - (outpost.x ?? 0), (system.y ?? 0) - (outpost.y ?? 0))
+  }));
+  const closestDistance = Math.min(...distances.map((entry) => entry.distance));
+  return distances
+    .filter((entry) => Math.abs(entry.distance - closestDistance) < 0.01)
+    .map((entry) => entry.id);
 }
 
 function createEmptyResources() {

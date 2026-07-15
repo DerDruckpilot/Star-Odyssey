@@ -1756,12 +1756,7 @@ function renderPlayerOverview(player) {
       text.textContent = mission.originalText;
       const status = document.createElement("small");
       status.textContent = mission.fulfilled ? "Erfüllt" : "Offen";
-      const action = findAction("supernova.toggleMission");
-      const button = createButton(mission.fulfilled ? "Als offen markieren" : "Als erfüllt markieren", () => {
-        if (action) sendAction({ ...action, payload: { ...(action.payload ?? {}), targetPlayerId: player.id, missionId: mission.id } });
-      }, "small-button");
-      button.disabled = !action;
-      item.append(heading, text, status, button);
+      item.append(heading, text, status);
       missions.append(item);
     }
     wrapper.append(missions);
