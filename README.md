@@ -13,7 +13,7 @@ npm install
 npm start
 ```
 
-Danach den lokalen Browser-Link oeffnen, den `serve` ausgibt.
+Danach den lokalen Browser-Link oeffnen, den der TV-Entwicklungsserver ausgibt.
 
 ## Projektdokumente
 

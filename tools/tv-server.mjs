@@ -25,6 +25,11 @@ const mimeTypes = new Map([
 ]);
 
 const sessions = new Map();
+const privateStaticPathPrefixes = [
+  "/assets/source/",
+  "/assets/incoming/",
+  "/public/assets/ui/menu/raw/"
+];
 
 function getSession(sessionId) {
   const safeSessionId = String(sessionId || "").trim();
@@ -301,6 +306,12 @@ async function serveStatic(request, response) {
   const url = new URL(request.url, "http://localhost");
   const rawPathname = decodeURIComponent(url.pathname);
   const requestedPath = rawPathname === "/" ? "/index.html" : rawPathname;
+  const webPath = path.posix.normalize(`/${requestedPath.replaceAll("\\", "/")}`).toLowerCase();
+  if (privateStaticPathPrefixes.some((prefix) => webPath === prefix.slice(0, -1) || webPath.startsWith(prefix))) {
+    response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("Not found.");
+    return;
+  }
   const normalizedPath = path.normalize(requestedPath).replace(/^(\.\.[/\\])+/, "");
   const filePath = path.resolve(rootDir, `.${normalizedPath}`);
 

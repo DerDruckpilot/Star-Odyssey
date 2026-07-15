@@ -33,7 +33,8 @@ jobs:
           mkdir _site
           cp *.html _site/
           cp -R src _site/
-          cp -R assets _site/
+          mkdir -p _site/assets
+          rsync -a --exclude 'source/' --exclude 'incoming/' assets/ _site/assets/
           cp -R public _site/
           cp controller.webmanifest sw.js _site/
 

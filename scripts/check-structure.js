@@ -20,6 +20,7 @@ const requiredPaths = [
   "src/i18n.js",
   "src/styles.css",
   "assets",
+  "assets/source/ui/menu/raw",
   "docs",
   "README.md",
   ".gitignore",
@@ -33,6 +34,7 @@ const requiredPaths = [
 const missing = [];
 const layoutIssues = [];
 const productionSourceIssues = [];
+const assetIssues = [];
 
 for (const projectPath of requiredPaths) {
   try {
@@ -47,6 +49,34 @@ for (const projectPath of ["src/main.js", "src/controller.js", "src/remote/contr
   if (source.includes("console.debug(")) {
     productionSourceIssues.push(`${projectPath} contains unconditional console.debug output.`);
   }
+}
+
+const publicMenuRawPath = path.join(process.cwd(), "public/assets/ui/menu/raw");
+try {
+  await access(publicMenuRawPath);
+  assetIssues.push("Menu source assets must not exist below public/assets/ui/menu/raw.");
+} catch {
+  // Expected: editable source files live outside the web root.
+}
+
+const menuManifestPath = path.join(process.cwd(), "public/assets/ui/menu/processed/menu-assets.manifest.json");
+const menuManifest = JSON.parse(await readFile(menuManifestPath, "utf8"));
+for (const asset of menuManifest.assets ?? []) {
+  if (!String(asset.sourceRawFile).startsWith("assets/source/ui/menu/raw/")) {
+    assetIssues.push(`${asset.assetKey} has a source outside assets/source/ui/menu/raw.`);
+  }
+  for (const [field, projectPath] of [["sourceRawFile", asset.sourceRawFile], ["finalPath", asset.finalPath]]) {
+    try {
+      await access(path.join(process.cwd(), String(projectPath)));
+    } catch {
+      assetIssues.push(`${asset.assetKey} references missing ${field}: ${projectPath}`);
+    }
+  }
+}
+
+const pagesWorkflow = await readFile(path.join(process.cwd(), ".github/workflows/deploy-pages.yml"), "utf8");
+if (!pagesWorkflow.includes("--exclude 'source/'") || !pagesWorkflow.includes("--exclude 'incoming/'")) {
+  assetIssues.push("GitHub Pages deployment must exclude editable source and incoming assets.");
 }
 
 if (importedOutpostVisualLayoutFiles.length !== 8) {
@@ -67,11 +97,12 @@ for (const outpostType of ["greenPeople", "diplomats", "traders", "wisePeople"])
   }
 }
 
-if (missing.length > 0 || layoutIssues.length > 0 || productionSourceIssues.length > 0) {
+if (missing.length > 0 || layoutIssues.length > 0 || productionSourceIssues.length > 0 || assetIssues.length > 0) {
   const messages = [];
   if (missing.length > 0) messages.push(`Missing required project paths:\n${missing.join("\n")}`);
   if (layoutIssues.length > 0) messages.push(`Outpost layout issues:\n${layoutIssues.join("\n")}`);
   if (productionSourceIssues.length > 0) messages.push(`Production source issues:\n${productionSourceIssues.join("\n")}`);
+  if (assetIssues.length > 0) messages.push(`Asset structure issues:\n${assetIssues.join("\n")}`);
   console.error(messages.join("\n\n"));
   process.exitCode = 1;
 } else {

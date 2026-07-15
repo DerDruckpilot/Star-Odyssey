@@ -128,6 +128,14 @@ let sockets = [];
 try {
   server = await startServer();
   const firstPort = server.port;
+  const baseUrl = `http://127.0.0.1:${firstPort}`;
+  const processedAssetResponse = await fetch(`${baseUrl}/public/assets/ui/menu/processed/icons/icon_new_game.png`);
+  assert.equal(processedAssetResponse.status, 200);
+  const sourceAssetResponse = await fetch(`${baseUrl}/assets/source/ui/menu/raw/start-menu-ref-01.jpg`);
+  assert.equal(sourceAssetResponse.status, 404);
+  const legacyRawAssetResponse = await fetch(`${baseUrl}/public/assets/ui/menu/raw/start-menu-ref-01.jpg`);
+  assert.equal(legacyRawAssetResponse.status, 404);
+
   const host = await connectHost(firstPort);
   sockets.push(host);
 

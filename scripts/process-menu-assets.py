@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,8 +8,8 @@ from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFo
 
 
 ROOT = Path(__file__).resolve().parents[1]
-INCOMING_DIR = ROOT / "assets" / "incoming" / "start-menu"
-RAW_DIR = ROOT / "public" / "assets" / "ui" / "menu" / "raw"
+SOURCE_DIR = ROOT / "assets" / "source" / "ui" / "menu" / "raw"
+SOURCE_REVIEW_DIR = ROOT / "assets" / "source" / "ui" / "menu" / "review"
 PROCESSED_DIR = ROOT / "public" / "assets" / "ui" / "menu" / "processed"
 
 
@@ -54,19 +53,20 @@ ASSETS: list[AssetSpec] = [
     AssetSpec("icon_load_game", "start-menu-ref-25.jpg", "icons", "icons/icon_load_game.png", "light-alpha"),
     AssetSpec("icon_quit_game", "start-menu-ref-26.jpg", "icons", "icons/icon_quit_game.png", "light-alpha"),
     AssetSpec("icon_settings", "start-menu-ref-27.jpg", "icons", "icons/icon_settings.png", "light-alpha"),
-    AssetSpec("menu_reference_render", "start-menu-target-design-reference.jpg", "reference", "reference/menu_reference_render.png", "opaque"),
+    AssetSpec("menu_reference_render", "start-menu-target-design-reference.jpg", "reference", "menu_reference_render.png", "opaque", "reviewNeeded", "Retained outside the web root as a design reference for menu tuning."),
 ]
 
 
 def ensure_dirs() -> None:
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
-    for category in ["background", "title", "frame", "buttons", "icons", "effects", "reference"]:
+    SOURCE_REVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    for category in ["background", "title", "frame", "buttons", "icons", "effects"]:
         (PROCESSED_DIR / category).mkdir(parents=True, exist_ok=True)
 
 
-def copy_raw_files() -> None:
-    for source in sorted(INCOMING_DIR.glob("*.jpg")):
-        shutil.copy2(source, RAW_DIR / source.name)
+def validate_sources() -> None:
+    missing_sources = sorted({spec.source for spec in ASSETS if not (SOURCE_DIR / spec.source).is_file()})
+    if missing_sources:
+        raise FileNotFoundError(f"Missing menu source assets: {', '.join(missing_sources)}")
 
 
 PRESERVE_ENCLOSED_LIGHT_KEYS = {
@@ -217,13 +217,14 @@ def crop_alpha(image: Image.Image, padding: int = 8) -> Image.Image:
 
 
 def process_asset(spec: AssetSpec) -> dict:
-    source_path = INCOMING_DIR / spec.source
-    output_path = PROCESSED_DIR / spec.output
+    source_path = SOURCE_DIR / spec.source
+    output_root = SOURCE_REVIEW_DIR if spec.category == "reference" else PROCESSED_DIR
+    output_path = output_root / spec.output
     output_path.parent.mkdir(parents=True, exist_ok=True)
     record = {
         "assetKey": spec.key,
-        "finalPath": to_public_path(output_path),
-        "sourceRawFile": to_public_path(RAW_DIR / spec.source),
+        "finalPath": to_repo_path(output_path),
+        "sourceRawFile": to_repo_path(source_path),
         "width": 0,
         "height": 0,
         "hasAlpha": False,
@@ -249,7 +250,7 @@ def process_asset(spec: AssetSpec) -> dict:
     return record
 
 
-def to_public_path(path: Path) -> str:
+def to_repo_path(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 
@@ -353,12 +354,12 @@ def write_contact_sheet(records: list[dict]) -> None:
         status = record["status"]
         draw.text((x + 16, y + cell_h - 44), label, fill="#f8fafc", font=font)
         draw.text((x + 16, y + cell_h - 24), f"{record['width']}x{record['height']} · {status}", fill="#bae6fd" if status == "ok" else "#fde68a", font=small_font)
-    sheet.save(PROCESSED_DIR / "menu-assets-contact-sheet.png")
+    sheet.save(SOURCE_REVIEW_DIR / "menu-assets-contact-sheet.png")
 
 
 def main() -> None:
     ensure_dirs()
-    copy_raw_files()
+    validate_sources()
     records = [process_asset(spec) for spec in ASSETS]
     write_manifest(records)
     write_default_layout()
