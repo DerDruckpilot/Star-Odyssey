@@ -14,7 +14,7 @@
   --space-muted: #a9b8cc;
   --space-danger: #ff8585;
   --space-success: #79e5b1;
-  --space-backdrop: url("../public/assets/ui/backgrounds/space-interface-backdrop-widescreen.png");
+  --space-backdrop: url("../public/assets/ui/backgrounds/star-odyssey-interface-4k.webp");
   font-family: "Segoe UI", Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
@@ -198,7 +198,7 @@ body::after {
 .main-menu-screen {
   background:
     linear-gradient(90deg, rgba(1, 4, 12, 0.34), transparent 24%, transparent 76%, rgba(1, 4, 12, 0.34)),
-    url("../public/assets/ui/backgrounds/space-menu-hero-widescreen.png") center / cover no-repeat,
+    url("../public/assets/ui/backgrounds/star-odyssey-menu-hero-4k.webp") center / cover no-repeat,
     var(--space-black);
 }
 

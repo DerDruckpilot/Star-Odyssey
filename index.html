@@ -6,15 +6,97 @@
     <meta name="theme-color" content="#020712">
     <title>Star Odyssey</title>
     <link rel="preload" as="image" href="./public/assets/ui/backgrounds/star-odyssey-menu-hero-4k.webp" type="image/webp">
-    <link rel="preload" as="image" href="./public/assets/ui/menu/processed/icons/icon_new_game.png" type="image/png">
-    <link rel="preload" as="image" href="./public/assets/ui/menu/processed/icons/icon_load_game.png" type="image/png">
-    <link rel="preload" as="image" href="./public/assets/ui/menu/processed/icons/icon_quit_game.png" type="image/png">
-    <link rel="preload" as="image" href="./public/assets/ui/menu/processed/icons/icon_settings.png" type="image/png">
+    <style>
+      html,
+      body.is-app-booting {
+        background: #000;
+      }
+
+      body.is-app-booting::before,
+      body.is-app-booting::after {
+        display: none;
+      }
+
+      #app-startup-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: grid;
+        place-items: center;
+        color: #f6e5bd;
+        background: #000;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+      #app-startup-loader[hidden] {
+        display: none;
+      }
+
+      .app-startup-loader__content {
+        width: min(32rem, 72vw);
+        text-align: center;
+      }
+
+      .app-startup-loader__title {
+        margin: 0 0 1.6rem;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(2rem, 6vw, 4.5rem);
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      .app-startup-loader__track {
+        height: 0.38rem;
+        overflow: hidden;
+        border: 1px solid rgba(122, 207, 245, 0.38);
+        background: rgba(8, 20, 34, 0.9);
+      }
+
+      .app-startup-loader__fill {
+        width: 0;
+        height: 100%;
+        background: linear-gradient(90deg, #2a89b8, #8edfff, #e4c579);
+        box-shadow: 0 0 0.8rem rgba(86, 202, 255, 0.62);
+        transition: width 100ms linear;
+      }
+
+      .app-startup-loader__percent {
+        min-height: 1.2rem;
+        margin: 0.65rem 0 0;
+        color: rgba(229, 239, 249, 0.78);
+        font-size: 0.85rem;
+      }
+
+      .app-startup-loader__error {
+        margin: 1rem 0 0;
+        color: #fecaca;
+      }
+
+      .app-startup-loader__retry {
+        margin-top: 0.85rem;
+        padding: 0.6rem 1.2rem;
+        border: 1px solid rgba(142, 223, 255, 0.72);
+        color: #f8fafc;
+        background: #07192a;
+        cursor: pointer;
+      }
+    </style>
     <link rel="stylesheet" href="./src/menu-button-shared.css">
     <link rel="stylesheet" href="./src/styles.css">
     <link rel="stylesheet" href="./src/space-ui.css">
   </head>
-  <body>
+  <body class="is-app-booting">
+    <div id="app-startup-loader" role="status" aria-live="polite" aria-label="Star Odyssey wird geladen">
+      <div class="app-startup-loader__content">
+        <h1 class="app-startup-loader__title">Star Odyssey</h1>
+        <div class="app-startup-loader__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div id="app-startup-progress-fill" class="app-startup-loader__fill"></div>
+        </div>
+        <p id="app-startup-progress-text" class="app-startup-loader__percent">0 %</p>
+        <p id="app-startup-error" class="app-startup-loader__error" hidden></p>
+        <button id="app-startup-retry" class="app-startup-loader__retry" type="button" hidden>Erneut versuchen</button>
+      </div>
+    </div>
     <main id="app" class="app-shell" aria-live="polite"></main>
 
     <script type="module" src="./src/main.js"></script>

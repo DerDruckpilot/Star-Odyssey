@@ -1,8 +1,8 @@
 import { boardLayout } from "./data/boardLayout.js";
 import {
-  GAME_ASSET_PRELOAD_CONCURRENCY,
+  assetLoadStates,
+  assetManager,
   collectAssetUrls,
-  preloadAssetUrls,
   selectAssetUrlsForColors
 } from "./asset-preloader.js";
 import { buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
@@ -163,14 +163,20 @@ const mainMenuAssetPaths = {
   compass: "./public/assets/ui/brand/star-odyssey-compass.png",
   buttonPlate: "./public/assets/ui/buttons/star-odyssey-button-plate.png",
 };
-const preloadedAssetUrls = new Set();
-const assetPreloadPromises = new Map();
-const optionalAssetFailures = new Set();
+const startupLoader = document.querySelector("#app-startup-loader");
+const startupProgressFill = document.querySelector("#app-startup-progress-fill");
+const startupProgressText = document.querySelector("#app-startup-progress-text");
+const startupError = document.querySelector("#app-startup-error");
+const startupRetryButton = document.querySelector("#app-startup-retry");
+let appAssetsReady = false;
+let appAssetsStatus = assetLoadStates.idle;
 let gameAssetsReady = false;
-let gameAssetsStatus = "idle";
+let gameAssetsStatus = assetLoadStates.idle;
 let gameAssetsPreloadPromise = null;
 let gameAssetsPreloadRevision = 0;
 let gameAssetsPreloadRequestKey = "";
+let applicationBootRevision = 0;
+let applicationStarted = false;
 let remoteFocusIndex = 0;
 let remoteFocusContext = "";
 let remoteFocusKey = "";
@@ -692,6 +698,13 @@ function getPreloadGameVariant() {
     ?? gameVariants.classic;
 }
 
+function getAppAssetUrls() {
+  return [...new Set(collectAssetUrls([
+    mainMenuAssetPaths,
+    menuButtonDefinitions.map((definition) => definition.icon)
+  ]).filter(Boolean))];
+}
+
 function getGameAssetUrls() {
   const selectedColors = getSelectedGameAssetColors();
   const isSupernova = getPreloadGameVariant() === gameVariants.supernova;
@@ -710,7 +723,6 @@ function getGameAssetUrls() {
 
   return [...new Set(collectAssetUrls([
     boardBackgroundAssetPath,
-    mainMenuAssetPaths,
     planetAssetPaths,
     outpostAssetPaths,
     tradeStationAssetPaths,
@@ -721,90 +733,171 @@ function getGameAssetUrls() {
 }
 
 function isAssetPreloadComplete(url) {
-  return preloadedAssetUrls.has(url) || optionalAssetFailures.has(url);
+  return assetManager.isReady(url);
 }
 
-async function preloadGameAssets({ onProgress = null } = {}) {
+async function preloadAppAssets({ onProgress = null, retry = false } = {}) {
+  if (appAssetsReady && !retry) {
+    onProgress?.(1);
+    return assetManager.getGroupStatus("app-shell");
+  }
+
+  appAssetsStatus = assetLoadStates.loading;
+  let fontReady = !document.fonts?.ready;
+  let assetProgress = 0;
+  const reportProgress = () => {
+    const progress = assetProgress * 0.94 + (fontReady ? 0.06 : 0);
+    onProgress?.(Math.min(1, progress));
+  };
+  reportProgress();
+
+  try {
+    const [group] = await Promise.all([
+      assetManager.preloadGroup("app-shell", {
+        required: getAppAssetUrls()
+      }, {
+        retry,
+        onProgress: (snapshot) => {
+          assetProgress = snapshot.progress;
+          reportProgress();
+        }
+      }),
+      Promise.resolve(document.fonts?.ready).then(() => {
+        fontReady = true;
+        reportProgress();
+      })
+    ]);
+    appAssetsReady = true;
+    appAssetsStatus = assetLoadStates.ready;
+    onProgress?.(1);
+    return group;
+  } catch (error) {
+    appAssetsReady = false;
+    appAssetsStatus = assetLoadStates.error;
+    throw error;
+  }
+}
+
+async function preloadGameAssets({ onProgress = null, retry = false } = {}) {
   const initialUrls = getGameAssetUrls();
   const requestKey = initialUrls.join("\n");
   if (gameAssetsStatus === "loading" && requestKey === gameAssetsPreloadRequestKey) {
-    return gameAssetsPreloadPromise;
+    return assetManager.preloadGroup("game-runtime", { required: initialUrls }, {
+      retry,
+      onProgress: (snapshot) => onProgress?.(snapshot.progress)
+    });
   }
   if (initialUrls.every(isAssetPreloadComplete)) {
     gameAssetsPreloadRevision += 1;
     gameAssetsReady = true;
-    gameAssetsStatus = optionalAssetFailures.size > 0 ? "error" : "ready";
+    gameAssetsStatus = assetLoadStates.ready;
     onProgress?.(1);
-    return;
+    return assetManager.getGroupStatus("game-runtime");
   }
 
   const revision = ++gameAssetsPreloadRevision;
-  const previousPreload = gameAssetsPreloadPromise;
   gameAssetsPreloadRequestKey = requestKey;
   gameAssetsReady = false;
-  gameAssetsStatus = "loading";
+  gameAssetsStatus = assetLoadStates.loading;
   const preloadPromise = (async () => {
-    await previousPreload;
-    if (revision !== gameAssetsPreloadRevision) return;
-
-    while (revision === gameAssetsPreloadRevision) {
-      const urls = getGameAssetUrls();
-      const pendingUrls = urls.filter((url) => !isAssetPreloadComplete(url));
-      let completed = urls.length - pendingUrls.length;
-      onProgress?.(urls.length === 0 ? 1 : completed / urls.length);
-      if (pendingUrls.length === 0) break;
-
-      await preloadAssetUrls(pendingUrls, preloadImageAsset, {
-        concurrency: GAME_ASSET_PRELOAD_CONCURRENCY,
-        onAssetComplete: () => {
-          completed += 1;
-          onProgress?.(completed / urls.length);
+    try {
+      const group = await assetManager.preloadGroup("game-runtime", {
+        required: initialUrls
+      }, {
+        retry,
+        onProgress: (snapshot) => {
+          if (revision !== gameAssetsPreloadRevision) return;
+          onProgress?.(snapshot.progress);
         }
       });
-    }
-
-    if (revision === gameAssetsPreloadRevision) {
-      gameAssetsReady = getGameAssetUrls().every(isAssetPreloadComplete);
-      gameAssetsStatus = optionalAssetFailures.size > 0 ? "error" : "ready";
-      onProgress?.(1);
+      if (revision === gameAssetsPreloadRevision) {
+        gameAssetsReady = initialUrls.every(isAssetPreloadComplete);
+        gameAssetsStatus = gameAssetsReady ? assetLoadStates.ready : assetLoadStates.error;
+        onProgress?.(gameAssetsReady ? 1 : group.progress);
+      }
+      return group;
+    } catch (error) {
+      if (revision === gameAssetsPreloadRevision) {
+        gameAssetsReady = false;
+        gameAssetsStatus = assetLoadStates.error;
+      }
+      throw error;
     }
   })();
   gameAssetsPreloadPromise = preloadPromise;
-  await preloadPromise;
+  return preloadPromise;
 }
 
-function preloadImageAsset(url) {
-  if (preloadedAssetUrls.has(url)) return Promise.resolve(true);
-  if (assetPreloadPromises.has(url)) return assetPreloadPromises.get(url);
+function updateStartupLoader(progress) {
+  const normalized = Math.max(0, Math.min(1, Number(progress) || 0));
+  const percent = Math.round(normalized * 100);
+  if (startupProgressFill) startupProgressFill.style.width = `${percent}%`;
+  if (startupProgressText) startupProgressText.textContent = `${percent} %`;
+  startupProgressFill?.parentElement?.setAttribute("aria-valuenow", String(percent));
+}
 
-  const promise = new Promise((resolve) => {
-    const image = new Image();
-    image.decoding = "async";
-    image.onload = () => {
-      preloadedAssetUrls.add(url);
-      resolve(true);
-    };
-    image.onerror = () => {
-      if (!optionalAssetFailures.has(url)) {
-        optionalAssetFailures.add(url);
-        console.warn(`Optional asset could not be preloaded: ${url}`);
-      }
-      resolve(false);
-    };
-    image.src = url;
-    if (image.decode) {
-      image.decode()
-        .then(() => {
-          preloadedAssetUrls.add(url);
-          resolve(true);
-        })
-        .catch(() => {
-          // The onerror/onload handlers above cover browsers that reject decode early.
-        });
-    }
+function resetStartupLoader() {
+  if (startupLoader) startupLoader.hidden = false;
+  if (startupError) {
+    startupError.hidden = true;
+    startupError.textContent = "";
+  }
+  if (startupRetryButton) startupRetryButton.hidden = true;
+  document.body.classList.add("is-app-booting");
+  updateStartupLoader(0);
+}
+
+function showStartupLoaderError(error) {
+  console.error("Star Odyssey konnte nicht vollständig gestartet werden.", error);
+  if (startupError) {
+    startupError.hidden = false;
+    startupError.textContent = state.language === "en"
+      ? "Important game files could not be loaded."
+      : "Wichtige Spieldateien konnten nicht geladen werden.";
+  }
+  if (startupRetryButton) {
+    startupRetryButton.hidden = false;
+    startupRetryButton.textContent = state.language === "en" ? "Retry" : "Erneut versuchen";
+  }
+}
+
+function finishStartupLoader() {
+  updateStartupLoader(1);
+  window.requestAnimationFrame(() => {
+    startupLoader?.setAttribute("hidden", "");
+    document.body.classList.remove("is-app-booting");
   });
-  assetPreloadPromises.set(url, promise);
-  return promise;
+}
+
+async function bootstrapApplication({ retry = false } = {}) {
+  const revision = ++applicationBootRevision;
+  resetStartupLoader();
+
+  try {
+    if (state.gameState) {
+      await preloadAppAssets({
+        retry,
+        onProgress: (progress) => updateStartupLoader(progress * 0.34)
+      });
+      await preloadGameAssets({
+        retry,
+        onProgress: (progress) => updateStartupLoader(0.34 + progress * 0.66)
+      });
+    } else {
+      await preloadAppAssets({ retry, onProgress: updateStartupLoader });
+    }
+    if (revision !== applicationBootRevision) return;
+
+    if (!applicationStarted) {
+      applicationStarted = true;
+      connectRemoteHost();
+    }
+    render();
+    finishStartupLoader();
+  } catch (error) {
+    if (revision !== applicationBootRevision) return;
+    showStartupLoaderError(error);
+  }
 }
 
 function saveLanguage(language) {
@@ -2142,7 +2235,7 @@ function renderMainMenuActionButton(definition, index) {
   const icon = document.createElement("span");
   icon.className = "main-menu-action-icon";
   icon.dataset.iconSource = definition.icon;
-  icon.style.setProperty("--main-menu-icon", `url("${definition.icon}")`);
+  icon.style.setProperty("--main-menu-icon", `url("${new URL(definition.icon, document.baseURI).href}")`);
   icon.setAttribute("aria-hidden", "true");
 
   const label = document.createElement("span");
@@ -9639,12 +9732,6 @@ function render() {
   prepareRemoteNavigation();
 }
 
-if (state.gameState) {
-  void preloadGameAssets();
-}
-connectRemoteHost();
-render();
-
 document.addEventListener("keydown", handleRemoteKeydown);
 document.addEventListener("focusin", () => {
   const controls = getRemoteFocusControls();
@@ -9666,3 +9753,8 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("pagehide", writeAutosaveNow);
 window.addEventListener("beforeunload", writeAutosaveNow);
+startupRetryButton?.addEventListener("click", () => {
+  void bootstrapApplication({ retry: true });
+});
+
+void bootstrapApplication();

@@ -77,6 +77,40 @@ async function enterControllerLobby(page, variant, playerCount = 3) {
   await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
 }
 
+test("startup loader is visible before decoded menu assets are released", async ({ page }) => {
+  await page.route("**/star-odyssey-frame-ornate-4k.webp", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await route.continue();
+  });
+
+  await page.goto("/?resetAutosave=1", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#app-startup-loader")).toBeVisible();
+  await expect(page.locator(".main-menu-scene")).toHaveCount(0);
+  await expect(page.locator(".main-menu-scene")).toBeVisible();
+  await expect(page.locator("#app-startup-loader")).toBeHidden();
+  await expect(page.locator("#app-startup-progress-text")).toHaveText("100 %");
+});
+
+test("startup loader reports a critical asset error and retries successfully", async ({ page }) => {
+  let attempts = 0;
+  await page.route("**/star-odyssey-compass.png", async (route) => {
+    attempts += 1;
+    if (attempts === 1) {
+      await route.abort("failed");
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto("/?resetAutosave=1", { waitUntil: "domcontentloaded" });
+  const retry = page.getByRole("button", { name: "Erneut versuchen" });
+  await expect(retry).toBeVisible();
+  await retry.click();
+  await expect(page.locator(".main-menu-scene")).toBeVisible();
+  await expect(page.locator("#app-startup-loader")).toBeHidden();
+  expect(attempts).toBeGreaterThanOrEqual(2);
+});
+
 test("two-player Classic and Supernova lobbies use exactly two human controllers", async ({ browser }) => {
   test.setTimeout(120000);
   for (const variant of ["classic", "supernova"]) {

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
+  AssetManager,
   GAME_ASSET_PRELOAD_CONCURRENCY,
+  assetLoadStates,
   collectAssetUrls,
   preloadAssetUrls,
   selectAssetUrlsForColors
@@ -38,5 +40,50 @@ await preloadAssetUrls(
 
 assert.equal(maxActiveLoads, GAME_ASSET_PRELOAD_CONCURRENCY);
 assert.deepEqual([...completed].sort(), ["a", "b", "c", "d", "e"]);
+
+const loadAttempts = new Map();
+const manager = new AssetManager({
+  concurrency: 2,
+  loadAsset: async (url) => {
+    loadAttempts.set(url, (loadAttempts.get(url) ?? 0) + 1);
+    if (url === "missing-required" && loadAttempts.get(url) === 1) throw new Error("missing");
+    if (url === "missing-optional") throw new Error("optional");
+    return { url };
+  }
+});
+const progress = [];
+const readyGroup = await manager.preloadGroup("menu", {
+  required: ["hero", "frame", "hero"],
+  optional: ["decorative"]
+}, {
+  onProgress: (snapshot) => progress.push(snapshot.progress)
+});
+assert.equal(readyGroup.status, assetLoadStates.ready);
+assert.equal(readyGroup.total, 3);
+assert.equal(readyGroup.completed, 3);
+assert.equal(progress.at(-1), 1);
+assert.equal(manager.get("hero").url, "hero");
+assert.equal(loadAttempts.get("hero"), 1);
+
+await manager.preloadGroup("menu", {
+  required: ["hero", "frame"],
+  optional: ["decorative"]
+});
+assert.equal(loadAttempts.get("hero"), 1, "A ready asset must not be loaded twice.");
+
+await assert.rejects(() => manager.preloadGroup("game", {
+  required: ["missing-required"],
+  optional: ["missing-optional"]
+}));
+assert.equal(manager.getGroupStatus("game").status, assetLoadStates.error);
+assert.deepEqual(manager.getGroupStatus("game").requiredFailures, ["missing-required"]);
+assert.deepEqual(manager.getGroupStatus("game").optionalFailures, ["missing-optional"]);
+
+const retriedGroup = await manager.preloadGroup("game", {
+  required: ["missing-required"],
+  optional: []
+}, { retry: true });
+assert.equal(retriedGroup.status, assetLoadStates.ready);
+assert.equal(loadAttempts.get("missing-required"), 2);
 
 console.log("Asset preloader checks passed.");
