@@ -1,7 +1,9 @@
 # Performance-Optimierungsbericht
 
-Stand: 16. Juli 2026  
-Ausgangsrevision: `5b3d7ef`  
+Stand: 16. Juli 2026
+
+Ausgangsrevision: `5b3d7ef`
+
 Messrevision: `83390e7`
 
 ## Kurzfazit
