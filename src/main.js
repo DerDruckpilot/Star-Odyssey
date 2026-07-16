@@ -741,7 +741,11 @@ function getGameAssetGroups() {
     selectAssetUrlsForColors(tradeShipAssetPaths, selectedColors),
     selectAssetUrlsForColors(playerColonyAssetPaths, selectedColors),
     selectAssetUrlsForColors(playerSpaceportAssetPaths, selectedColors),
-    selectAssetUrlsForColors(tradeStationAssetPaths, selectedColors)
+    selectAssetUrlsForColors(tradeStationAssetPaths, selectedColors),
+    // The three-player setup always renders neutral yellow starting structures.
+    state.controllerLobby?.playerCount === 3 || state.gameState?.playerCount === 3 || state.selectedPlayers === 3
+      ? [playerColonyAssetPaths.yellow, playerSpaceportAssetPaths.yellow]
+      : []
   ];
   const supernovaAssets = [];
   if (isSupernova) {
@@ -1335,7 +1339,7 @@ function startControllerLobbyAssetPreload({ retry = false } = {}) {
     retry,
     onProgress: (progress) => {
       state.loadingProgress = progress;
-      if (state.view === "controllers" || state.modal === "controllers") render();
+      updateControllerLobbyPreloadStatus();
     }
   }).then(async () => {
     if (gameAssetsReady) state.loadingProgress = 1;
@@ -2655,7 +2659,33 @@ function renderControllerConnect() {
 function renderControllerLobbyPreloadStatus() {
   const wrapper = document.createElement("div");
   wrapper.className = "lobby-preload-status";
+  const status = getControllerLobbyPreloadStatus();
 
+  const players = document.createElement("p");
+  players.className = "lobby-preload-players";
+  players.textContent = status.playersText;
+
+  const text = document.createElement("p");
+  text.className = "lobby-preload-text";
+  text.textContent = status.text;
+
+  const track = document.createElement("div");
+  track.className = "lobby-preload-track";
+  track.setAttribute("role", "progressbar");
+  track.setAttribute("aria-valuemin", "0");
+  track.setAttribute("aria-valuemax", "100");
+  track.setAttribute("aria-valuenow", String(status.percent));
+
+  const fill = document.createElement("div");
+  fill.className = "lobby-preload-fill";
+  fill.style.width = `${status.percent}%`;
+  track.append(fill);
+
+  wrapper.append(players, text, track);
+  return wrapper;
+}
+
+function getControllerLobbyPreloadStatus() {
   const assetsProgress = Math.max(0, Math.min(1, state.loadingProgress ?? 0));
   const progress = controllerGamePreparationStatus === assetLoadStates.ready
     ? 1
@@ -2663,42 +2693,40 @@ function renderControllerLobbyPreloadStatus() {
       ? Math.max(0.94, Math.min(0.99, assetsProgress))
       : assetsProgress * 0.94;
   const percent = Math.round(progress * 100);
-  const allReady = areControllerLobbySlotsReady();
   const connectedCount = (state.controllerLobby?.slots ?? []).filter((slot) => slot.connected).length;
   const playerCount = state.controllerLobby?.playerCount ?? 0;
-
-  const players = document.createElement("p");
-  players.className = "lobby-preload-players";
-  players.textContent = t("lobbyPlayersConnected")
-    .replace("{connected}", connectedCount)
-    .replace("{total}", playerCount);
-
-  const text = document.createElement("p");
-  text.className = "lobby-preload-text";
+  let text;
   if (controllerGamePreparationStatus === assetLoadStates.error) {
-    text.textContent = t("assetPreloadFailed");
+    text = t("assetPreloadFailed");
   } else if (controllerGamePreparationStatus === assetLoadStates.ready) {
-    text.textContent = t("assetPreloadReady");
-  } else if (allReady) {
-    text.textContent = t("assetPreloadAllPlayersReady").replace("{percent}", percent);
+    text = t("assetPreloadReady");
+  } else if (areControllerLobbySlotsReady()) {
+    text = t("assetPreloadAllPlayersReady").replace("{percent}", percent);
   } else {
-    text.textContent = t("assetPreloadProgress").replace("{percent}", percent);
+    text = t("assetPreloadProgress").replace("{percent}", percent);
   }
+  return {
+    percent,
+    text,
+    playersText: t("lobbyPlayersConnected")
+      .replace("{connected}", connectedCount)
+      .replace("{total}", playerCount)
+  };
+}
 
-  const track = document.createElement("div");
-  track.className = "lobby-preload-track";
-  track.setAttribute("role", "progressbar");
-  track.setAttribute("aria-valuemin", "0");
-  track.setAttribute("aria-valuemax", "100");
-  track.setAttribute("aria-valuenow", String(percent));
-
-  const fill = document.createElement("div");
-  fill.className = "lobby-preload-fill";
-  fill.style.width = `${percent}%`;
-  track.append(fill);
-
-  wrapper.append(players, text, track);
-  return wrapper;
+function updateControllerLobbyPreloadStatus() {
+  if (state.view !== "controllers" && state.modal !== "controllers") return;
+  const wrapper = app.querySelector(".lobby-preload-status");
+  if (!wrapper) return;
+  const status = getControllerLobbyPreloadStatus();
+  const players = wrapper.querySelector(".lobby-preload-players");
+  const text = wrapper.querySelector(".lobby-preload-text");
+  const track = wrapper.querySelector(".lobby-preload-track");
+  const fill = wrapper.querySelector(".lobby-preload-fill");
+  if (players) players.textContent = status.playersText;
+  if (text) text.textContent = status.text;
+  track?.setAttribute("aria-valuenow", String(status.percent));
+  if (fill) fill.style.width = `${status.percent}%`;
 }
 
 function renderPlayerSetup() {
