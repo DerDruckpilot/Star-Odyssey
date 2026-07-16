@@ -874,6 +874,23 @@ test("Supernova factories render on the board", async ({ page }) => {
   await expect(marker).toHaveCount(1);
   await expect(marker.locator("title")).toContainText("Spieler 1");
   await expect(marker.locator("image.factory-marker-image")).toHaveAttribute("href", /factory-(mine|refinery|food|carbon|trade)-red\.png$/);
+  await expect(marker.locator("image.factory-marker-image")).toHaveAttribute("width", "60");
+  await expect(marker.locator("image.factory-marker-image")).toHaveAttribute("height", "60");
+  await expect(marker.locator("text.factory-number-marker")).toHaveCount(1);
+  const factoryCenterOffset = await page.evaluate(({ factoryId, planetId }) => {
+    const factoryMarker = document.querySelector(`[data-factory-id="${factoryId}"]`);
+    const planet = document.querySelector(`.planet[data-planet-id="${planetId}"]`);
+    const factoryBounds = factoryMarker?.getBoundingClientRect();
+    const planetBounds = planet?.getBoundingClientRect();
+    if (!factoryBounds || !planetBounds) return null;
+    return {
+      x: Math.abs(factoryBounds.x + factoryBounds.width / 2 - (planetBounds.x + planetBounds.width / 2)),
+      y: Math.abs(factoryBounds.y + factoryBounds.height / 2 - (planetBounds.y + planetBounds.height / 2))
+    };
+  }, { factoryId: factory.id, planetId: factory.planetId });
+  expect(factoryCenterOffset).not.toBeNull();
+  expect(factoryCenterOffset.x).toBeLessThan(1);
+  expect(factoryCenterOffset.y).toBeLessThan(1);
 
   const controller = await page.context().newPage();
   await controller.goto(await getAuthorizedControllerUrl(page, 1));

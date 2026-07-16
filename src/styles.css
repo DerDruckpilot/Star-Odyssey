@@ -1309,8 +1309,8 @@ h1 {
   width: 4.5rem;
   min-width: 4.5rem;
   aspect-ratio: 1;
-  border: 1px solid rgba(246, 211, 101, 0.72);
-  background: radial-gradient(circle, rgba(12, 48, 76, 0.72), rgba(4, 13, 31, 0.88));
+  border: 0;
+  background: transparent;
 }
 
 .factory-build-blueprint {
@@ -1318,6 +1318,11 @@ h1 {
   height: 100%;
   object-fit: contain;
   filter: drop-shadow(0 0 7px rgba(125, 211, 252, 0.7));
+}
+
+.factory-number-marker {
+  font-size: 19px;
+  stroke-width: 4px;
 }
 
 .planet.is-factory-target .planet-image {

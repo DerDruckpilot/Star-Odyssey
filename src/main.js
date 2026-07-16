@@ -7538,12 +7538,24 @@ function renderFactoriesLayer() {
       factoryGroup.append(createSvgElement("image", {
         class: "factory-marker-image",
         href: assetPath,
-        x: -16,
-        y: -16,
-        width: 32,
-        height: 32,
+        x: -30,
+        y: -30,
+        width: 60,
+        height: 60,
         preserveAspectRatio: "xMidYMid meet"
       }));
+    }
+    const token = getPlanetToken(state.gameState?.board?.numberTokens, factory.planetId);
+    const tokenLabel = formatTokenLabel(token);
+    if (tokenLabel) {
+      const marker = createSvgElement("text", {
+        class: `number-marker factory-number-marker${isActiveSpecialToken(token) ? " number-marker--special" : ""}`,
+        x: 0,
+        y: 7,
+        "text-anchor": "middle"
+      });
+      marker.textContent = tokenLabel;
+      factoryGroup.append(marker);
     }
     group.append(factoryGroup);
   }
@@ -7559,8 +7571,8 @@ function getFactoryRenderPlacement(factory) {
   const planetIndex = system.planets.indexOf(planet);
   const position = getPlanetRenderPosition(system, planet, planetRenderFallbackOffsets[planetIndex] ?? { x: 0, y: 0 });
   return {
-    x: position.x + 18,
-    y: position.y + 18
+    x: position.x,
+    y: position.y
   };
 }
 
