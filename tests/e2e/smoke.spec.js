@@ -77,6 +77,14 @@ async function enterControllerLobby(page, variant, playerCount = 3) {
   await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
 }
 
+async function startPreparedLobbyGame(page, buttonName = "Spiel starten") {
+  const startButton = page.getByRole("button", { name: buttonName, exact: true });
+  await expect(startButton).toBeEnabled({ timeout: 30000 });
+  await page.evaluate(() => { window.__starOdysseyBoardStartMark = performance.now(); });
+  await startButton.click();
+  await expect(page.locator(".board-placeholder")).toBeVisible();
+}
+
 test("startup loader is visible before decoded menu assets are released", async ({ page }) => {
   await page.route("**/star-odyssey-frame-ornate-4k.webp", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 350));
@@ -134,7 +142,7 @@ test("two-player Classic and Supernova lobbies use exactly two human controllers
     await controllerTwo.getByRole("button", { name: "Blau" }).click();
     await controllerTwo.getByRole("button", { name: "Bereit" }).click();
 
-    await expect(host.locator(".board-placeholder")).toBeVisible();
+    await startPreparedLobbyGame(host);
     const storedGame = await host.evaluate(() => JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null"));
     expect(storedGame.playerCount).toBe(2);
     expect(storedGame.players).toHaveLength(2);
@@ -236,6 +244,8 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await page.getByRole("button", { name: "Weiter" }).click();
 
   await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Spiel starten", exact: true })).toBeDisabled();
+  await expect(page.getByText("Spieler verbunden: 0/3")).toBeVisible();
   await expect(page.getByRole("button", { name: "DE", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "EN", exact: true })).toHaveCount(0);
   const lobbyBack = page.getByRole("button", { name: "Zurück" });
@@ -294,7 +304,13 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await controllerThree.getByRole("button", { name: "Grün" }).click();
   await controllerThree.getByRole("button", { name: "Bereit" }).click();
 
-  await expect(page.locator(".board-placeholder")).toBeVisible();
+  await startPreparedLobbyGame(page);
+  const lateBoardTransfers = await page.evaluate(() => performance.getEntriesByType("resource")
+    .filter((entry) => entry.startTime >= window.__starOdysseyBoardStartMark)
+    .filter((entry) => entry.transferSize > 0)
+    .map((entry) => new URL(entry.name).pathname)
+    .filter((pathname) => pathname.startsWith("/assets/generated/") || pathname.startsWith("/assets/backgrounds/")));
+  expect(lateBoardTransfers).toEqual([]);
   await expect(page.locator(".board-event-log")).toBeVisible();
   await expect(page.locator(".structure--neutral")).toHaveCount(3);
   await expect(page.locator('.structure--neutral image[href*="player-colony-yellow.png"]')).toHaveCount(2);
@@ -369,7 +385,7 @@ test("English controllers render localized setup, tabs, factories, and missions"
     await controller.getByRole("button", { name: "Ready", exact: true }).click();
   }
 
-  await expect(page.locator(".board-placeholder")).toBeVisible();
+  await startPreparedLobbyGame(page, "Start game");
   const activeController = controllers[0];
   await activeController.setViewportSize({ width: 852, height: 393 });
   await activeController.getByRole("button", { name: "Build", exact: true }).click();

@@ -505,6 +505,13 @@ h1 {
   font-weight: 800;
 }
 
+.lobby-preload-players {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: clamp(0.78rem, 1.25vw, 0.92rem);
+  font-weight: 700;
+}
+
 .lobby-preload-track {
   height: 0.45rem;
   overflow: hidden;
