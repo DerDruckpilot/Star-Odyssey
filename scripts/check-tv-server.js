@@ -131,6 +131,19 @@ try {
   const baseUrl = `http://127.0.0.1:${firstPort}`;
   const processedAssetResponse = await fetch(`${baseUrl}/public/assets/ui/menu/processed/icons/icon_new_game.png`);
   assert.equal(processedAssetResponse.status, 200);
+  assert.match(processedAssetResponse.headers.get("cache-control") ?? "", /stale-while-revalidate=86400/);
+  const processedAssetEtag = processedAssetResponse.headers.get("etag");
+  assert.ok(processedAssetEtag);
+  const validatedAssetResponse = await fetch(`${baseUrl}/public/assets/ui/menu/processed/icons/icon_new_game.png`, {
+    headers: { "If-None-Match": processedAssetEtag }
+  });
+  assert.equal(validatedAssetResponse.status, 304);
+  const appShellResponse = await fetch(`${baseUrl}/index.html`);
+  assert.match(appShellResponse.headers.get("cache-control") ?? "", /no-store/);
+  const moduleResponse = await fetch(`${baseUrl}/src/main.js`);
+  assert.equal(moduleResponse.headers.get("cache-control"), "no-cache, must-revalidate");
+  const manifestResponse = await fetch(`${baseUrl}/controller.webmanifest`);
+  assert.match(manifestResponse.headers.get("content-type") ?? "", /application\/manifest\+json/);
   const sourceAssetResponse = await fetch(`${baseUrl}/assets/source/ui/menu/raw/start-menu-ref-01.jpg`);
   assert.equal(sourceAssetResponse.status, 404);
   const legacyRawAssetResponse = await fetch(`${baseUrl}/public/assets/ui/menu/raw/start-menu-ref-01.jpg`);

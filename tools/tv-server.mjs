@@ -1,4 +1,5 @@
 import http from "node:http";
+import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,9 +20,15 @@ const mimeTypes = new Map([
   [".png", "image/png"],
   [".jpg", "image/jpeg"],
   [".jpeg", "image/jpeg"],
+  [".avif", "image/avif"],
   [".svg", "image/svg+xml; charset=utf-8"],
   [".webp", "image/webp"],
-  [".ico", "image/x-icon"]
+  [".ico", "image/x-icon"],
+  [".webmanifest", "application/manifest+json; charset=utf-8"],
+  [".woff", "font/woff"],
+  [".woff2", "font/woff2"],
+  [".ttf", "font/ttf"],
+  [".otf", "font/otf"]
 ]);
 
 const sessions = new Map();
@@ -245,7 +252,8 @@ function handleSocketMessage(socket, rawMessage) {
   }
 }
 
-const noCacheExtensions = new Set([".html", ".js", ".css", ".json", ".map"]);
+const noStoreExtensions = new Set([".html", ".map"]);
+const revalidateExtensions = new Set([".js", ".mjs", ".css", ".json", ".webmanifest"]);
 const cacheableAssetExtensions = new Set([
   ".png",
   ".jpg",
@@ -269,14 +277,22 @@ function setNoCacheHeaders(response) {
   response.setHeader("Surrogate-Control", "no-store");
 }
 
+function setRevalidateHeaders(response) {
+  response.setHeader("Cache-Control", "no-cache, must-revalidate");
+}
+
 function setStaticCacheHeaders(response, filePath) {
   const extension = path.extname(filePath).toLowerCase();
   if (cacheableAssetExtensions.has(extension)) {
-    response.setHeader("Cache-Control", "public, max-age=3600");
+    response.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
     return;
   }
-  if (noCacheExtensions.has(extension)) {
+  if (noStoreExtensions.has(extension)) {
     setNoCacheHeaders(response);
+    return;
+  }
+  if (revalidateExtensions.has(extension)) {
+    setRevalidateHeaders(response);
     return;
   }
   response.setHeader("Cache-Control", "no-cache");
@@ -322,11 +338,32 @@ async function serveStatic(request, response) {
   }
 
   try {
-    const content = await fs.readFile(filePath);
+    const stats = await fs.stat(filePath);
     const mimeType = mimeTypes.get(path.extname(filePath).toLowerCase()) || "application/octet-stream";
     setStaticCacheHeaders(response, filePath);
+    const etag = `W/\"${stats.size.toString(16)}-${Math.trunc(stats.mtimeMs).toString(16)}\"`;
+    response.setHeader("ETag", etag);
+    response.setHeader("Last-Modified", stats.mtime.toUTCString());
+    if (request.headers["if-none-match"] === etag) {
+      response.writeHead(304);
+      response.end();
+      return;
+    }
     response.writeHead(200, { "Content-Type": mimeType });
-    response.end(content);
+    if (request.method === "HEAD") {
+      response.end();
+      return;
+    }
+    await new Promise((resolve) => {
+      const stream = createReadStream(filePath);
+      stream.once("error", (error) => {
+        response.destroy(error);
+        resolve();
+      });
+      response.once("close", resolve);
+      stream.once("end", resolve);
+      stream.pipe(response);
+    });
   } catch {
     response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     response.end("Not found.");

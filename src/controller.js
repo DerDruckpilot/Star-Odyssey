@@ -2848,22 +2848,14 @@ window.visualViewport?.addEventListener("resize", updateControllerViewportHeight
 window.visualViewport?.addEventListener("scroll", updateControllerViewportHeight);
 document.addEventListener("fullscreenchange", render);
 window.addEventListener("pagehide", () => {
+  if (controllerRenderFrameId !== null) cancelAnimationFrame(controllerRenderFrameId);
+  controllerRenderFrameId = null;
   if (!localFallbackActive) return;
   sendLocalHostMessage({ type: "disconnect" });
 });
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    const shouldReloadOnUpdate = Boolean(navigator.serviceWorker.controller);
-    let updateReloadStarted = false;
-    if (shouldReloadOnUpdate) {
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        if (updateReloadStarted) return;
-        updateReloadStarted = true;
-        window.location.reload();
-      }, { once: true });
-    }
-
     navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(() => {

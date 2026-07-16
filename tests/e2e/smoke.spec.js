@@ -546,8 +546,8 @@ test("TV remote focus reaches setup and the controller PWA shell is valid", asyn
 test("controller service worker replaces stale UI caches", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(async () => {
-    const oldCache = await caches.open("star-odyssey-ui-v1");
-    await oldCache.put("/controller.webmanifest", new Response("stale-v1"));
+    const oldCache = await caches.open("star-odyssey-ui-v2");
+    await oldCache.put("/controller.webmanifest", new Response("stale-v2"));
   });
 
   await page.goto("/controller.html?session=CACHE-TEST&player=1");
@@ -560,19 +560,27 @@ test("controller service worker replaces stale UI caches", async ({ page }) => {
     }
   });
 
-  await expect.poll(() => page.evaluate(() => caches.keys())).toEqual(["star-odyssey-ui-v2"]);
+  await expect.poll(() => page.evaluate(() => caches.keys())).toEqual(["star-odyssey-ui-v3"]);
   await page.evaluate(async () => {
-    const cache = await caches.open("star-odyssey-ui-v2");
-    await cache.put("/controller.webmanifest", new Response("stale-v2"));
+    const cache = await caches.open("star-odyssey-ui-v3");
+    await cache.put("/controller.webmanifest", new Response("stale-v3"));
   });
 
   const liveManifest = await page.evaluate(async () => (await fetch("/controller.webmanifest")).text());
   expect(liveManifest).toContain('"display": "standalone"');
   const cachedManifest = await page.evaluate(async () => {
-    const cache = await caches.open("star-odyssey-ui-v2");
+    const cache = await caches.open("star-odyssey-ui-v3");
     return (await cache.match("/controller.webmanifest"))?.text();
   });
   expect(cachedManifest).toContain('"display": "standalone"');
+
+  const cachedPlanet = await page.evaluate(async () => {
+    const response = await fetch("/assets/generated/planets/planet-ore.png");
+    if (!response.ok) return false;
+    const cache = await caches.open("star-odyssey-ui-v3");
+    return Boolean(await cache.match("/assets/generated/planets/planet-ore.png"));
+  });
+  expect(cachedPlanet).toBe(true);
 });
 
 test("card debug review pages load and filter cards", async ({ page }) => {
