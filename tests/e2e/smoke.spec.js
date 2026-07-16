@@ -1022,6 +1022,53 @@ test("active controller places a Supernova factory on a valid planet", async ({ 
   await controller.close();
 });
 
+test("placement animation updates only its dynamic board layer", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const [{ buildShip, createGameState }, { boardLayout }] = await Promise.all([
+      import("/src/game/gameState.js"),
+      import("/src/data/boardLayout.js")
+    ]);
+    let gameState = createGameState({
+      language: "de",
+      playerCount: 2,
+      boardLayout
+    });
+    const site = boardLayout.startSystems[0].colonySites[0];
+    gameState.phase = "tradeBuild";
+    gameState.currentPlayerIndex = 0;
+    gameState.players[0].resources = { ore: 10, fuel: 10, carbon: 10, food: 10, goods: 10 };
+    gameState.board.structures = [{
+      id: "placement-performance-spaceport",
+      ownerPlayerId: "player-1",
+      type: "spaceport",
+      locationId: site.nodeId,
+      systemId: site.systemId,
+      adjacentPlanetIds: site.adjacentPlanetIds
+    }];
+    gameState = buildShip(gameState, boardLayout, "colonyShip");
+    if (!gameState.board.pendingShipPlacement) throw new Error("Schiffsbau konnte nicht vorbereitet werden.");
+    localStorage.removeItem("starOdyssey.autosave.v1");
+    localStorage.setItem("star-odyssey-current-game", JSON.stringify(gameState));
+  });
+
+  await page.reload();
+  await expect(page.locator(".board-screen")).toBeVisible();
+  const target = page.locator(".space-point.is-ship-build-target").first();
+  await expect(target).toBeVisible();
+  await page.waitForTimeout(100);
+  const before = await page.evaluate(() => ({ ...window.__starOdysseyPerformance }));
+  await target.click();
+  await expect(page.locator(".ship--colonyShip")).toHaveCount(1);
+  await page.waitForTimeout(1800);
+  const after = await page.evaluate(() => ({ ...window.__starOdysseyPerformance }));
+
+  expect(after.appRenders - before.appRenders).toBeLessThanOrEqual(1);
+  expect(after.boardSvgBuilds - before.boardSvgBuilds).toBeLessThanOrEqual(1);
+  expect(after.placementAnimationFrames - before.placementAnimationFrames).toBeGreaterThan(2);
+  expect(after.staticBoardLayerBuilds).toBe(3);
+});
+
 test("active controller starts a visible single-player encounter roll", async ({ page }) => {
   await page.goto("/");
   const initialFlightSpeed = await page.evaluate(async () => {

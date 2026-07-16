@@ -5,6 +5,7 @@ import {
   collectAssetUrls,
   selectAssetUrlsForColors
 } from "./asset-preloader.js";
+import { animationScheduler } from "./animation-scheduler.js";
 import { buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
 import { getEncounterCardById } from "./data/encounterCards.js";
 import {
@@ -163,6 +164,24 @@ const mainMenuAssetPaths = {
   compass: "./public/assets/ui/brand/star-odyssey-compass.png",
   buttonPlate: "./public/assets/ui/buttons/star-odyssey-button-plate.png",
 };
+const boardPointsById = new Map((boardLayout.points ?? []).map((point) => [point.id, point]));
+const boardHexesById = new Map((boardLayout.hexes ?? boardLayout.spaceQuadrants ?? []).map((hex) => [hex.id, hex]));
+const boardConnections = boardLayout.connections ?? boardLayout.links.map(([from, to], index) => ({
+  id: `connection-${index + 1}`,
+  from,
+  to
+}));
+const staticBoardLayerTemplates = new Map();
+const runtimePerformanceMetrics = {
+  appRenders: 0,
+  boardSvgBuilds: 0,
+  staticBoardLayerBuilds: 0,
+  remoteBoardFallbackBuilds: 0,
+  placementAnimationFrames: 0,
+  controllerStatePublications: 0,
+  animation: animationScheduler.stats
+};
+globalThis.__starOdysseyPerformance = runtimePerformanceMetrics;
 const startupLoader = document.querySelector("#app-startup-loader");
 const startupProgressFill = document.querySelector("#app-startup-progress-fill");
 const startupProgressText = document.querySelector("#app-startup-progress-text");
@@ -252,10 +271,14 @@ const storageRetryDelayMs = 5000;
 const placementVfxDuration = 1650;
 const placementVfx = {
   items: [],
-  frameRequestId: null,
   currentTime: 0,
   nextId: 1
 };
+const placementAnimationId = "placement-vfx";
+const diceAnimationId = "dice-roll";
+const mothershipAnimationId = "mothership-speed";
+const shipFlightAnimationId = "ship-flight";
+const shipVfxAnimationId = "ship-vfx";
 const DICE_RESULT_HOLD_MS = 1100;
 const DICE_RESULT_FADE_MS = 320;
 const PRODUCTION_HIGHLIGHT_MS = 1500;
@@ -297,7 +320,6 @@ const planetRenderFallbackOffsets = [
 ];
 const shipFlightAnimation = {
   items: [],
-  frameRequestId: null,
   currentTime: 0
 };
 const shipEngineTrailDuration = 1250;
@@ -306,17 +328,14 @@ const shipWeaponBurstDuration = 1100;
 const shipWeaponBursts = [];
 const shipVfxCanvasLayers = ["behind", "inline", "front"];
 const shipVfxAnimation = {
-  frameRequestId: null,
   currentTime: 0
 };
 const diceRollAnimation = {
   item: null,
-  frameRequestId: null,
   currentTime: 0
 };
 const mothershipSpeedAnimation = {
   item: null,
-  frameRequestId: null,
   currentTime: 0
 };
 const MOTHERSHIP_SPEED_APPEAR_MS = 160;
@@ -5125,7 +5144,7 @@ function resolveSelectedBoardElement() {
   }
 
   if (selectedElement.type === "spacePoint") {
-    const point = boardLayout.points.find((candidate) => candidate.id === selectedElement.id);
+    const point = boardPointsById.get(selectedElement.id);
     if (!point) return null;
     const occupyingShip = getShipAtLocation(point.id);
     const occupyingStructure = getStructureAtLocation(point.id);
@@ -5278,7 +5297,7 @@ function getStructureAtLocation(locationId) {
 
 function getStructureRenderPoint(structure) {
   return getVisibleColonySites().find((site) => site.id === structure.locationId || site.nodeId === structure.locationId)
-    ?? (boardLayout.points ?? []).find((point) => point.id === structure.locationId);
+    ?? boardPointsById.get(structure.locationId);
 }
 
 function getStructureRenderSite(structure) {
@@ -5448,7 +5467,7 @@ function getCanonicalOutpostHexCenters(outpost, layoutType) {
 
 function getOutpostHexCenters(outpost) {
   return (outpost?.slotHexIds ?? [])
-    .map((hexId) => (boardLayout.hexes ?? []).find((hex) => hex.id === hexId))
+    .map((hexId) => boardHexesById.get(hexId))
     .filter(Boolean)
     .map((hex) => ({ x: hex.x, y: hex.y }));
 }
@@ -5501,7 +5520,7 @@ function queuePlacementVfx(targetType, target) {
 }
 
 function getPlacementVfxShipPosition(ship) {
-  const point = (boardLayout.points ?? []).find((candidate) => candidate.id === ship.locationId);
+  const point = boardPointsById.get(ship.locationId);
   return point ? { x: point.x, y: point.y } : null;
 }
 
@@ -5524,22 +5543,78 @@ function createPlacementVfxSeed(id, now) {
 }
 
 function startPlacementVfxLoop() {
-  if (placementVfx.frameRequestId || placementVfx.items.length === 0) return;
-  placementVfx.frameRequestId = requestAnimationFrame(updatePlacementVfx);
+  if (animationScheduler.has(placementAnimationId) || placementVfx.items.length === 0) return;
+  animationScheduler.start(placementAnimationId, updatePlacementVfx);
 }
 
 function updatePlacementVfx(now) {
+  const affectedItems = placementVfx.items.slice();
   placementVfx.currentTime = now;
   placementVfx.items = placementVfx.items.filter((item) => now - item.startTime < placementVfxDuration);
-  placementVfx.frameRequestId = null;
-  render();
-  if (placementVfx.items.length > 0) {
-    placementVfx.frameRequestId = requestAnimationFrame(updatePlacementVfx);
+  runtimePerformanceMetrics.placementAnimationFrames += 1;
+  updatePlacementVfxDom(affectedItems);
+  if (placementVfx.items.length === 0) placementVfx.currentTime = 0;
+  return placementVfx.items.length > 0;
+}
+
+function updatePlacementVfxDom(affectedItems) {
+  if (state.view !== "board") return;
+  const boardSvg = document.querySelector(".board-placeholder .board-svg");
+  if (!boardSvg) return;
+
+  const currentLayer = boardSvg.querySelector(".placement-vfx-layer");
+  currentLayer?.replaceWith(renderPlacementVfxLayer());
+
+  for (const item of affectedItems) {
+    const target = boardSvg.querySelector(
+      `[data-board-type='${item.targetType}'][data-board-id='${cssEscape(item.targetId)}']`
+    );
+    if (!target) continue;
+    if (item.targetType === "ship") {
+      updatePlacedShipElement(target, item.targetId);
+    } else if (item.targetType === "structure") {
+      updatePlacedStructureElement(target, item.targetId);
+    }
   }
 }
 
+function updatePlacedShipElement(group, shipId) {
+  const ship = state.gameState?.board?.ships?.find((candidate) => candidate.id === shipId);
+  const point = ship ? boardPointsById.get(ship.locationId) : null;
+  if (!ship || !point) return;
+  const visual = getShipVisualDefaults(ship);
+  const pop = getPlacementAssetPop("ship", ship.id);
+  const pose = { x: point.x, y: point.y, angle: getShipVisualAngle(ship.id) };
+  const image = group.querySelector(".ship-image");
+  if (image) {
+    image.setAttribute("x", String(pose.x - visual.width / 2));
+    image.setAttribute("y", String(pose.y - visual.height / 2));
+    image.setAttribute("opacity", String(pop.opacity));
+    image.setAttribute("transform", [
+      createPlacementTransform(pose.x, pose.y, 0, pop),
+      `rotate(${(pose.angle * 180) / Math.PI} ${pose.x} ${pose.y})`
+    ].filter(Boolean).join(" "));
+  }
+  group.querySelector(".ship-coil-vfx")?.setAttribute("opacity", String(pop.opacity));
+}
+
+function updatePlacedStructureElement(group, structureId) {
+  const structure = state.gameState?.board?.structures?.find((candidate) => candidate.id === structureId);
+  const site = structure ? getStructureRenderPoint(structure) : null;
+  if (!structure || !site || !["colony", "spaceport"].includes(structure.type)) return;
+  const visual = structure.type === "spaceport"
+    ? playerPieceVisualDefaults.spaceport
+    : playerPieceVisualDefaults.colony;
+  const placement = getStructureVisualPlacement(structure, site, visual);
+  const pop = getPlacementAssetPop("structure", structure.id);
+  const image = group.querySelector(structure.type === "spaceport" ? ".spaceport-image" : ".colony-image");
+  if (!image) return;
+  image.setAttribute("opacity", String(pop.opacity));
+  image.setAttribute("transform", createPlacementTransform(placement.x, placement.y, placement.rotation, pop));
+}
+
 function getAnimationNow() {
-  return typeof performance === "undefined" ? Date.now() : performance.now();
+  return animationScheduler.now();
 }
 
 function getPlacementVfxTime() {
@@ -5634,24 +5709,23 @@ function isDiceRollAnimating() {
 }
 
 function startDiceRollLoop() {
-  if (diceRollAnimation.frameRequestId || !diceRollAnimation.item) return;
-  diceRollAnimation.frameRequestId = requestAnimationFrame(updateDiceRollAnimation);
+  if (animationScheduler.has(diceAnimationId) || !diceRollAnimation.item) return;
+  animationScheduler.start(diceAnimationId, updateDiceRollAnimation);
 }
 
 function updateDiceRollAnimation(now) {
   diceRollAnimation.currentTime = now;
   const item = diceRollAnimation.item;
-  diceRollAnimation.frameRequestId = null;
   if (!item || now - item.startTime >= item.duration + item.holdDuration + item.fadeDuration) {
     const onComplete = item?.onComplete;
     diceRollAnimation.item = null;
     diceRollAnimation.currentTime = 0;
     if (typeof onComplete === "function") onComplete();
     render();
-    return;
+    return false;
   }
   updateDice3dOverlayDom();
-  diceRollAnimation.frameRequestId = requestAnimationFrame(updateDiceRollAnimation);
+  return true;
 }
 
 function renderShipEngineVfxCanvas(layerName) {
@@ -5781,14 +5855,13 @@ function isMothershipSpeedAnimating() {
 }
 
 function startMothershipSpeedLoop() {
-  if (mothershipSpeedAnimation.frameRequestId || !mothershipSpeedAnimation.item) return;
-  mothershipSpeedAnimation.frameRequestId = requestAnimationFrame(updateMothershipSpeedAnimation);
+  if (animationScheduler.has(mothershipAnimationId) || !mothershipSpeedAnimation.item) return;
+  animationScheduler.start(mothershipAnimationId, updateMothershipSpeedAnimation);
 }
 
 function updateMothershipSpeedAnimation(now) {
   mothershipSpeedAnimation.currentTime = now;
   const item = mothershipSpeedAnimation.item;
-  mothershipSpeedAnimation.frameRequestId = null;
   if (!item || now - item.startTime >= getMothershipSpeedTotalDuration(item)) {
     const onComplete = item?.onComplete;
     mothershipSpeedAnimation.item = null;
@@ -5802,10 +5875,10 @@ function updateMothershipSpeedAnimation(now) {
       saveCurrentGameState();
     }
     render();
-    return;
+    return false;
   }
   updateMothershipSpeedOverlayDom();
-  mothershipSpeedAnimation.frameRequestId = requestAnimationFrame(updateMothershipSpeedAnimation);
+  return true;
 }
 
 function getMothershipSpeedTotalDuration(item = mothershipSpeedAnimation.item) {
@@ -6027,11 +6100,10 @@ function drawShipEngineVfxLayer(layerName) {
   if (shipFlightAnimation.items.length === 0 && shipEngineTrails.length === 0 && shipWeaponBursts.length === 0) return;
 
   targetContext.setTransform(width / boardLayout.width, 0, 0, height / boardLayout.height, 0, 0);
-  const pointsById = new Map((boardLayout.points ?? []).map((point) => [point.id, point]));
   const time = getShipVfxTime();
   for (const ship of state.gameState?.board?.ships ?? []) {
     if (!isShipFlightAnimating(ship.id)) continue;
-    const point = pointsById.get(ship.locationId);
+    const point = boardPointsById.get(ship.locationId);
     const owner = state.gameState?.players?.find((player) => player.id === ship.ownerPlayerId);
     const anchors = getShipVfxAnchorsForRender(owner, ship);
     if (!point || !anchors) continue;
@@ -6353,8 +6425,8 @@ function queueShipFlightAnimation(ship, fromPoint, toPoint, onComplete = null) {
 }
 
 function startShipFlightLoop() {
-  if (shipFlightAnimation.frameRequestId || shipFlightAnimation.items.length === 0) return;
-  shipFlightAnimation.frameRequestId = requestAnimationFrame(updateShipFlightAnimations);
+  if (animationScheduler.has(shipFlightAnimationId) || shipFlightAnimation.items.length === 0) return;
+  animationScheduler.start(shipFlightAnimationId, updateShipFlightAnimations);
 }
 
 function updateShipFlightAnimations(now) {
@@ -6372,7 +6444,6 @@ function updateShipFlightAnimations(now) {
     }
   }
   shipFlightAnimation.items = activeAnimations;
-  shipFlightAnimation.frameRequestId = null;
   for (const callback of completedCallbacks) callback();
   if (completedCallbacks.length > 0) {
     render();
@@ -6380,18 +6451,15 @@ function updateShipFlightAnimations(now) {
     updateShipFlightAnimationDom();
     drawShipEngineVfxOverlays();
   }
-  if (shipFlightAnimation.items.length > 0) {
-    shipFlightAnimation.frameRequestId = requestAnimationFrame(updateShipFlightAnimations);
-  }
+  return shipFlightAnimation.items.length > 0;
 }
 
 function updateShipFlightAnimationDom() {
   const boardSvg = document.querySelector(".board-placeholder .board-svg");
   if (!boardSvg || !state.gameState) return;
-  const pointsById = new Map((boardLayout.points ?? []).map((point) => [point.id, point]));
   for (const item of shipFlightAnimation.items) {
     const ship = state.gameState.board?.ships?.find((candidate) => candidate.id === item.shipId);
-    const fallbackPoint = ship ? pointsById.get(ship.locationId) : null;
+    const fallbackPoint = ship ? boardPointsById.get(ship.locationId) : null;
     const group = boardSvg.querySelector(`[data-board-type='ship'][data-board-id='${cssEscape(item.shipId)}']`);
     if (!ship || !fallbackPoint || !group) continue;
     const pose = getShipRenderPose(ship, fallbackPoint);
@@ -6551,28 +6619,24 @@ function getShipVfxTime() {
 }
 
 function startShipVfxLoop() {
-  if (shipVfxAnimation.frameRequestId || !shouldRunShipVfxLoop()) return;
-  shipVfxAnimation.frameRequestId = requestAnimationFrame(updateShipVfxAnimation);
+  if (animationScheduler.has(shipVfxAnimationId) || !shouldRunShipVfxLoop()) return;
+  animationScheduler.start(shipVfxAnimationId, updateShipVfxAnimation);
 }
 
 function stopShipVfxLoop() {
-  if (shipVfxAnimation.frameRequestId) {
-    cancelAnimationFrame(shipVfxAnimation.frameRequestId);
-  }
-  shipVfxAnimation.frameRequestId = null;
+  animationScheduler.stop(shipVfxAnimationId);
 }
 
 function updateShipVfxAnimation(now) {
   shipVfxAnimation.currentTime = now;
-  shipVfxAnimation.frameRequestId = null;
   pruneShipEngineTrails(now);
   pruneShipWeaponBursts(now);
   drawShipEngineVfxOverlays();
-  if (shouldRunShipVfxLoop()) {
-    startShipVfxLoop();
-  } else {
+  const shouldContinue = shouldRunShipVfxLoop();
+  if (!shouldContinue) {
     shipVfxAnimation.currentTime = 0;
   }
+  return shouldContinue;
 }
 
 function syncShipVfxLoop() {
@@ -6622,7 +6686,9 @@ function drawShipEngineEmitter(targetContext, anchors, visual, pose, engine, emi
   const size = Math.max(1.2, (emitter.size ?? engine.size ?? 8) * fitScale * 1.18);
   const length = Math.max(5, (emitter.length ?? engine.length ?? 44) * fitScale * 1.16);
   const spread = Math.max(0, (emitter.spread ?? 18) * 1.18);
-  const count = Math.max(6, Math.min(96, Math.round((emitter.count ?? 18) * 1.32)));
+  const count = Math.max(4, Math.min(96, Math.round(
+    (emitter.count ?? 18) * 1.32 * animationScheduler.getQualityScale()
+  )));
   const speed = Math.max(0.08, (emitter.speed ?? 0.5) * 1.95);
   const jitter = Math.max(0, (emitter.jitter ?? 0.25) * 1.35);
   const seed = createShipEmitterSeed(engine.id, emitter.id, color);
@@ -6866,7 +6932,7 @@ function getShipVisualAngle(shipId) {
 }
 
 function getBoardPointById(pointId) {
-  return (boardLayout.points ?? []).find((point) => point.id === pointId) ?? null;
+  return boardPointsById.get(pointId) ?? null;
 }
 
 function getDistance(fromPoint, toPoint) {
@@ -7439,6 +7505,7 @@ function formatIdList(ids = []) {
 }
 
 function renderBoardSvg() {
+  runtimePerformanceMetrics.boardSvgBuilds += 1;
   const svg = createSvgElement("svg", {
     class: "board-svg",
     viewBox: `0 0 ${boardLayout.width} ${boardLayout.height}`,
@@ -7450,9 +7517,9 @@ function renderBoardSvg() {
   });
 
   svg.append(
-    renderPlacementVfxDefs(),
-    renderGridLayer(),
-    renderLinksLayer(),
+    cloneStaticBoardLayer("defs", renderPlacementVfxDefs),
+    cloneStaticBoardLayer("grid", renderGridLayer),
+    cloneStaticBoardLayer("links", renderLinksLayer),
     renderSystemsLayer(),
     renderFactoriesLayer(),
     renderPointsLayer(),
@@ -7462,6 +7529,14 @@ function renderBoardSvg() {
     renderOutpostsLayer()
   );
   return svg;
+}
+
+function cloneStaticBoardLayer(key, createLayer) {
+  if (!staticBoardLayerTemplates.has(key)) {
+    staticBoardLayerTemplates.set(key, createLayer());
+    runtimePerformanceMetrics.staticBoardLayerBuilds += 1;
+  }
+  return staticBoardLayerTemplates.get(key).cloneNode(true);
 }
 
 function renderPlacementVfxDefs() {
@@ -7587,7 +7662,9 @@ function renderPlacementLightning(group, item, progress) {
   const lightningProgress = clamp01((progress - 0.34) / 0.4);
   const fade = Math.sin(lightningProgress * Math.PI);
   const flicker = 0.55 + seededRandom(item.seed, Math.floor(progress * 46)) * 0.45;
-  const armCount = 5 + Math.floor(seededRandom(item.seed, 1) * 3);
+  const armCount = Math.max(3, Math.round(
+    (5 + Math.floor(seededRandom(item.seed, 1) * 3)) * animationScheduler.getQualityScale()
+  ));
 
   for (let armIndex = 0; armIndex < armCount; armIndex += 1) {
     const angle = seededRandom(item.seed, armIndex + 3) * Math.PI * 2;
@@ -7615,7 +7692,7 @@ function renderPlacementLightning(group, item, progress) {
 
 function renderPlacementSparks(group, item, progress) {
   const sparkProgress = clamp01((progress - 0.34) / 0.4);
-  const sparkCount = 14;
+  const sparkCount = Math.max(8, Math.round(14 * animationScheduler.getQualityScale()));
 
   for (let sparkIndex = 0; sparkIndex < sparkCount; sparkIndex += 1) {
     const angle = seededRandom(item.seed, sparkIndex + 40) * Math.PI * 2;
@@ -7657,20 +7734,11 @@ function renderGridLayer() {
 
 function renderLinksLayer() {
   const group = createSvgElement("g", { class: "board-links-layer" });
-  const pointsById = new Map(boardLayout.points.map((point) => [point.id, point]));
-  const hexKindById = new Map((boardLayout.hexes ?? boardLayout.spaceQuadrants ?? []).map((hex) => [hex.id, hex.kind]));
-
-  const connections = boardLayout.connections ?? boardLayout.links.map(([from, to], index) => ({
-    id: `connection-${index + 1}`,
-    from,
-    to
-  }));
-
-  for (const connection of connections) {
-    const from = pointsById.get(connection.from);
-    const to = pointsById.get(connection.to);
+  for (const connection of boardConnections) {
+    const from = boardPointsById.get(connection.from);
+    const to = boardPointsById.get(connection.to);
     if (!from || !to) continue;
-    const nebulaClass = (connection.hexIds ?? []).some((hexId) => hexKindById.get(hexId) === "nebula")
+    const nebulaClass = (connection.hexIds ?? []).some((hexId) => boardHexesById.get(hexId)?.kind === "nebula")
       ? " board-link--nebula"
       : "";
     group.append(createSvgElement("line", {
@@ -7845,7 +7913,7 @@ function isValidPendingFactoryPlanet(planetId) {
 
 function getPlanetRenderPosition(system, planet, fallbackOffset) {
   const hex = planet.coordinate
-    ? (boardLayout.hexes ?? []).find((candidate) => candidate.id === planet.coordinate)
+    ? boardHexesById.get(planet.coordinate)
     : null;
 
   return hex
@@ -8106,10 +8174,9 @@ function getShipCoilVfxState(ship) {
 
 function renderShipsLayer() {
   const group = createSvgElement("g", { class: "board-ships-layer" });
-  const pointsById = new Map((boardLayout.points ?? []).map((point) => [point.id, point]));
 
   for (const ship of state.gameState?.board?.ships ?? []) {
-    const point = pointsById.get(ship.locationId);
+    const point = boardPointsById.get(ship.locationId);
     if (!point) continue;
     const selectedClass = isSelectedElement("ship", ship.id) ? " is-selected" : "";
     const encounterJumpClass = isEncounterJumpShipTarget(ship.id) ? " is-encounter-jump-target" : "";
@@ -8694,6 +8761,7 @@ function publishRemoteHostState() {
   const stateJson = JSON.stringify(controllerStatesByPlayerId);
   if (stateJson === remoteHost.lastStateJson) return;
   remoteHost.lastStateJson = stateJson;
+  runtimePerformanceMetrics.controllerStatePublications += 1;
   const message = {
     type: "state",
     sessionId: remoteHost.sessionId,
@@ -9331,9 +9399,10 @@ function getControllerFlightBoardHint() {
 
 function serializeBoardSvgForController() {
   try {
-    const svg = renderBoardSvg();
-    svg.querySelectorAll("canvas, foreignObject").forEach((element) => element.remove());
-    return svg.outerHTML;
+    const renderedSvg = document.querySelector(".board-placeholder .board-svg");
+    if (renderedSvg) return renderedSvg.outerHTML;
+    runtimePerformanceMetrics.remoteBoardFallbackBuilds += 1;
+    return renderBoardSvg().outerHTML;
   } catch {
     return "";
   }
@@ -9869,6 +9938,7 @@ function requestTvHardReload() {
 }
 
 function render() {
+  runtimePerformanceMetrics.appRenders += 1;
   captureRemoteFocus();
   capturePlayerHudScrollPosition();
   document.documentElement.lang = state.language;

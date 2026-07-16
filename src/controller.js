@@ -44,6 +44,17 @@ let boardGestureMoved = false;
 const tabScrollPositions = new Map();
 const setupNameDrafts = new Map();
 let saveNameDraft = "";
+let controllerRenderFrameId = null;
+let cachedBoardSvgMarkup = "";
+let cachedBoardSvgTemplate = null;
+const controllerPerformanceMetrics = {
+  renders: 0,
+  scheduledStateRenders: 0,
+  coalescedStateRenders: 0,
+  boardSvgParses: 0,
+  boardSvgClones: 0
+};
+globalThis.__starOdysseyControllerPerformance = controllerPerformanceMetrics;
 
 function t(key, replacements = {}) {
   const language = gameState?.language === "en" ? "en" : "de";
@@ -283,7 +294,7 @@ function handleMessage(rawData) {
       sendHello();
     }
     connectionStatus = "connected";
-    render();
+    scheduleControllerStateRender();
     return;
   }
 
@@ -311,6 +322,18 @@ function handleMessage(rawData) {
     render();
     socket?.close();
   }
+}
+
+function scheduleControllerStateRender() {
+  if (controllerRenderFrameId !== null) {
+    controllerPerformanceMetrics.coalescedStateRenders += 1;
+    return;
+  }
+  controllerPerformanceMetrics.scheduledStateRenders += 1;
+  controllerRenderFrameId = requestAnimationFrame(() => {
+    controllerRenderFrameId = null;
+    render();
+  });
 }
 
 function sendAction(action) {
@@ -414,6 +437,7 @@ function renderFullscreenButton() {
 }
 
 function render() {
+  controllerPerformanceMetrics.renders += 1;
   document.documentElement.lang = gameState?.language === "en" ? "en" : "de";
   captureControllerScrollPosition();
   const focusedInput = captureFocusedInput();
@@ -1962,7 +1986,7 @@ function renderBoardFullscreen() {
   viewport.className = "controller-board-viewport";
   const content = document.createElement("div");
   content.className = "controller-board-content";
-  content.innerHTML = gameState?.board?.svg || "";
+  appendCachedControllerBoardSvg(content, gameState?.board?.svg || "");
   prepareControllerBoardSvg(content);
   scrubBoardSelectionForInactivePlayer(content);
   applyBoardTransform(content);
@@ -1971,6 +1995,20 @@ function renderBoardFullscreen() {
   section.append(header, viewport);
   requestAnimationFrame(() => fitControllerBoardToViewport(viewport, content));
   return section;
+}
+
+function appendCachedControllerBoardSvg(content, markup) {
+  if (!markup) return;
+  if (markup !== cachedBoardSvgMarkup || !cachedBoardSvgTemplate) {
+    const template = document.createElement("template");
+    template.innerHTML = markup.trim();
+    cachedBoardSvgTemplate = template.content.firstElementChild;
+    cachedBoardSvgMarkup = markup;
+    controllerPerformanceMetrics.boardSvgParses += 1;
+  }
+  if (!cachedBoardSvgTemplate) return;
+  content.append(cachedBoardSvgTemplate.cloneNode(true));
+  controllerPerformanceMetrics.boardSvgClones += 1;
 }
 
 function renderPlayerSummary(player) {
