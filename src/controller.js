@@ -611,6 +611,26 @@ function renderSetupPanel() {
     colorGrid.append(button);
   }
 
+  const genderGroup = document.createElement("div");
+  genderGroup.className = "controller-gender-group";
+  const genderLabel = document.createElement("span");
+  genderLabel.className = "controller-field-label";
+  genderLabel.textContent = t("playerSetupGender");
+  const genderGrid = document.createElement("div");
+  genderGrid.className = "controller-gender-grid";
+  for (const gender of ["male", "female"]) {
+    const isSelected = slot?.gender === gender;
+    const button = createButton(
+      t(`playerGender_${gender}`),
+      () => sendNamedAction("player.selectGender", { gender }),
+      `controller-gender-button${isSelected ? " is-active" : ""}`
+    );
+    button.disabled = Boolean(slot?.ready);
+    button.setAttribute("aria-pressed", String(isSelected));
+    genderGrid.append(button);
+  }
+  genderGroup.append(genderLabel, genderGrid);
+
   const status = document.createElement("p");
   status.className = "controller-empty";
   status.textContent = getSetupStatus(slot);
@@ -619,9 +639,9 @@ function renderSetupPanel() {
     if (!slot?.ready) commitSetupNameDraft(slot, nameInput.value);
     sendNamedAction(slot?.ready ? "player.edit" : "player.ready", { name: nameInput.value });
   });
-  readyButton.disabled = !slot || (!slot.ready && (!nameInput.value.trim() || !slot.color));
+  readyButton.disabled = !slot || (!slot.ready && (!nameInput.value.trim() || !slot.color || !slot.gender));
 
-  section.append(title, nameLabel, colorGrid, status, readyButton);
+  section.append(title, nameLabel, colorGrid, genderGroup, status, readyButton);
   return section;
 }
 
@@ -2120,6 +2140,7 @@ function getSetupStatus(slot) {
   if (slot.ready) return t("controllerSetupReady");
   if (!slot.name?.trim()) return t("controllerSetupEnterName");
   if (!slot.color) return t("controllerSetupChooseColor");
+  if (!slot.gender) return t("controllerSetupChooseGender");
   return t("controllerSetupConfirm");
 }
 

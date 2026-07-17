@@ -57,6 +57,7 @@ import {
   supernovaMissionCounts
 } from "./data/supernova.js";
 import { menuButtonDefinitions } from "./menu-button-utils.js";
+import { normalizePlayerGender, playerGenders } from "./player-profile.js";
 import {
   applyDebugLayoutTransform,
   getStructureVisualPosition,
@@ -1178,7 +1179,8 @@ function getControllerGamePreparationKey() {
     players: lobby.slots.map((slot) => ({
       playerId: slot.playerId,
       name: slot.name.trim(),
-      color: slot.color
+      color: slot.color,
+      gender: normalizePlayerGender(slot.gender)
     }))
   });
 }
@@ -1215,7 +1217,8 @@ async function prepareControllerGame() {
     if (!lobby || revision !== controllerGamePreparationRevision || preparationKey !== getControllerGamePreparationKey()) return false;
     const playerSetup = lobby.slots.map((slot) => ({
       name: slot.name.trim(),
-      color: slot.color
+      color: slot.color,
+      gender: normalizePlayerGender(slot.gender)
     }));
     const nextGameState = createGameState({
       language: state.language,
@@ -1305,6 +1308,7 @@ function createControllerLobby(
       slotNumber: index + 1,
       name: "",
       color: "",
+      gender: "male",
       ready: false,
       connected: false,
       connectionState: "disconnected"
@@ -1327,6 +1331,7 @@ function createControllerReconnectLobby(gameState) {
         slotNumber: index + 1,
         name: player.name ?? "",
         color: player.color ?? "",
+        gender: normalizePlayerGender(player.gender),
         ready: true,
         connected: false,
         connectionState: "lost"
@@ -1371,7 +1376,7 @@ function updateControllerLobbySlot(playerId, changes) {
       return {
         ...slot,
         ...changes,
-        ready: changes.ready ?? (changes.name !== undefined || changes.color !== undefined ? false : slot.ready)
+        ready: changes.ready ?? (changes.name !== undefined || changes.color !== undefined || changes.gender !== undefined ? false : slot.ready)
       };
     })
   };
@@ -1384,7 +1389,7 @@ function updateControllerLobbySlot(playerId, changes) {
 
 function areControllerLobbySlotsReady(slots = state.controllerLobby?.slots ?? []) {
   return slots.length === state.controllerLobby?.playerCount
-    && slots.every((slot) => slot.connected && slot.ready && slot.name.trim() && slot.color)
+    && slots.every((slot) => slot.connected && slot.ready && slot.name.trim() && slot.color && playerGenders.includes(slot.gender))
     && new Set(slots.map((slot) => slot.name.trim().toLocaleLowerCase(state.language))).size === slots.length
     && new Set(slots.map((slot) => slot.color)).size === slots.length;
 }
@@ -1443,7 +1448,8 @@ async function startGameNow(options = {}) {
 function createDefaultPlayerSetup(playerCount) {
   return Array.from({ length: playerCount }, (_, index) => ({
     name: t("playerNumber").replace("{number}", index + 1),
-    color: playerPieceColors[index] ?? playerPieceColors[0]
+    color: playerPieceColors[index] ?? playerPieceColors[0],
+    gender: "male"
   }));
 }
 
@@ -1454,7 +1460,8 @@ function ensurePlayerSetup(playerCount) {
     ...(state.playerSetup[index] ?? {}),
     color: playerPieceColors.includes(state.playerSetup[index]?.color)
       ? state.playerSetup[index].color
-      : fallback.color
+      : fallback.color,
+    gender: normalizePlayerGender(state.playerSetup[index]?.gender)
   }));
   return state.playerSetup;
 }
@@ -1462,7 +1469,8 @@ function ensurePlayerSetup(playerCount) {
 function getSanitizedPlayerSetup() {
   return ensurePlayerSetup(state.selectedPlayers ?? 3).map((player) => ({
     name: String(player.name ?? "").trim(),
-    color: player.color
+    color: player.color,
+    gender: normalizePlayerGender(player.gender)
   }));
 }
 
@@ -2859,7 +2867,24 @@ function renderPlayerSetup() {
     });
     colorLabel.append(colorSelect);
 
-    row.append(heading, nameLabel, colorLabel);
+    const genderLabel = document.createElement("label");
+    genderLabel.textContent = t("playerSetupGender");
+    const genderSelect = document.createElement("select");
+    genderSelect.dataset.remoteId = `player-${index + 1}-gender`;
+    for (const gender of playerGenders) {
+      const option = document.createElement("option");
+      option.value = gender;
+      option.textContent = t(`playerGender_${gender}`);
+      option.selected = playerSetup.gender === gender;
+      genderSelect.append(option);
+    }
+    genderSelect.addEventListener("change", () => {
+      state.playerSetup[index].gender = normalizePlayerGender(genderSelect.value);
+      updateValidation();
+    });
+    genderLabel.append(genderSelect);
+
+    row.append(heading, nameLabel, colorLabel, genderLabel);
     form.append(row);
   });
 
@@ -9330,6 +9355,7 @@ function getControllerLobbyStateForRemote() {
       slotNumber: slot.slotNumber,
       name: slot.name,
       color: slot.color,
+      gender: normalizePlayerGender(slot.gender),
       ready: slot.ready,
       connected: slot.connected,
       connectionState: slot.connectionState
@@ -9804,6 +9830,9 @@ function executeRemoteAction(actionId, payload = {}) {
     case "player.selectColor":
       updateControllerColor(playerId, payload.color);
       break;
+    case "player.selectGender":
+      updateControllerGender(playerId, payload.gender);
+      break;
     case "player.ready":
       if (typeof payload.name === "string") updateControllerName(playerId, payload.name);
       setControllerReady(playerId, true);
@@ -10077,10 +10106,15 @@ function updateControllerColor(playerId, color) {
   updateControllerLobbySlot(playerId, { color });
 }
 
+function updateControllerGender(playerId, gender) {
+  if (!playerGenders.includes(gender)) return;
+  updateControllerLobbySlot(playerId, { gender });
+}
+
 function setControllerReady(playerId, ready) {
   const slot = getControllerLobbySlot(playerId);
   if (!slot) return;
-  if (ready && (!slot.name.trim() || !slot.color || getControllerLobbyColorsInUse(playerId).has(slot.color))) return;
+  if (ready && (!slot.name.trim() || !slot.color || !playerGenders.includes(slot.gender) || getControllerLobbyColorsInUse(playerId).has(slot.color))) return;
   updateControllerLobbySlot(playerId, { ready });
 }
 

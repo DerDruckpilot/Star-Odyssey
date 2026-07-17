@@ -154,6 +154,13 @@ body::after {
   box-shadow: inset 0 0 0 1px rgba(242, 215, 157, 0.18), 0 0 1rem rgba(74, 187, 235, 0.18);
 }
 
+.controller-gender-button.is-active {
+  border-color: var(--space-gold);
+  color: #fff7e5;
+  background: linear-gradient(180deg, rgba(41, 61, 78, 0.94), rgba(9, 22, 40, 0.98));
+  box-shadow: inset 0 0 0 1px rgba(242, 215, 157, 0.18), 0 0 1rem rgba(74, 187, 235, 0.18);
+}
+
 .language-button:hover,
 .menu-button:hover,
 .secondary-button:hover,
@@ -162,6 +169,7 @@ body::after {
 .icon-button:hover,
 .controller-button:hover,
 .controller-color-button:hover,
+.controller-gender-button:hover,
 .controller-board-back-button:hover,
 .player-hud-button:hover,
 .hud-tab-button:hover,
@@ -173,6 +181,7 @@ body::after {
 .icon-button:focus-visible,
 .controller-button:focus-visible,
 .controller-color-button:focus-visible,
+.controller-gender-button:focus-visible,
 .controller-board-back-button:focus-visible,
 .player-hud-button:focus-visible,
 .hud-tab-button:focus-visible {
@@ -187,7 +196,8 @@ body::after {
 .menu-button:disabled,
 .small-button:disabled,
 .controller-button:disabled,
-.controller-color-button:disabled {
+.controller-color-button:disabled,
+.controller-gender-button:disabled {
   border-color: rgba(102, 121, 143, 0.2);
   color: rgba(206, 217, 232, 0.4);
   background: rgba(8, 16, 29, 0.64);

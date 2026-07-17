@@ -128,7 +128,7 @@ const customPlayerGame = createGameState({
   playerCount: 2,
   boardLayout,
   playerSetup: [
-    { name: "Ada", color: "green" },
+    { name: "Ada", color: "green", gender: "female" },
     { name: "Ben", color: "red" }
   ]
 });
@@ -139,6 +139,14 @@ assert(game.playerCount === 2, "Explicit legacy two-player game states should re
 assert(restoredLegacyTwoPlayerGame.playerCount === 2, "Loading a legacy two-player save should preserve its player count.");
 assert(customPlayerGame.players[0].name === "Ada" && customPlayerGame.players[0].color === "green", "New games should use configured player names and colors.");
 assert(customPlayerGame.players[1].name === "Ben" && customPlayerGame.players[1].color === "red", "New games should preserve configured player names and colors.");
+assert(customPlayerGame.players[0].gender === "female", "New games should preserve a configured female player gender.");
+assert(customPlayerGame.players[1].gender === "male", "New games should use a backward-compatible male gender fallback.");
+const legacyGenderGame = structuredClone(customPlayerGame);
+delete legacyGenderGame.players[0].gender;
+assert(
+  normalizeGameState(legacyGenderGame, { language: "de", playerCount: 2, boardLayout }).players[0].gender === "male",
+  "Old saves without player gender should normalize safely."
+);
 assert(Object.keys(shipVfxData.tradeShipVfxAnchors ?? {}).length === 12, "Trade ship VFX data should cover all 12 trade ship variants.");
 for (const color of ["red", "blue", "yellow", "green"]) {
   for (const variant of [1, 2, 3]) {
@@ -1952,6 +1960,7 @@ if (movementTriplet) {
     moveLog?.messageKey === "logShipMovedMany" &&
       moveLog.messageParams.shipOrdinal === "first" &&
       moveLog.messageParams.count === 2 &&
+      moveLog.messageParams.possessiveDative === "seinem" &&
       !("from" in moveLog.messageParams) &&
       !("to" in moveLog.messageParams),
     "Ship movement logs should use ship ordinal and distance without exposing internal node IDs."

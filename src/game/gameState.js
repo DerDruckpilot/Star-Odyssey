@@ -24,6 +24,7 @@ import {
   revealSystemTokens,
   revealSystemsById
 } from "../data/numberTokens.js";
+import { getPlayerGrammarParams, normalizePlayerGender } from "../player-profile.js";
 
 const playerColorKeys = ["red", "blue", "yellow", "green"];
 const supplyResourceTypes = ["ore", "fuel", "carbon", "food", "goods"];
@@ -1181,6 +1182,7 @@ export function moveShip(gameState, boardLayout, shipId, targetNodeId, options =
       messageKey: pathCost === 1 ? "logShipMovedOne" : "logShipMovedMany",
       messageParams: {
         player: activePlayer.name,
+        ...getPlayerGrammarParams(activePlayer, gameState.language),
         shipOrdinal: getPlayerShipOrdinal(ships, ship),
         count: pathCost
       },
@@ -2911,6 +2913,7 @@ function createPlayers(playerCount, language, playerSetup = []) {
     id: `player-${index + 1}`,
     name: normalizePlayerSetupName(playerSetup[index]?.name, index, language),
     color: normalizePlayerSetupColor(playerSetup[index]?.color, index),
+    gender: normalizePlayerGender(playerSetup[index]?.gender),
     victoryPoints: 0,
     resources: createEmptyResources(),
     upgrades: createDefaultUpgrades(),
@@ -3010,6 +3013,7 @@ function normalizePlayer(player, index, language) {
     id: player.id || fallback.id,
     name: player.name || fallback.name,
     color: normalizePlayerSetupColor(player.color, index),
+    gender: normalizePlayerGender(player.gender),
     victoryPoints: Number.isInteger(player.victoryPoints) ? player.victoryPoints : 0,
     resources: normalizeResources(player.resources),
     upgrades: normalizeUpgrades(player.upgrades),
