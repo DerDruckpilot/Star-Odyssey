@@ -2365,7 +2365,8 @@ h1 {
   font-weight: 700;
 }
 
-.settings-language {
+.settings-language,
+.settings-audio {
   display: grid;
   gap: 0.55rem;
   align-items: start;
@@ -2377,6 +2378,29 @@ h1 {
 
 .settings-language .language-toggle {
   position: static;
+}
+
+.settings-audio-volume {
+  display: grid;
+  grid-template-columns: auto minmax(8rem, 1fr) 3.5rem;
+  gap: 0.75rem;
+  align-items: center;
+  width: 100%;
+  color: #dbeafe;
+}
+
+.modal-content .settings-audio-volume-input {
+  min-height: 1.5rem;
+  border: 0;
+  padding: 0;
+  accent-color: #38bdf8;
+  background: transparent;
+}
+
+.settings-audio-volume output {
+  color: #bae6fd;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .modal-content input {

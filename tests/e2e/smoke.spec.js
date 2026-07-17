@@ -99,6 +99,34 @@ test("startup loader is visible before decoded menu assets are released", async 
   await expect(page.locator("#app-startup-progress-text")).toHaveText("100 %");
 });
 
+test("sound assets preload in phases and settings persist", async ({ page }) => {
+  await page.goto("/?resetAutosave=1");
+  await expect(page.locator(".main-menu-scene")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__starOdysseyAudio?.getStats().ready)).toBe(5);
+
+  await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
+  const volume = page.getByRole("slider", { name: "Lautstärke", exact: true });
+  await volume.fill("35");
+  await page.getByRole("button", { name: "Soundeffekte an", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Soundeffekte aus", exact: true })).toBeVisible();
+  await expect(volume).toBeDisabled();
+
+  await page.reload();
+  await expect(page.locator(".main-menu-scene")).toBeVisible();
+  await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Soundeffekte aus", exact: true })).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Lautstärke", exact: true })).toHaveValue("35");
+  await page.getByRole("button", { name: "Soundeffekte aus", exact: true }).click();
+  await page.getByRole("button", { name: "Schließen", exact: true }).click();
+
+  await page.getByRole("button", { name: "Neues Spiel", exact: true }).click();
+  await page.getByRole("button", { name: "2 Spieler", exact: true }).click();
+  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Controller verbinden", exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__starOdysseyAudio?.getStats().ready), { timeout: 30000 }).toBe(14);
+  await expect.poll(() => page.evaluate(() => window.__starOdysseyAudio?.getStats().failed)).toBe(0);
+});
+
 test("startup loader reports a critical asset error and retries successfully", async ({ page }) => {
   let attempts = 0;
   await page.route("**/star-odyssey-compass.png", async (route) => {

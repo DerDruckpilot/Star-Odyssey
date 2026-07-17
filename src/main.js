@@ -5,6 +5,7 @@ import {
   collectAssetUrls,
   selectAssetUrlsForColors
 } from "./asset-preloader.js";
+import { appSoundIds, audioManager, gameplaySoundIds, soundDefinitions } from "./audio-manager.js";
 import { animationScheduler } from "./animation-scheduler.js";
 import { buildActionDefinitions, resourceTypes, upgradeDefinitions } from "./data/buildCosts.js";
 import { getEncounterCardById } from "./data/encounterCards.js";
@@ -208,6 +209,10 @@ let remoteFocusKey = "";
 const initialLanguage = loadLanguage();
 const startupAutosaveReset = consumeAutosaveResetUrlParam();
 const initialGame = loadInitialGameState(initialLanguage);
+let previousAudioGamePhase = initialGame.gameState?.phase ?? null;
+let previousAudioEncounterCardId = initialGame.gameState?.activeEncounter?.cardId ?? null;
+let lastAudioFocusElement = null;
+let lastAudioFocusAt = 0;
 const DRIVE_COMPARISON_PREVIEW_MS = 2000;
 const SUPERNOVA_BATTLE_REVEAL_MS = 3200;
 
@@ -795,8 +800,9 @@ async function preloadAppAssets({ onProgress = null, retry = false } = {}) {
   appAssetsStatus = assetLoadStates.loading;
   let fontReady = !document.fonts?.ready;
   let assetProgress = 0;
+  let audioProgress = 0;
   const reportProgress = () => {
-    const progress = assetProgress * 0.94 + (fontReady ? 0.06 : 0);
+    const progress = assetProgress * 0.88 + audioProgress * 0.06 + (fontReady ? 0.06 : 0);
     onProgress?.(Math.min(1, progress));
   };
   reportProgress();
@@ -815,6 +821,13 @@ async function preloadAppAssets({ onProgress = null, retry = false } = {}) {
       Promise.resolve(document.fonts?.ready).then(() => {
         fontReady = true;
         reportProgress();
+      }),
+      audioManager.preload(appSoundIds, {
+        retry,
+        onProgress: (snapshot) => {
+          audioProgress = snapshot.progress;
+          reportProgress();
+        }
       })
     ]);
     appAssetsReady = true;
@@ -833,12 +846,13 @@ async function preloadGameAssets({ onProgress = null, retry = false } = {}) {
   const initialUrls = initialGroups.flatMap((group) => group.required);
   const requestKey = initialGroups
     .map((group) => `${group.id}:${group.required.join("|")}`)
+    .concat(`audio:${gameplaySoundIds.map((id) => soundDefinitions[id]?.src ?? id).join("|")}`)
     .join("\n");
   if (gameAssetsStatus === "loading" && requestKey === gameAssetsPreloadRequestKey) {
     onProgress?.(state.loadingProgress ?? 0);
     return gameAssetsPreloadPromise;
   }
-  if (initialUrls.every(isAssetPreloadComplete)) {
+  if (initialUrls.every(isAssetPreloadComplete) && audioManager.areSettled(gameplaySoundIds)) {
     gameAssetsPreloadRevision += 1;
     gameAssetsReady = true;
     gameAssetsStatus = assetLoadStates.ready;
@@ -856,6 +870,10 @@ async function preloadGameAssets({ onProgress = null, retry = false } = {}) {
         completed: group.required.filter(isAssetPreloadComplete).length,
         total: group.required.length
       }]));
+      progressByGroup.set("audio", {
+        completed: gameplaySoundIds.filter((id) => audioManager.isSettled(id)).length,
+        total: gameplaySoundIds.length
+      });
       const reportProgress = () => {
         if (revision !== gameAssetsPreloadRevision) return;
         const totals = [...progressByGroup.values()];
@@ -865,26 +883,38 @@ async function preloadGameAssets({ onProgress = null, retry = false } = {}) {
       };
       reportProgress();
 
-      const groups = await Promise.all(initialGroups.map((group) => assetManager.preloadGroup(
-        `game-${group.id}`,
-        { required: group.required },
-        {
+      const [groups, audioResult] = await Promise.all([
+        Promise.all(initialGroups.map((group) => assetManager.preloadGroup(
+          `game-${group.id}`,
+          { required: group.required },
+          {
+            retry,
+            onProgress: (snapshot) => {
+              progressByGroup.set(group.id, {
+                completed: snapshot.completed,
+                total: snapshot.total
+              });
+              reportProgress();
+            }
+          }
+        ))),
+        audioManager.preload(gameplaySoundIds, {
           retry,
           onProgress: (snapshot) => {
-            progressByGroup.set(group.id, {
+            progressByGroup.set("audio", {
               completed: snapshot.completed,
               total: snapshot.total
             });
             reportProgress();
           }
-        }
-      )));
+        })
+      ]);
       if (revision === gameAssetsPreloadRevision) {
-        gameAssetsReady = initialUrls.every(isAssetPreloadComplete);
+        gameAssetsReady = initialUrls.every(isAssetPreloadComplete) && audioManager.areSettled(gameplaySoundIds);
         gameAssetsStatus = gameAssetsReady ? assetLoadStates.ready : assetLoadStates.error;
         onProgress?.(gameAssetsReady ? 1 : state.loadingProgress ?? 0);
       }
-      return groups;
+      return [...groups, audioResult];
     } catch (error) {
       if (revision === gameAssetsPreloadRevision) {
         gameAssetsReady = false;
@@ -1439,6 +1469,7 @@ function createButton(label, onClick, className = "menu-button") {
   button.type = "button";
   button.className = className;
   button.textContent = label;
+  if ([t("back"), t("close"), t("backToMenu")].includes(label)) button.dataset.sound = "uiBack";
   button.addEventListener("click", onClick);
   return button;
 }
@@ -1908,6 +1939,7 @@ function startProductionVfx(productionData) {
     return;
   }
 
+  audioManager.play("resourceGain");
   productionVfx.items = events;
   productionVfx.resourceFlashes = flashes;
   const latestDelay = events.reduce((maxDelay, event) => Math.max(maxDelay, event.delay ?? 0), 0);
@@ -5533,6 +5565,7 @@ function queuePlacementVfx(targetType, target) {
     : getPlacementVfxStructurePosition(target);
   if (!position) return;
 
+  audioManager.play("buildComplete");
   const now = getAnimationNow();
   placementVfx.items.push({
     id: `placement-vfx-${placementVfx.nextId++}`,
@@ -5718,6 +5751,7 @@ function queueDiceRollAnimation(player, dice, onComplete = null) {
       createDice3dSpin(seed, 1)
     ]
   };
+  audioManager.play("diceRoll");
   startDiceRollLoop();
   return true;
 }
@@ -5744,6 +5778,10 @@ function startDiceRollLoop() {
 function updateDiceRollAnimation(now) {
   diceRollAnimation.currentTime = now;
   const item = diceRollAnimation.item;
+  if (item && !item.resultSoundPlayed && now - item.startTime >= item.duration) {
+    item.resultSoundPlayed = true;
+    audioManager.play("diceResult");
+  }
   if (!item || now - item.startTime >= item.duration + item.holdDuration + item.fadeDuration) {
     const onComplete = item?.onComplete;
     diceRollAnimation.item = null;
@@ -5834,6 +5872,7 @@ function ensureSupernovaBattleReveal() {
   ].join(":");
   if (state.supernovaBattleRevealKey === key) return;
   state.supernovaBattleRevealKey = key;
+  audioManager.play("battleImpact");
 
   window.setTimeout(() => {
     const currentBattle = state.gameState?.supernova?.shipBattle;
@@ -5870,8 +5909,10 @@ function queueMothershipSpeedAnimation(player, flightRoll, options = {}) {
     startTime: now,
     seed,
     shakeCycles,
+    resultSoundPlayed: false,
     onComplete: animationOptions.onComplete
   };
+  audioManager.play("diceRoll");
   startMothershipSpeedLoop();
   return true;
 }
@@ -5890,6 +5931,14 @@ function startMothershipSpeedLoop() {
 function updateMothershipSpeedAnimation(now) {
   mothershipSpeedAnimation.currentTime = now;
   const item = mothershipSpeedAnimation.item;
+  if (
+    item
+    && !item.resultSoundPlayed
+    && now - item.startTime >= MOTHERSHIP_SPEED_APPEAR_MS + getMothershipSpeedShakeDuration(item)
+  ) {
+    item.resultSoundPlayed = true;
+    audioManager.play("diceResult");
+  }
   if (!item || now - item.startTime >= getMothershipSpeedTotalDuration(item)) {
     const onComplete = item?.onComplete;
     mothershipSpeedAnimation.item = null;
@@ -6449,6 +6498,10 @@ function queueShipFlightAnimation(ship, fromPoint, toPoint, onComplete = null) {
     duration,
     onComplete
   });
+  audioManager.playLoop("shipEngine", `ship-engine-${ship.id}`, {
+    volume: 0.78,
+    playbackRate: Math.max(0.86, Math.min(1.18, 0.92 + distance / 1500))
+  });
   startShipFlightLoop();
 }
 
@@ -6463,6 +6516,7 @@ function updateShipFlightAnimations(now) {
   const completedCallbacks = [];
   for (const item of shipFlightAnimation.items) {
     if (now - item.startTime >= item.duration) {
+      audioManager.stopChannel(`ship-engine-${item.shipId}`);
       const finalPose = getShipFlightPose(item, 1);
       shipVisualAngles.set(item.shipId, finalPose.angle);
       queueShipEngineTrail(item.shipId, finalPose, now);
@@ -6562,6 +6616,14 @@ function createShipWeaponBurstSnapshot(ship, targetPoint, sourcePoint = null) {
 
 function queueShipWeaponBurst(snapshot) {
   if (!snapshot?.anchors?.shots?.length) return;
+  const weaponTypes = new Set(snapshot.anchors.shots.map((shot) => shot.weaponType));
+  if (weaponTypes.has("plasmaMachineGun")) {
+    audioManager.play("weaponPlasma");
+  } else if (weaponTypes.has("rocket")) {
+    audioManager.play("battleImpact", { volume: 0.72 });
+  } else {
+    audioManager.play("weaponLaser");
+  }
   shipWeaponBursts.push({
     ...snapshot,
     startTime: getAnimationNow(),
@@ -8302,6 +8364,56 @@ function renderSettingsMenu() {
   languageTitle.textContent = t("language");
   languageSection.append(languageTitle, renderLanguageToggle());
 
+  const soundSettings = audioManager.getSettings();
+  const soundSection = document.createElement("section");
+  soundSection.className = "settings-audio";
+  const soundTitle = document.createElement("strong");
+  soundTitle.textContent = t("soundEffects");
+
+  const soundToggle = createButton(
+    soundSettings.enabled ? t("soundEffectsOn") : t("soundEffectsOff"),
+    () => {
+      const enabled = !audioManager.getSettings().enabled;
+      audioManager.setEnabled(enabled);
+      if (enabled) audioManager.play("uiConfirm");
+      render();
+    },
+    "secondary-button"
+  );
+  soundToggle.dataset.remoteId = "settings-sound-toggle";
+  soundToggle.setAttribute("aria-pressed", String(soundSettings.enabled));
+
+  const volumeRow = document.createElement("label");
+  volumeRow.className = "settings-audio-volume";
+  const volumeLabel = document.createElement("span");
+  volumeLabel.textContent = t("soundVolume");
+  const volumeInput = document.createElement("input");
+  volumeInput.className = "settings-audio-volume-input";
+  volumeInput.type = "range";
+  volumeInput.min = "0";
+  volumeInput.max = "100";
+  volumeInput.step = "5";
+  volumeInput.value = String(Math.round(soundSettings.volume * 100));
+  volumeInput.disabled = !soundSettings.enabled;
+  volumeInput.dataset.remoteId = "settings-sound-volume";
+  volumeInput.setAttribute("aria-label", t("soundVolume"));
+  const volumeOutput = document.createElement("output");
+  volumeOutput.value = `${volumeInput.value} %`;
+  volumeOutput.textContent = volumeOutput.value;
+  volumeInput.addEventListener("input", () => {
+    audioManager.setVolume(Number(volumeInput.value) / 100);
+    volumeOutput.value = `${volumeInput.value} %`;
+    volumeOutput.textContent = volumeOutput.value;
+  });
+  volumeInput.addEventListener("change", () => audioManager.play("uiConfirm"));
+  volumeRow.append(volumeLabel, volumeInput, volumeOutput);
+
+  const soundTest = createButton(t("soundTest"), () => audioManager.play("uiConfirm"), "secondary-button");
+  soundTest.disabled = !soundSettings.enabled;
+  soundTest.dataset.remoteId = "settings-sound-test";
+  soundTest.dataset.sound = "none";
+  soundSection.append(soundTitle, soundToggle, volumeRow, soundTest);
+
   const actions = document.createElement("div");
   actions.className = "modal-actions";
   const settingsButtons = [
@@ -8319,7 +8431,7 @@ function renderSettingsMenu() {
   });
   actions.append(...settingsButtons);
 
-  wrapper.append(title, modalNotice, languageSection, actions);
+  wrapper.append(title, modalNotice, languageSection, soundSection, actions);
   return wrapper;
 }
 
@@ -9943,6 +10055,7 @@ function requestAppExit() {
     window.FireTvBridge.closeApp();
     return;
   }
+  audioManager.play("uiError");
   state.notice = t("fireTvExitUnavailable");
   render();
 }
@@ -9993,11 +10106,55 @@ function render() {
   restorePlayerHudScrollPosition();
   drawShipEngineVfxOverlays();
   syncShipVfxLoop();
+  syncGameAudioState();
   publishRemoteHostState();
   prepareRemoteNavigation();
 }
 
+function syncGameAudioState() {
+  const phase = state.gameState?.phase ?? null;
+  if (phase === "gameOver" && previousAudioGamePhase !== "gameOver") {
+    audioManager.play("victory");
+  }
+  previousAudioGamePhase = phase;
+
+  const encounterCardId = state.gameState?.activeEncounter?.cardId ?? null;
+  if (encounterCardId && encounterCardId !== previousAudioEncounterCardId) {
+    audioManager.play("uiOpen");
+  }
+  previousAudioEncounterCardId = encounterCardId;
+}
+
+function getAudioControl(target) {
+  return target instanceof Element
+    ? target.closest("button, [role='button'], input, select, textarea")
+    : null;
+}
+
+function handleAudioFocus(event) {
+  const control = getAudioControl(event.target);
+  if (!control || control === lastAudioFocusElement || control.matches(":disabled")) return;
+  const now = performance.now();
+  lastAudioFocusElement = control;
+  if (now - lastAudioFocusAt < 45) return;
+  lastAudioFocusAt = now;
+  audioManager.play("uiFocus");
+}
+
+function handleAudioActivation(event) {
+  const control = getAudioControl(event.target);
+  if (
+    !control
+    || !control.matches("button, [role='button']")
+    || control.matches(":disabled")
+    || control.dataset.sound === "none"
+  ) return;
+  audioManager.play(control.dataset.sound || "uiConfirm");
+}
+
 document.addEventListener("keydown", handleRemoteKeydown);
+document.addEventListener("click", handleAudioActivation, true);
+document.addEventListener("focusin", handleAudioFocus);
 document.addEventListener("focusin", () => {
   const controls = getRemoteFocusControls();
   const index = controls.indexOf(document.activeElement);
@@ -10011,6 +10168,7 @@ window.addEventListener("firetvback", handleRemoteBack);
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
+    audioManager.stopAll();
     writeAutosaveNow();
   } else if (storageWriteFailures.size > 0) {
     queueStorageStatusRender();
@@ -10021,5 +10179,10 @@ window.addEventListener("beforeunload", writeAutosaveNow);
 startupRetryButton?.addEventListener("click", () => {
   void bootstrapApplication({ retry: true });
 });
+
+globalThis.__starOdysseyAudio = {
+  getSettings: () => audioManager.getSettings(),
+  getStats: () => audioManager.getStats()
+};
 
 void bootstrapApplication();

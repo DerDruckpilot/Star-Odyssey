@@ -144,6 +144,10 @@ try {
   assert.equal(moduleResponse.headers.get("cache-control"), "no-cache, must-revalidate");
   const manifestResponse = await fetch(`${baseUrl}/controller.webmanifest`);
   assert.match(manifestResponse.headers.get("content-type") ?? "", /application\/manifest\+json/);
+  const soundResponse = await fetch(`${baseUrl}/assets/audio/sfx/ui-confirm.ogg`);
+  assert.equal(soundResponse.status, 200);
+  assert.equal(soundResponse.headers.get("content-type"), "audio/ogg");
+  assert.match(soundResponse.headers.get("cache-control") ?? "", /stale-while-revalidate=86400/);
   const sourceAssetResponse = await fetch(`${baseUrl}/assets/source/ui/menu/raw/start-menu-ref-01.jpg`);
   assert.equal(sourceAssetResponse.status, 404);
   const legacyRawAssetResponse = await fetch(`${baseUrl}/public/assets/ui/menu/raw/start-menu-ref-01.jpg`);
