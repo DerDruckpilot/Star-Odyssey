@@ -1191,6 +1191,7 @@ function waitForGamePreparationSlot() {
 async function prepareControllerGame() {
   if (!state.controllerLobby || state.controllerLobby.started) return false;
   if (!areControllerLobbySlotsReady() || !gameAssetsReady) return false;
+  if (controllerGamePreparationStatus === assetLoadStates.loading) return false;
 
   const preparationKey = getControllerGamePreparationKey();
   if (preparedControllerGameState && preparedControllerGameKey === preparationKey) return true;
@@ -8865,6 +8866,7 @@ function connectRemoteHost() {
     remoteHost.connected = false;
     remoteHost.controllerCount = 0;
     remoteHost.controllerSlots = [];
+    syncLocalControllerSlots();
     remoteHost.socket = null;
     remoteHost.lastAccessJson = "";
     remoteHost.reconnectTimer = setTimeout(connectRemoteHost, controllerReconnectMs);
@@ -9037,6 +9039,13 @@ function syncLocalControllerSlots() {
   remoteHost.controllerSlots = [...socketSlots, ...localSlots];
   remoteHost.controllerCount = remoteHost.controllerSlots.length;
   updateControllerLobbyConnections();
+  if (
+    gameAssetsReady &&
+    areControllerLobbySlotsReady() &&
+    controllerGamePreparationStatus === assetLoadStates.idle
+  ) {
+    void prepareControllerGame();
+  }
 }
 
 function sendLocalControllerMessage(message) {
