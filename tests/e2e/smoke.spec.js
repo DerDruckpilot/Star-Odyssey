@@ -77,12 +77,9 @@ async function enterControllerLobby(page, variant, playerCount = 3) {
   await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
 }
 
-async function startPreparedLobbyGame(page, buttonName = "Spiel starten") {
-  const startButton = page.getByRole("button", { name: buttonName, exact: true });
-  await expect(startButton).toBeEnabled({ timeout: 30000 });
-  await page.evaluate(() => { window.__starOdysseyBoardStartMark = performance.now(); });
-  await startButton.click();
-  await expect(page.locator(".board-placeholder")).toBeVisible();
+async function startPreparedLobbyGame(page) {
+  await expect(page.getByRole("button", { name: "Spiel starten", exact: true })).toHaveCount(0);
+  await expect(page.locator(".board-placeholder")).toBeVisible({ timeout: 30000 });
 }
 
 test("startup loader is visible before decoded menu assets are released", async ({ page }) => {
@@ -272,7 +269,7 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await page.getByRole("button", { name: "Weiter" }).click();
 
   await expect(page.getByRole("heading", { name: "Controller verbinden" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Spiel starten", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Spiel starten", exact: true })).toHaveCount(0);
   await expect(page.getByText("Spieler verbunden: 0/3")).toBeVisible();
   await expect(page.getByRole("button", { name: "DE", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "EN", exact: true })).toHaveCount(0);

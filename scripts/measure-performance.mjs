@@ -118,26 +118,23 @@ const setup = [
   { name: "Bob", color: "Blau" },
   { name: "Cara", color: "Grün" }
 ];
+let boardStartTime = 0;
+let lobbyResources = null;
 for (const [index, controller] of controllers.entries()) {
   await controller.getByLabel("Name").fill(setup[index].name);
   await controller.getByRole("button", { name: setup[index].color, exact: true }).click();
+  if (index === controllers.length - 1) {
+    lobbyResources = await readResourceSnapshot();
+    boardStartTime = await page.evaluate(() => performance.now());
+  }
   await controller.getByRole("button", { name: "Bereit", exact: true }).click();
 }
 const controllersReadyMetrics = await page.evaluate(() => ({ ...window.__starOdysseyPerformance }));
 
-const startButton = page.getByRole("button", { name: "Spiel starten", exact: true });
-await startButton.waitFor({ state: "visible" });
-await page.waitForFunction(() => {
-  const button = [...document.querySelectorAll("button")].find((candidate) => candidate.textContent?.trim() === "Spiel starten");
-  return Boolean(button && !button.disabled);
-}, null, { timeout: 60000 });
+await page.locator(".board-placeholder .board-svg").waitFor({ state: "visible", timeout: 60000 });
 const lobbyReadyAt = await page.evaluate(() => performance.now());
 const lobbyReadyMetrics = await page.evaluate(() => ({ ...window.__starOdysseyPerformance }));
-const lobbyResources = await readResourceSnapshot();
 const beforeBoardStartCount = lobbyResources.count;
-const boardStartTime = await page.evaluate(() => performance.now());
-await startButton.click();
-await page.locator(".board-placeholder .board-svg").waitFor({ state: "visible", timeout: 30000 });
 const boardReadyTiming = await page.evaluate((startTime) => ({
   readyDelayMs: Number((performance.now() - startTime).toFixed(2)),
   planets: document.querySelectorAll(".board-svg .planet-image").length,

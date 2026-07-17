@@ -200,6 +200,8 @@ let preparedControllerGameKey = "";
 let controllerGamePreparationRevision = 0;
 let controllerGamePreparationStatus = assetLoadStates.idle;
 let controllerGamePreparationError = null;
+let controllerAutoStartTimer = null;
+let controllerAutoStartPending = false;
 let applicationBootRevision = 0;
 let applicationStarted = false;
 let remoteFocusIndex = 0;
@@ -1156,6 +1158,9 @@ function enterControllerLobby() {
 }
 
 function resetControllerGamePreparation() {
+  clearTimeout(controllerAutoStartTimer);
+  controllerAutoStartTimer = null;
+  controllerAutoStartPending = false;
   controllerGamePreparationRevision += 1;
   preparedControllerGameState = null;
   preparedControllerGameKey = "";
@@ -1194,7 +1199,10 @@ async function prepareControllerGame() {
   if (controllerGamePreparationStatus === assetLoadStates.loading) return false;
 
   const preparationKey = getControllerGamePreparationKey();
-  if (preparedControllerGameState && preparedControllerGameKey === preparationKey) return true;
+  if (preparedControllerGameState && preparedControllerGameKey === preparationKey) {
+    schedulePreparedControllerGameStart();
+    return true;
+  }
   const revision = ++controllerGamePreparationRevision;
   controllerGamePreparationStatus = assetLoadStates.loading;
   controllerGamePreparationError = null;
@@ -1223,7 +1231,7 @@ async function prepareControllerGame() {
     preparedControllerGameKey = preparationKey;
     controllerGamePreparationStatus = assetLoadStates.ready;
     state.loadingProgress = 1;
-    render();
+    schedulePreparedControllerGameStart();
     return true;
   } catch (error) {
     if (revision !== controllerGamePreparationRevision) return false;
@@ -1263,6 +1271,23 @@ function startPreparedControllerGame() {
   resetControllerGamePreparation();
   saveCurrentGameState();
   setView("board");
+}
+
+function schedulePreparedControllerGameStart() {
+  if (!canStartPreparedControllerGame() || controllerAutoStartPending) return false;
+  controllerAutoStartPending = true;
+  render();
+  controllerAutoStartTimer = window.setTimeout(() => {
+    controllerAutoStartTimer = null;
+    if (!controllerAutoStartPending) return;
+    controllerAutoStartPending = false;
+    if (!canStartPreparedControllerGame()) {
+      render();
+      return;
+    }
+    startPreparedControllerGame();
+  }, 0);
+  return true;
 }
 
 function createControllerLobby(
@@ -2670,10 +2695,7 @@ function renderControllerConnect() {
   }, "secondary-button");
   backButton.dataset.remoteId = "lobby-back";
   backButton.dataset.remoteAutofocus = "true";
-  const startButton = createButton(t("startGame"), startPreparedControllerGame, "menu-button");
-  startButton.dataset.remoteId = "lobby-start";
-  startButton.disabled = !canStartPreparedControllerGame();
-  actions.append(backButton, startButton);
+  actions.append(backButton);
 
   if (controllerGamePreparationStatus === assetLoadStates.error) {
     const retryButton = createButton(t("retryLoad"), () => {
@@ -2731,6 +2753,8 @@ function getControllerLobbyPreloadStatus() {
   let text;
   if (controllerGamePreparationStatus === assetLoadStates.error) {
     text = t("assetPreloadFailed");
+  } else if (controllerAutoStartPending) {
+    text = t("controllerLobbyStarting");
   } else if (controllerGamePreparationStatus === assetLoadStates.ready) {
     text = t("assetPreloadReady");
   } else if (areControllerLobbySlotsReady()) {
@@ -9039,9 +9063,10 @@ function syncLocalControllerSlots() {
   remoteHost.controllerSlots = [...socketSlots, ...localSlots];
   remoteHost.controllerCount = remoteHost.controllerSlots.length;
   updateControllerLobbyConnections();
-  if (
-    gameAssetsReady &&
-    areControllerLobbySlotsReady() &&
+  if (controllerGamePreparationStatus === assetLoadStates.ready) {
+    schedulePreparedControllerGameStart();
+  } else if (
+    gameAssetsReady && areControllerLobbySlotsReady() &&
     controllerGamePreparationStatus === assetLoadStates.idle
   ) {
     void prepareControllerGame();
