@@ -57,7 +57,7 @@ import {
   supernovaMissionCounts
 } from "./data/supernova.js";
 import { menuButtonDefinitions } from "./menu-button-utils.js";
-import { normalizePlayerGender, playerGenders } from "./player-profile.js";
+import { getPlayerGrammarParams, normalizePlayerGender, playerGenders } from "./player-profile.js";
 import {
   applyDebugLayoutTransform,
   getStructureVisualPosition,
@@ -3298,6 +3298,7 @@ function getSupernovaBattleOutcomeText(battle) {
   if (consequences.blockedShipId) {
     parts.push(formatLocalizedText("supernovaBattleOutcomeBlocked", {
       player: defender?.name ?? "",
+      ...getPlayerGrammarParams(defender, state.language),
       ship: battle.defenderShipType
     }));
   }
@@ -3306,7 +3307,8 @@ function getSupernovaBattleOutcomeText(battle) {
   }
   if (consequences.destroyedShipId) {
     parts.push(formatLocalizedText("supernovaBattleOutcomeDestroyed", {
-      player: loser?.name ?? ""
+      player: loser?.name ?? "",
+      ...getPlayerGrammarParams(loser, state.language)
     }));
   }
   return parts.filter(Boolean).join(" ");

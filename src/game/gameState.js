@@ -1475,6 +1475,7 @@ function finalizeSupernovaShipBattle(gameState, playersOverride = gameState.play
       messageKey: "logSupernovaBattleShipBlocked",
       messageParams: {
         player: defender.name,
+        ...getPlayerGrammarParams(defender, gameState.language),
         ship: battle.defenderShipType
       }
     });
@@ -1487,11 +1488,13 @@ function finalizeSupernovaShipBattle(gameState, playersOverride = gameState.play
     });
   }
   if (consequences.destroyedShipId) {
+    const destroyedShipOwner = getPlayerById(gameState, battle.loserPlayerId);
     logEntries.push({
       type: "combat",
       messageKey: "logSupernovaBattleShipDestroyed",
       messageParams: {
-        player: getPlayerById(gameState, battle.loserPlayerId)?.name ?? ""
+        player: destroyedShipOwner?.name ?? "",
+        ...getPlayerGrammarParams(destroyedShipOwner, gameState.language)
       }
     });
   }
