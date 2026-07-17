@@ -2477,6 +2477,13 @@ if (factoryPlanet) {
     (afterProduction.players[0].resources[factoryPlanet.resource] ?? 0) === resourceBeforeFactory - (matchingFactoryOption?.cost?.[factoryPlanet.resource] ?? 0) + 2,
     "A Supernova factory should double production for its owner on the matching planet."
   );
+  const factoryProductionRecipient = afterProduction.productionVfx?.events
+    ?.find((event) => event.planetId === factoryPlanet.id)
+    ?.recipients?.find((recipient) => recipient.playerId === "player-1");
+  assert(
+    factoryProductionRecipient?.amount === 2,
+    "Factory production VFX should carry the authoritative +2 amount for the factory owner."
+  );
 }
 assert(
   getBuildableSupernovaFactoryOptions(classicVariantGame, boardLayout, "player-1").length === 0,

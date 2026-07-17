@@ -3017,7 +3017,7 @@ function renderProductionVfxOverlay() {
         "text-anchor": "middle",
         style: `--production-color: ${event.color}; --production-label-ms: ${PRODUCTION_LABEL_MS}ms; animation-delay: ${trailDelay + PRODUCTION_LABEL_DELAY_MS}ms;`
       });
-      label.textContent = "+1";
+      label.textContent = `+${Math.max(1, Number(recipient.amount) || 1)}`;
       overlay.append(label);
     }
   }
