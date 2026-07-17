@@ -600,6 +600,63 @@ test("TV remote focus reaches setup and the controller PWA shell is valid", asyn
   await expect(page.locator("#controller-root")).toBeHidden();
 });
 
+test("settings range keeps horizontal adjustment and releases vertical remote focus", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
+
+  const volume = page.getByRole("slider", { name: "Lautstärke", exact: true });
+  const soundToggle = page.getByRole("button", { name: /Soundeffekte (an|aus)/ });
+  const soundTest = page.getByRole("button", { name: "Sound testen" });
+  await volume.focus();
+  await volume.evaluate((element) => {
+    element.value = "60";
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  await page.keyboard.press("ArrowLeft");
+  await expect(volume).toHaveValue("55");
+  await expect(volume).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(volume).toHaveValue("60");
+
+  await page.evaluate(() => {
+    const event = new KeyboardEvent("keydown", { bubbles: true, key: "Unidentified" });
+    Object.defineProperties(event, {
+      keyCode: { value: 20 },
+      which: { value: 20 }
+    });
+    document.dispatchEvent(event);
+  });
+  await expect(soundTest).toBeFocused();
+  await expect(volume).toHaveValue("60");
+  await volume.focus();
+  await page.evaluate(() => {
+    const event = new KeyboardEvent("keydown", { bubbles: true, key: "Unidentified" });
+    Object.defineProperties(event, {
+      keyCode: { value: 19 },
+      which: { value: 19 }
+    });
+    document.dispatchEvent(event);
+  });
+  await expect(soundToggle).toBeFocused();
+
+  const connectButton = page.getByRole("button", { name: "Controller verbinden" });
+  await connectButton.focus();
+  const focusStyle = await connectButton.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundImage: style.backgroundImage,
+      boxShadow: style.boxShadow,
+      filter: style.filter,
+      outlineStyle: style.outlineStyle
+    };
+  });
+  expect(focusStyle.backgroundImage).toContain("star-odyssey-button-plate.png");
+  expect(focusStyle.boxShadow).toBe("none");
+  expect(focusStyle.filter).toContain("drop-shadow");
+  expect(focusStyle.outlineStyle).toBe("none");
+});
+
 test("controller service worker replaces stale UI caches", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(async () => {

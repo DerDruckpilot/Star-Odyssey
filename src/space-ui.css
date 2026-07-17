@@ -1217,6 +1217,31 @@ textarea:focus-visible {
   box-shadow: var(--so-focus);
 }
 
+.menu-button:hover,
+.menu-button:focus-visible,
+.menu-button.is-remote-focused,
+.secondary-button:hover,
+.secondary-button:focus-visible,
+.secondary-button.is-remote-focused {
+  border: 0;
+  outline: none;
+  color: #fff;
+  background: transparent url("../public/assets/ui/buttons/star-odyssey-button-plate.png") center / 100% 100% no-repeat;
+  box-shadow: none;
+  filter:
+    brightness(1.14)
+    drop-shadow(0 0 0.35rem rgba(151, 228, 255, 0.64))
+    drop-shadow(0 0 1.05rem rgba(55, 194, 255, 0.38))
+    drop-shadow(0 0 1.8rem rgba(55, 194, 255, 0.14));
+}
+
+.modal-content .settings-audio-volume-input:focus-visible,
+.modal-content .settings-audio-volume-input.is-remote-focused {
+  outline: none;
+  box-shadow: none;
+  filter: drop-shadow(0 0 0.45rem rgba(105, 215, 255, 0.55));
+}
+
 .main-menu-action-button:hover,
 .main-menu-action-button:focus-visible,
 .main-menu-action-button.is-remote-focused {

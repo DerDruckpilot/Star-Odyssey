@@ -1566,6 +1566,18 @@ function setRemoteFocus(control, controls = getRemoteFocusControls()) {
   control.focus({ preventScroll: true });
 }
 
+function adjustRemoteRangeInput(input, direction) {
+  const min = Number.isFinite(Number(input.min)) ? Number(input.min) : 0;
+  const max = Number.isFinite(Number(input.max)) ? Number(input.max) : 100;
+  const step = Number.isFinite(Number(input.step)) && Number(input.step) > 0 ? Number(input.step) : 1;
+  const current = Number.isFinite(Number(input.value)) ? Number(input.value) : min;
+  const next = Math.min(max, Math.max(min, current + (direction === "right" ? step : -step)));
+  if (next === current) return;
+  input.value = String(next);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 function findRemoteControlInDirection(controls, current, direction) {
   const currentRect = current.getBoundingClientRect();
   const origin = {
@@ -1682,6 +1694,22 @@ function handleRemoteKeydown(event) {
     return;
   }
   if (!direction) return;
+  const activeRange = active instanceof HTMLInputElement && active.type === "range" ? active : null;
+  if (activeRange) {
+    if (direction === "left" || direction === "right") {
+      event.preventDefault();
+      adjustRemoteRangeInput(activeRange, direction);
+      return;
+    }
+    const controls = getRemoteFocusControls();
+    const currentIndex = controls.indexOf(activeRange);
+    const next = controls[currentIndex + (direction === "down" ? 1 : -1)];
+    if (next) {
+      event.preventDefault();
+      setRemoteFocus(next, controls);
+    }
+    return;
+  }
   if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
   const controls = getRemoteFocusControls();
   if (controls.length === 0) return;
