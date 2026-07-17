@@ -1092,6 +1092,71 @@ test("active controller places a Supernova factory on a valid planet", async ({ 
   await controller.close();
 });
 
+test("board tab exposes and executes the selected trade ship outpost action", async ({ page }) => {
+  await page.goto("/");
+  const setup = await page.evaluate(async () => {
+    const [{ createGameState }, { boardLayout }] = await Promise.all([
+      import("/src/game/gameState.js"),
+      import("/src/data/boardLayout.js")
+    ]);
+    const gameState = createGameState({
+      language: "de",
+      playerCount: 2,
+      boardLayout
+    });
+    const outpost = gameState.board.placedOutposts[0];
+    const shipId = "board-context-trade-ship";
+    gameState.phase = "flight";
+    gameState.currentPlayerIndex = 0;
+    gameState.hasRolledFlightSpeed = true;
+    gameState.flightSpeedTotal = 3;
+    gameState.remainingMovementByShipId = { [shipId]: 2 };
+    gameState.board.exploredOutposts = [...new Set([...(gameState.board.exploredOutposts ?? []), outpost.id])];
+    gameState.board.ships = [{
+      id: shipId,
+      ownerPlayerId: "player-1",
+      type: "tradeShip",
+      shipVariant: 1,
+      locationId: outpost.dockNodeId,
+      status: "active"
+    }];
+    gameState.players[0].upgrades = {
+      ...gameState.players[0].upgrades,
+      cargo: 5
+    };
+    localStorage.removeItem("starOdyssey.autosave.v1");
+    localStorage.setItem("star-odyssey-current-game", JSON.stringify(gameState));
+    return { outpostId: outpost.id, shipId };
+  });
+
+  await page.reload();
+  await expect(page.locator(".board-screen")).toBeVisible();
+  const controller = await page.context().newPage();
+  const controllerStates = collectControllerStateFrames(controller);
+  await controller.goto(await getAuthorizedControllerUrl(page, 1));
+  await controller.getByRole("button", { name: "Spielfeld" }).click();
+  await controller.locator(`[data-board-type="ship"][data-board-id="${setup.shipId}"]`).click({ force: true });
+  await expect.poll(() => getLatestPlayerState(controllerStates)?.flight?.selectedShipId).toBe(setup.shipId);
+  await expect.poll(() => getLatestPlayerState(controllerStates)?.actions
+    ?.filter((action) => action.id === "found.tradeStation"))
+    .toEqual([expect.objectContaining({ payload: { shipId: setup.shipId } })]);
+  const foundAction = controller.getByRole("button", { name: "Handelsstation gründen", exact: true });
+  await expect(foundAction).toBeVisible();
+  await foundAction.click();
+
+  await expect.poll(() => page.evaluate(({ outpostId, shipId }) => {
+    const saved = JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null");
+    return {
+      stationCount: saved?.board?.structures?.filter((structure) => (
+        structure.type === "tradeStation" && structure.outpostId === outpostId
+      )).length ?? 0,
+      shipStillPresent: saved?.board?.ships?.some((ship) => ship.id === shipId) ?? false
+    };
+  }, setup)).toEqual({ stationCount: 1, shipStillPresent: false });
+  await expect(foundAction).toHaveCount(0);
+  await controller.close();
+});
+
 test("placement animation updates only its dynamic board layer", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(async () => {
