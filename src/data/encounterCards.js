@@ -213,21 +213,60 @@ const encounterCards = [
     gainHalf
   ], [
     chooseShipBlock
-  ]),
+  ], {
+    winText: L(
+      "Sieg. Du rettest einen Händler. Als Dank schenkt er dir 2 Handelswaren. Zusätzlich erhältst du 1 halbe Medaille.",
+      "Victory. You save a merchant. In gratitude, he gives you 2 goods. You also gain 1 half medal."
+    ),
+    loseText: L(
+      "Niederlage. Wähle eines deiner Schiffe. Es darf in dieser Runde nicht fliegen.",
+      "Defeat. Choose one of your ships. It cannot move this round."
+    ),
+    declineText: L(
+      "Deine feige Flucht bleibt ohne Folgen.",
+      "Your cowardly retreat has no consequences."
+    )
+  }),
   createPirateHelpCard(23, "piratenangriff-gruenes-volk", 1, [loseHalf], [
     { type: "chooseResourceGain", amount: 2 },
     gainHalf
   ], [
     chooseUpgradeLoss,
     gainHalf
-  ]),
+  ], {
+    winText: L(
+      "Sieg. Du rettest eine Fürstin des grünen Volkes und erhältst 2 beliebige Rohstoffe und 1 halbe Medaille.",
+      "Victory. You save a princess of the green people and gain 2 resources of your choice and 1 half medal."
+    ),
+    loseText: L(
+      "Niederlage. Wähle einen echten Ausbau deines Mutterschiffs und entferne ihn. Für deine mutige Tat erhältst du dennoch 1 halbe Medaille.",
+      "Defeat. Choose and remove one real upgrade from your mothership. You still gain 1 half medal for your courage."
+    ),
+    declineText: L(
+      "Deine feige Flucht wird bekannt. Du verlierst 1 halbe Medaille.",
+      "Your cowardly retreat becomes known. You lose 1 half medal."
+    )
+  }),
   createPirateHelpCard(24, "piratenangriff-wanderndes-volk", -1, [loseHalf], [
     jumpShip,
     gainHalf
   ], [
     chooseShipBlock,
     gainHalf
-  ]),
+  ], {
+    winText: L(
+      "Sieg. Du rettest ein Raumschiff des wandernden Volkes. Wähle eines deiner Schiffe und führe damit einen Raumsprung aus. Zusätzlich erhältst du 1 halbe Medaille.",
+      "Victory. You save a ship of the wandering people. Choose one of your ships and perform a spatial jump with it. You also gain 1 half medal."
+    ),
+    loseText: L(
+      "Niederlage. Wähle eines deiner Schiffe. Es darf in dieser Runde nicht fliegen. Für deinen Mut erhältst du dennoch 1 halbe Medaille.",
+      "Defeat. Choose one of your ships. It cannot move this round. You still gain 1 half medal for your courage."
+    ),
+    declineText: L(
+      "Deine feige Flucht wird bekannt. Du verlierst 1 halbe Medaille.",
+      "Your cowardly retreat becomes known. You lose 1 half medal."
+    )
+  }),
   createSpaceDistortionCard(25, "raumzerrung-raumsprung-1", -1, [
     jumpShip
   ], [
@@ -588,7 +627,7 @@ function createDistressCard(number, id, neighborOffset, declineEffects, successE
   });
 }
 
-function createPirateHelpCard(number, id, neighborOffset, declineEffects, winEffects, loseEffects) {
+function createPirateHelpCard(number, id, neighborOffset, declineEffects, winEffects, loseEffects, outcomeText) {
   return createEncounterCard({
     number,
     id,
@@ -602,14 +641,14 @@ function createPirateHelpCard(number, id, neighborOffset, declineEffects, winEff
         {
           type: "combat",
           neighborOffset,
-          winText: L("Sieg. Du hast geholfen."),
-          loseText: L("Niederlage. Der Pirat setzt dir zu."),
+          winText: normalizeText(outcomeText.winText),
+          loseText: normalizeText(outcomeText.loseText),
           onWin: winEffects,
           onLose: loseEffects
         }
       ], { resultText: L("Du greifst in den Kampf ein.") }),
       createChoice("decline", "Nein", "No", declineEffects, {
-        resultText: L("Du greifst nicht ein.")
+        resultText: normalizeText(outcomeText.declineText)
       })
     ],
     notes: "Pirate help card with combat against the specified neighbor."

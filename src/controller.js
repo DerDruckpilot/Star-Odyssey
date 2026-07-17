@@ -1115,7 +1115,7 @@ function renderEncounterPanel() {
   const panel = document.createElement("div");
   panel.className = "selection-panel controller-encounter-panel";
   const title = document.createElement("strong");
-  title.textContent = t("encounter");
+  title.textContent = gameState.encounter.title || t("encounter");
   const isOwner = gameState.encounter.playerId === selectedPlayerId;
   const pendingStep = gameState.encounter.pendingStep;
   const isSingleRollStep = pendingStep?.type === "singleMothershipRoll";

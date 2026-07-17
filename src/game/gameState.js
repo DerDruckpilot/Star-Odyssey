@@ -3726,7 +3726,22 @@ function normalizeActiveEncounter(activeEncounter) {
     chosenUpgrade: ["drive", "cargo", "cannon"].includes(activeEncounter.chosenUpgrade) ? activeEncounter.chosenUpgrade : null,
     combat: normalizeEncounterCombat(activeEncounter.combat),
     resultText: normalizeLocalizedText(activeEncounter.resultText),
+    resolution: normalizeEncounterResolution(activeEncounter.resolution, activeEncounter.cardId),
     pendingStep: normalizePendingEncounterStep(activeEncounter.pendingStep)
+  };
+}
+
+function normalizeEncounterResolution(resolution, encounterId) {
+  if (!resolution || typeof resolution !== "object") return null;
+  return {
+    encounterId,
+    selectedOption: typeof resolution.selectedOption === "string" ? resolution.selectedOption : null,
+    outcome: ["pending", "win", "lose", "success", "failure", "resolved"].includes(resolution.outcome)
+      ? resolution.outcome
+      : "pending",
+    cardResultText: normalizeLocalizedText(resolution.cardResultText),
+    consequencesApplied: Boolean(resolution.consequencesApplied),
+    completed: Boolean(resolution.completed)
   };
 }
 
@@ -4087,6 +4102,7 @@ function startEncounter(gameState, forcedEncounterCardId = null) {
       chosenUpgrade: null,
       combat: null,
       resultText: null,
+      resolution: null,
       pendingStep: null
     },
     encounterStep: "choice"
@@ -4139,6 +4155,14 @@ function createEncounterWorkingState(gameState) {
 
 function applyEncounterResolution(gameState, encounter, resolution, metadata = {}) {
   if (!resolution) return gameState;
+  const finalResultText = resolution.resultText ?? encounter.resultText ?? null;
+  const completed = !resolution.pendingStep && (resolution.status ?? "resolved") === "resolved";
+  const outcome = resolution.combat?.outcome
+    ?? encounter.combat?.outcome
+    ?? (completed ? "resolved" : "pending");
+  const outcomeLog = completed && finalResultText && !encounter.resolution?.completed
+    ? [createEncounterLog("logEncounterCardOutcome", { result: finalResultText })]
+    : [];
   const baseUpdate = {
     players: resolution.players ?? gameState.players,
     board: resolution.board ? { ...gameState.board, ...resolution.board } : gameState.board,
@@ -4147,7 +4171,7 @@ function applyEncounterResolution(gameState, encounter, resolution, metadata = {
       resolution.players ?? gameState.players
     ),
     remainingMovementByShipId: resolution.remainingMovementByShipId ?? gameState.remainingMovementByShipId,
-    logEntries: resolution.logEntries ?? []
+    logEntries: [...(resolution.logEntries ?? []), ...outcomeLog]
   };
 
   if (resolution.nextEncounter) {
@@ -4192,7 +4216,15 @@ function applyEncounterResolution(gameState, encounter, resolution, metadata = {
     chosenResource: metadata.chosenResource ?? encounter.chosenResource ?? null,
     chosenUpgrade: metadata.chosenUpgrade ?? encounter.chosenUpgrade ?? null,
     combat: resolution.combat ?? encounter.combat ?? null,
-    resultText: resolution.resultText ?? encounter.resultText ?? null,
+    resultText: finalResultText,
+    resolution: {
+      encounterId: encounter.cardId,
+      selectedOption: metadata.choiceId ?? encounter.choiceId ?? null,
+      outcome,
+      cardResultText: finalResultText,
+      consequencesApplied: completed,
+      completed
+    },
     pendingStep: resolution.pendingStep ? normalizePendingEncounterStep(resolution.pendingStep) : null,
     status: resolution.pendingStep ? "pending" : (resolution.status ?? "resolved")
   };

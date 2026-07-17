@@ -1571,6 +1571,53 @@ assert(pirateFightText.includes("Sieg."), "Combat encounters should show the sel
 assert(!pirateFightText.includes("Niederlage."), "Combat encounters should not show unselected failure text.");
 assert(!pirateFightText.includes("Hast du gleich"), "Combat encounters should not dump earlier decision steps after the result.");
 
+const pirateHelpCard = getEncounterCardById("spreadsheet-22");
+const pirateHelpCombat = pirateHelpCard?.choices
+  ?.find((choice) => choice.id === "help")
+  ?.effects?.find((effect) => effect.type === "combat");
+assert(
+  ![pirateHelpCombat?.winText?.de, pirateHelpCombat?.loseText?.de].includes("Sieg. Du hast geholfen."),
+  "Pirate-help encounters must not use the generic help fallback as their card result."
+);
+let pirateHelpGame = determineFlightSpeed(encounterBaseState, {
+  balls: ["black", "yellow"],
+  encounterCardId: "spreadsheet-22"
+});
+pirateHelpGame = revealPendingFlightEncounter(pirateHelpGame);
+const pirateHelpGoodsBefore = pirateHelpGame.players[0].resources.goods;
+const pirateHelpMedalsBefore = pirateHelpGame.players[0].halfMedals;
+pirateHelpGame = resolveEncounterChoice(pirateHelpGame, { choiceId: "help" });
+pirateHelpGame = submitEncounterMothershipRoll(pirateHelpGame, "player-1", ["red", "red"]);
+pirateHelpGame = submitEncounterMothershipRoll(pirateHelpGame, "player-2", ["blue", "blue"]);
+assert(
+  pirateHelpGame.activeEncounter?.resultText?.de.includes("2 Handelswaren")
+    && pirateHelpGame.activeEncounter?.resultText?.de.includes("1 halbe Medaille"),
+  "Pirate-help card 22 should show its concrete merchant rescue reward."
+);
+assert(
+  pirateHelpGame.players[0].resources.goods === pirateHelpGoodsBefore + 2,
+  "Pirate-help card 22 should grant exactly two goods."
+);
+assert(
+  pirateHelpGame.players[0].halfMedals === pirateHelpMedalsBefore + 1,
+  "Pirate-help card 22 should grant exactly one half medal."
+);
+assert(
+  pirateHelpGame.activeEncounter?.resolution?.completed
+    && pirateHelpGame.activeEncounter.resolution.consequencesApplied,
+  "Completed encounters should persist an authoritative completed resolution."
+);
+const savedPirateHelpGame = normalizeGameState(JSON.parse(JSON.stringify(pirateHelpGame)), {
+  language: "de",
+  playerCount: 2,
+  boardLayout
+});
+assert(
+  savedPirateHelpGame.players[0].resources.goods === pirateHelpGoodsBefore + 2
+    && savedPirateHelpGame.activeEncounter?.resolution?.completed,
+  "Save/load should preserve the applied pirate-help reward without applying it again."
+);
+
 let pirateFleeGame = determineFlightSpeed(encounterBaseState, {
   balls: ["black", "yellow"],
   encounterCardId: "spreadsheet-18"

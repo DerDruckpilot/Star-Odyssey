@@ -4102,6 +4102,10 @@ function renderEncounterActions(player) {
   if (!encounter || !card) return wrapper;
 
   const activePlayer = getActivePlayer();
+  const heading = document.createElement("strong");
+  heading.className = "encounter-card-title";
+  heading.textContent = getLocalizedEncounterText(card.title) || t("encounter");
+  wrapper.append(heading);
   if (encounter.pendingStep?.type === "message") {
     wrapper.append(renderEncounterMessage(
       encounter.pendingStep,
@@ -5246,6 +5250,7 @@ function formatLocalizedText(key, params = {}) {
 }
 
 function formatMessageParam(key, value) {
+  if (key === "result" && value && typeof value === "object") return getLocalizedEncounterText(value);
   if (["resource", "giveResource", "receiveResource"].includes(key)) return getResourceLabel(value);
   if (key === "resources") return String(value).split(", ").map((resource) => getResourceLabel(resource)).join(", ");
   if (key === "upgrade") return getUpgradeLabel(value);
@@ -9482,11 +9487,22 @@ function getRemoteEncounterStateForController() {
   const canChoose = !encounter.pendingStep && encounter.status !== "resolved";
   return {
     active: true,
+    title: getLocalizedEncounterText(card?.title) || t("encounter"),
     playerId: getEncounterActionPlayer()?.id ?? getActivePlayer()?.id ?? null,
     prompt: promptText || "",
     resultText: resultText || "",
     pendingType: encounter.pendingStep?.type ?? null,
     pendingStep: getRemoteEncounterPendingStep(encounter.pendingStep),
+    resolution: encounter.resolution
+      ? {
+        encounterId: encounter.resolution.encounterId,
+        selectedOption: encounter.resolution.selectedOption,
+        outcome: encounter.resolution.outcome,
+        cardResultText: getLocalizedEncounterText(encounter.resolution.cardResultText),
+        consequencesApplied: Boolean(encounter.resolution.consequencesApplied),
+        completed: Boolean(encounter.resolution.completed)
+      }
+      : null,
     status: encounter.status,
     choices: canChoose ? (card?.choices ?? []).map((choice) => ({
       id: choice.id,
