@@ -1613,9 +1613,30 @@ export function canFoundColonyWithShip(gameState, boardLayout, shipId) {
   );
 }
 
+export function canFoundTradeStationWithShip(gameState, boardLayout, shipId) {
+  if (!gameState || isGameOverState(gameState) || gameState.phase !== "flight") return false;
+
+  const activePlayer = gameState.players?.[gameState.currentPlayerIndex];
+  const ship = normalizeShips(gameState.board?.ships).find((candidate) => candidate.id === shipId);
+  const outpost = getDockingOutpost(gameState, boardLayout, ship?.locationId);
+  const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout);
+  const availableDocks = getAvailableOutpostDocks(gameState, boardLayout, outpost?.id, structures);
+  const existingOutpostStations = structures
+    .filter((structure) => structure.type === "tradeStation" && structure.outpostId === outpost?.id);
+
+  return Boolean(
+    activePlayer &&
+    ship &&
+    ship.ownerPlayerId === activePlayer.id &&
+    ship.type === "tradeShip" &&
+    outpost &&
+    availableDocks.length > 0 &&
+    getCargoValueForPlayer(gameState, activePlayer.id) >= existingOutpostStations.length + 1
+  );
+}
+
 export function foundTradeStation(gameState, boardLayout, shipId) {
-  if (isGameOverState(gameState)) return gameState;
-  if (gameState.phase !== "flight") return gameState;
+  if (!canFoundTradeStationWithShip(gameState, boardLayout, shipId)) return gameState;
 
   const activePlayer = gameState.players[gameState.currentPlayerIndex];
   const ships = normalizeShips(gameState.board?.ships);
@@ -1624,20 +1645,7 @@ export function foundTradeStation(gameState, boardLayout, shipId) {
   const structures = normalizeStructures(gameState.board?.structures, gameState.playerCount, boardLayout);
   const availableDocks = getAvailableOutpostDocks(gameState, boardLayout, outpost?.id, structures);
   const selectedDock = availableDocks[0] ?? null;
-  const existingOutpostStations = structures
-    .filter((structure) => structure.type === "tradeStation" && structure.outpostId === outpost?.id);
-  const requiredCargo = existingOutpostStations.length + 1;
-  if (
-    !activePlayer ||
-    !ship ||
-    ship.ownerPlayerId !== activePlayer.id ||
-    ship.type !== "tradeShip" ||
-    !outpost ||
-    !selectedDock ||
-    getCargoValueForPlayer(gameState, activePlayer.id) < requiredCargo
-  ) {
-    return gameState;
-  }
+  if (!selectedDock) return gameState;
 
   return placeTradeStationAtDock(gameState, boardLayout, {
     activePlayer,
@@ -2000,23 +2008,6 @@ export function getShipDestinationState(gameState, boardLayout, shipId, targetNo
       endpointType,
       reason: "colonyLimit"
     };
-  }
-
-  if (ship.type === "tradeShip" && outpost) {
-    const hasOpenDock = getAvailableOutpostDocks(gameState, boardLayout, outpost.id, structures).length > 0;
-    const requiredCargo = structures
-      .filter((structure) => structure.type === "tradeStation" && structure.outpostId === outpost.id)
-      .length + 1;
-    const owningPlayer = gameState.players.find((player) => player.id === ship.ownerPlayerId);
-    if (getCargoValueForPlayer(gameState, owningPlayer?.id) < requiredCargo || !hasOpenDock) {
-      return {
-        validDestination: false,
-        passable: true,
-        distance,
-        endpointType,
-        reason: "shipType"
-      };
-    }
   }
 
   return {

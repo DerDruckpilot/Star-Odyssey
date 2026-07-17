@@ -8,6 +8,7 @@ import {
   calculateVictoryPoints,
   buildShip,
   canFoundColonyWithShip,
+  canFoundTradeStationWithShip,
   cancelPendingFactoryPlacement,
   cancelPendingSpaceportUpgrade,
   cancelTradeOffer,
@@ -2093,6 +2094,48 @@ if (dockScenario) {
   assert(
     tradeDockResult.board.ships.find((ship) => ship.id === "player-1-trade-dock")?.locationId === dockScenario.outpost.dockNodeId,
     "Trade ships should be able to end on valid outpost dock points."
+  );
+  assert(
+    canFoundTradeStationWithShip(tradeDockResult, boardLayout, "player-1-trade-dock"),
+    "A trade ship at an outpost center should be able to found a trade station when all requirements are met."
+  );
+
+  const lowCargoTradeShipState = createMovementTestState(game, {
+    ships: [
+      {
+        id: "player-1-low-cargo-trade-dock",
+        ownerPlayerId: "player-1",
+        type: "tradeShip",
+        locationId: dockScenario.approachNodeId,
+        status: "active"
+      }
+    ],
+    playerMutator: (player, index) => index === 0
+      ? {
+        ...player,
+        upgrades: {
+          ...player.upgrades,
+          cargo: 0
+        }
+      }
+      : player,
+    remainingMovementByShipId: {
+      "player-1-low-cargo-trade-dock": 1
+    }
+  });
+  const lowCargoDockResult = moveShip(
+    lowCargoTradeShipState,
+    boardLayout,
+    "player-1-low-cargo-trade-dock",
+    dockScenario.outpost.dockNodeId
+  );
+  assert(
+    lowCargoDockResult.board.ships.find((ship) => ship.id === "player-1-low-cargo-trade-dock")?.locationId === dockScenario.outpost.dockNodeId,
+    "Trade ships should be able to enter an outpost center before meeting the founding requirements."
+  );
+  assert(
+    !canFoundTradeStationWithShip(lowCargoDockResult, boardLayout, "player-1-low-cargo-trade-dock"),
+    "Landing at an outpost must not bypass the cargo requirement for founding a trade station."
   );
 
   const colonyShipBlockedAtDock = createMovementTestState(game, {
