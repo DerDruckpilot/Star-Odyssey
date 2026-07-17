@@ -2010,13 +2010,22 @@ function renderBoardFullscreen() {
   header.className = "controller-board-header";
   const title = document.createElement("h2");
   title.textContent = t("controllerBoard");
+  const context = document.createElement("div");
+  context.className = "controller-board-context";
   const mode = document.createElement("p");
   mode.textContent = getControllerBoardModeLabel();
+  context.append(mode);
+  const contextActions = getBoardContextActions();
+  if (contextActions.length > 0) {
+    const actionGrid = renderActionGrid(contextActions);
+    actionGrid.classList.add("controller-board-context-actions");
+    context.append(actionGrid);
+  }
   const backButton = createButton(t("backToMenu"), () => {
     boardFullscreen = false;
     render();
   }, "controller-board-back-button");
-  header.append(title, mode, backButton);
+  header.append(title, context, backButton);
 
   const viewport = document.createElement("div");
   viewport.className = "controller-board-viewport";
@@ -2031,6 +2040,16 @@ function renderBoardFullscreen() {
   section.append(header, viewport);
   requestAnimationFrame(() => fitControllerBoardToViewport(viewport, content));
   return section;
+}
+
+function getBoardContextActions() {
+  if (!isSelectedPlayerActive()) return [];
+  const selectedShipId = gameState?.flight?.selectedShipId;
+  if (!selectedShipId) return [];
+  return getFilteredActions().filter((action) => (
+    ["found.colony", "found.tradeStation"].includes(action.id) &&
+    action.payload?.shipId === selectedShipId
+  ));
 }
 
 function appendCachedControllerBoardSvg(content, markup) {

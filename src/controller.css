@@ -377,9 +377,9 @@ body {
 }
 
 .controller-board-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 0.65rem;
   border: 1px solid rgba(148, 163, 184, 0.34);
   padding: 0.45rem 0.55rem;
@@ -389,6 +389,52 @@ body {
 .controller-board-header h2,
 .controller-board-header p {
   margin: 0;
+}
+
+.controller-board-context {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+}
+
+.controller-board-context p {
+  min-width: 0;
+  text-align: center;
+}
+
+.controller-board-context-actions {
+  width: auto;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.35rem;
+}
+
+.controller-board-context-actions button {
+  width: auto;
+  min-height: 2rem;
+  padding: 0.28rem 0.65rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .controller-board-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .controller-board-header h2 {
+    display: none;
+  }
+
+  .controller-board-context {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .controller-board-context p {
+    text-align: left;
+  }
 }
 
 .controller-board-header p {

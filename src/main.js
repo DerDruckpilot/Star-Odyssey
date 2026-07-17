@@ -71,6 +71,7 @@ import {
   buildShip,
   buyUpgrade,
   canFoundColonyWithShip as canFoundColonyInGame,
+  canFoundTradeStationWithShip as canFoundTradeStationInGame,
   canDrawSupply,
   cancelPendingFactoryPlacement,
   cancelPendingShipPlacement,
@@ -95,6 +96,7 @@ import {
   getCargoValueForPlayer,
   getBuildableSupernovaFactoryOptions,
   getEffectiveUpgradeValue,
+  getAvailableBoardActions,
   getFriendshipUpgradeBonus,
   getRealUpgradeValue,
   getReachableNodes,
@@ -7252,29 +7254,10 @@ function canFoundColonyWithShip(ship) {
 }
 
 function canFoundTradeStationWithShip(ship) {
-  const outpost = getDockingOutpostForNode(ship.locationId);
   return Boolean(
     !isShipFlightAnimating(ship.id) &&
-    state.gameState?.phase === "flight" &&
-    ship.type === "tradeShip" &&
-    outpost &&
-    getAvailableTradeStationDocks(outpost.id).length > 0 &&
-    getCargoValueForPlayer(state.gameState, getActivePlayer()?.id) >= getTradeStationRequirement(ship.locationId)
+    canFoundTradeStationInGame(state.gameState, boardLayout, ship.id)
   );
-}
-
-function getFoundableColonyShipsForActivePlayer() {
-  const activePlayer = getActivePlayer();
-  if (!activePlayer) return [];
-  return (state.gameState?.board?.ships ?? [])
-    .filter((ship) => ship.ownerPlayerId === activePlayer.id && canFoundColonyWithShip(ship));
-}
-
-function getFoundableTradeStationShipsForActivePlayer() {
-  const activePlayer = getActivePlayer();
-  if (!activePlayer) return [];
-  return (state.gameState?.board?.ships ?? [])
-    .filter((ship) => ship.ownerPlayerId === activePlayer.id && canFoundTradeStationWithShip(ship));
 }
 
 function getTradeStationRequirement(nodeId) {
@@ -9785,11 +9768,14 @@ function getRemoteControllerActions() {
       }
       actions.push(createRemoteAction("determineSpeed", t("determineSpeed"), {}, { requiresActivePlayer: true }));
     }
-    for (const ship of getFoundableColonyShipsForActivePlayer()) {
-      actions.push(createRemoteAction("found.colony", t("foundColony"), { shipId: ship.id }, { requiresActivePlayer: true }));
-    }
-    for (const ship of getFoundableTradeStationShipsForActivePlayer()) {
-      actions.push(createRemoteAction("found.tradeStation", t("foundTradeStation"), { shipId: ship.id }, { requiresActivePlayer: true }));
+    const boardActions = getAvailableBoardActions(
+      state.gameState,
+      boardLayout,
+      getActivePlayer()?.id
+    ).filter((action) => !isShipFlightAnimating(action.shipId));
+    for (const action of boardActions) {
+      const labelKey = action.id === "found.colony" ? "foundColony" : "foundTradeStation";
+      actions.push(createRemoteAction(action.id, t(labelKey), { shipId: action.shipId }, { requiresActivePlayer: true }));
     }
     actions.push(createRemoteAction("endTurn", t("endTurn"), {}, { requiresActivePlayer: true }));
   }

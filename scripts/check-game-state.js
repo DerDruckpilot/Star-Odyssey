@@ -22,6 +22,7 @@ import {
   endCurrentTurn,
   finishEncounter,
   getEffectiveUpgradeValue,
+  getAvailableBoardActions,
   getBuildableSupernovaFactoryOptions,
   getFriendshipUpgradeBonus,
   foundColony,
@@ -331,6 +332,11 @@ function createTwoPlayerColonyLimitGame(gameVariant) {
 
   const { limitGame: fourPlayerColonyLimitGame } = createColonyLimitGame(4);
   assert(canFoundColonyWithShip(fourPlayerColonyLimitGame, boardLayout, "colony-limit-ship"), "Four-player games should allow all three colony sites in a system.");
+  assert(
+    getAvailableBoardActions(fourPlayerColonyLimitGame, boardLayout, "player-1", "colony-limit-ship")
+      .some((action) => action.id === "found.colony" && action.shipId === "colony-limit-ship"),
+    "The shared board action selector should expose colony founding for the selected colony ship."
+  );
   assert(
     foundColony(fourPlayerColonyLimitGame, boardLayout, "colony-limit-ship").board.structures.length === 3,
     "The three-player colony limit must not affect four-player games."
@@ -2099,6 +2105,11 @@ if (dockScenario) {
     canFoundTradeStationWithShip(tradeDockResult, boardLayout, "player-1-trade-dock"),
     "A trade ship at an outpost center should be able to found a trade station when all requirements are met."
   );
+  assert(
+    getAvailableBoardActions(tradeDockResult, boardLayout, "player-1", "player-1-trade-dock")
+      .some((action) => action.id === "found.tradeStation" && action.shipId === "player-1-trade-dock"),
+    "The shared board action selector should expose trade-station founding for the selected trade ship."
+  );
 
   const lowCargoTradeShipState = createMovementTestState(game, {
     ships: [
@@ -2136,6 +2147,10 @@ if (dockScenario) {
   assert(
     !canFoundTradeStationWithShip(lowCargoDockResult, boardLayout, "player-1-low-cargo-trade-dock"),
     "Landing at an outpost must not bypass the cargo requirement for founding a trade station."
+  );
+  assert(
+    getAvailableBoardActions(lowCargoDockResult, boardLayout, "player-1", "player-1-low-cargo-trade-dock").length === 0,
+    "The shared board action selector must hide trade-station founding until its requirements are met."
   );
 
   const colonyShipBlockedAtDock = createMovementTestState(game, {

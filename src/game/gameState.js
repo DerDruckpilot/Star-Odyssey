@@ -1635,6 +1635,29 @@ export function canFoundTradeStationWithShip(gameState, boardLayout, shipId) {
   );
 }
 
+export function getAvailableBoardActions(gameState, boardLayout, playerId, selectedEntityId = null) {
+  if (!gameState || isGameOverState(gameState) || gameState.phase !== "flight") return [];
+
+  const activePlayer = gameState.players?.[gameState.currentPlayerIndex];
+  if (!activePlayer || activePlayer.id !== playerId) return [];
+
+  const ships = normalizeShips(gameState.board?.ships)
+    .filter((ship) => ship.ownerPlayerId === playerId)
+    .filter((ship) => !selectedEntityId || ship.id === selectedEntityId);
+  const actions = [];
+
+  for (const ship of ships) {
+    if (canFoundColonyWithShip(gameState, boardLayout, ship.id)) {
+      actions.push({ id: "found.colony", shipId: ship.id });
+    }
+    if (canFoundTradeStationWithShip(gameState, boardLayout, ship.id)) {
+      actions.push({ id: "found.tradeStation", shipId: ship.id });
+    }
+  }
+
+  return actions;
+}
+
 export function foundTradeStation(gameState, boardLayout, shipId) {
   if (!canFoundTradeStationWithShip(gameState, boardLayout, shipId)) return gameState;
 
