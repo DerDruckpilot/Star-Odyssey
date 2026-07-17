@@ -188,6 +188,36 @@ body {
   color: #94a3b8;
 }
 
+.controller-mission-explanation {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-left: 2px solid rgba(103, 213, 255, 0.72);
+  color: #dbeafe;
+  background: rgba(3, 14, 31, 0.62);
+  line-height: 1.35;
+}
+
+.controller-mission-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
+  gap: 0.55rem;
+}
+
+.controller-mission-card.is-fulfilled {
+  border-color: rgba(91, 224, 166, 0.72);
+  box-shadow: inset 0 0 1.2rem rgba(39, 174, 112, 0.1);
+}
+
+.controller-mission-status {
+  color: #9edcff;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.controller-mission-card.is-fulfilled .controller-mission-status {
+  color: #87efbd;
+}
+
 .controller-field {
   display: grid;
   gap: 0.35rem;

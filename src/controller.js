@@ -655,6 +655,7 @@ function renderTabs() {
     ["mothership", t("tabUpgrades")],
     ["build", t("tabBuild")],
     ["outposts", t("tabOutposts")],
+    ...(gameState?.gameVariant === "supernova" ? [["missions", t("tabMissions")]] : []),
     ["overview", t("tabOverview")],
     ["board", t("controllerBoard")]
   ];
@@ -691,6 +692,7 @@ function commitSetupNameDraft(slot, name) {
 function renderActiveTab(player) {
   if (gameState?.encounter?.active || gameState?.supernovaBattle?.active) return renderTurnTab(player);
   if (activeTab === "settings") return renderSettingsTab();
+  if (activeTab === "missions" && gameState?.gameVariant === "supernova") return renderMissionsTab(player);
   if (activeTab === "overview") return renderOverviewTab(player);
   if (activeTab === "build") return renderBuildTab(player);
   if (activeTab === "mothership") return renderMothershipTab(player);
@@ -1915,27 +1917,40 @@ function renderPlayerOverview(player) {
     list.append(label, value);
   }
   wrapper.append(title, list);
-  if (player?.supernovaMissions?.length) {
-    const missions = document.createElement("div");
-    missions.className = "friendship-card-list";
-    const missionsTitle = document.createElement("strong");
-    missionsTitle.textContent = t("supernovaMissions");
-    missions.append(missionsTitle);
-    for (const mission of player.supernovaMissions) {
-      const item = document.createElement("article");
-      item.className = "friendship-card";
-      const heading = document.createElement("strong");
-      heading.textContent = getSupernovaLocalizedTitle(mission, gameState?.language);
-      const text = document.createElement("p");
-      text.textContent = getSupernovaLocalizedText(mission, gameState?.language);
-      const status = document.createElement("small");
-      status.textContent = t(mission.fulfilled ? "missionFulfilled" : "missionOpen");
-      item.append(heading, text, status);
-      missions.append(item);
-    }
-    wrapper.append(missions);
-  }
   return wrapper;
+}
+
+function renderMissionsTab(player) {
+  const section = document.createElement("section");
+  section.className = "player-hud-tab-content controller-section controller-missions";
+  const title = document.createElement("h2");
+  title.textContent = t("supernovaMissions");
+  const explanation = document.createElement("p");
+  explanation.className = "controller-mission-explanation";
+  explanation.textContent = t("supernovaMissionWinCondition");
+  const missions = document.createElement("div");
+  missions.className = "friendship-card-list controller-mission-list";
+  for (const mission of player?.supernovaMissions ?? []) {
+    const item = document.createElement("article");
+    item.className = `friendship-card controller-mission-card${mission.fulfilled ? " is-fulfilled" : ""}`;
+    const heading = document.createElement("strong");
+    heading.textContent = getSupernovaLocalizedTitle(mission, gameState?.language);
+    const text = document.createElement("p");
+    text.textContent = getSupernovaLocalizedText(mission, gameState?.language);
+    const status = document.createElement("small");
+    status.className = "controller-mission-status";
+    status.textContent = t(mission.fulfilled ? "missionFulfilled" : "missionOpen");
+    item.append(heading, text, status);
+    missions.append(item);
+  }
+  if (!missions.childElementCount) {
+    const empty = document.createElement("p");
+    empty.className = "controller-empty";
+    empty.textContent = t("supernovaMissionNone");
+    missions.append(empty);
+  }
+  section.append(title, explanation, missions);
+  return section;
 }
 
 function renderFriendshipSummary(player) {

@@ -2857,8 +2857,16 @@ function runSupernovaMissionChecks() {
   );
   assert(
     supernovaMissionCards.find((mission) => mission.id === "mission-explorer")?.originalText ===
-      "Es muss mindestens je eine Kolonie an den entferntesten Systemen gegründet werden.",
-    "The explorer mission should retain the exact plural source text."
+      "Gründe an jedem der entferntesten Planetensysteme mindestens eine eigene Kolonie.",
+    "The explorer mission should clearly retain its plural rule requirement."
+  );
+  assert(
+    supernovaMissionCards.find((mission) => mission.id === "mission-bases")?.title === "Stützpunkte",
+    "Mission titles should use corrected German spelling."
+  );
+  assert(
+    supernovaMissionCards.find((mission) => mission.id === "mission-goods-factory")?.originalText.includes("Bei Gleichstand erhält niemand die Karte."),
+    "Factory-card missions should explain the unique-majority tie rule."
   );
 
   const fullSystem = baseState.board.placedSystems.find((system) => (system.colonySites ?? []).length === 3);

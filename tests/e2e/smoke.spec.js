@@ -419,9 +419,13 @@ test("English controllers render localized setup, tabs, factories, and missions"
   await expect(activeController.getByText("Refinery", { exact: true })).toBeVisible();
   await expect(activeController.getByText("Food Factory", { exact: true })).toBeVisible();
 
-  await activeController.getByRole("button", { name: "Overview", exact: true }).click();
+  await activeController.getByRole("button", { name: "Missions", exact: true }).click();
   await expect(activeController.getByText("Supernova missions")).toBeVisible();
-  await expect(activeController.locator(".player-overview .friendship-card")).toHaveCount(3);
+  await expect(activeController.getByText("To win, you need at least 15 victory points and must have completed at least one of your missions. You do not need to complete every mission.")).toBeVisible();
+  await expect(activeController.locator(".controller-mission-list .controller-mission-card")).toHaveCount(3);
+
+  await activeController.getByRole("button", { name: "Overview", exact: true }).click();
+  await expect(activeController.locator(".player-overview .controller-mission-card")).toHaveCount(0);
 
   const visibleControllerText = await activeController.locator("body").innerText();
   expect(visibleControllerText).not.toMatch(/Verbunden|Bereit|Bauen|Handeln|Übersicht|Warte|Rohstoff|Fabrik|Missionen|Treibstoff|Nahrung|Handelsware|Schlachtschiff|Raumhafen|Einstellungen/);
