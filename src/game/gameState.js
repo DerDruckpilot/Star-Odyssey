@@ -1196,6 +1196,10 @@ function startSupernovaShipBattle(gameState, attackerShip, defenderShip, pathCos
   const attacker = getPlayerById(gameState, attackerShip.ownerPlayerId);
   const defender = getPlayerById(gameState, defenderShip.ownerPlayerId);
   if (!attacker || !defender || attacker.id === defender.id) return gameState;
+  const turnKey = getSupernovaBattleTurnKey(gameState);
+  if (hasCompletedSupernovaBattleThisTurn(gameState, attackerShip.id, defenderShip.id, turnKey)) {
+    return gameState;
+  }
 
   return updateGameState(gameState, {
     remainingMovementByShipId: {
@@ -1206,6 +1210,7 @@ function startSupernovaShipBattle(gameState, attackerShip, defenderShip, pathCos
       ...gameState.supernova,
       shipBattle: {
         id: createId("supernova-ship-battle"),
+        turnKey,
         stage: "rolling",
         round: 1,
         attackerPlayerId: attacker.id,
@@ -1223,7 +1228,8 @@ function startSupernovaShipBattle(gameState, attackerShip, defenderShip, pathCos
         winnerPlayerId: null,
         loserPlayerId: null,
         pendingUpgradePlayerId: null,
-        removableUpgradeIds: []
+        removableUpgradeIds: [],
+        consequences: null
       }
     },
     board: {
@@ -1235,7 +1241,8 @@ function startSupernovaShipBattle(gameState, attackerShip, defenderShip, pathCos
       messageKey: "logSupernovaBattleStarted",
       messageParams: {
         attacker: attacker.name,
-        defender: defender.name
+        defender: defender.name,
+        ship: defenderShip.type
       }
     }
   });
@@ -1358,7 +1365,7 @@ export function chooseSupernovaShipBattleUpgrade(gameState, { playerId, upgrade 
 
 function finalizeSupernovaShipBattle(gameState, playersOverride = gameState.players, lostUpgrade = null) {
   const battle = gameState.supernova?.shipBattle;
-  if (!battle?.winnerPlayerId || !battle.loserPlayerId) return gameState;
+  if (!battle?.winnerPlayerId || !battle.loserPlayerId || battle.stage === "completed") return gameState;
   const ships = normalizeShips(gameState.board?.ships);
   const attackerShip = ships.find((ship) => ship.id === battle.attackerShipId);
   const defenderShip = ships.find((ship) => ship.id === battle.defenderShipId);
@@ -1371,7 +1378,18 @@ function finalizeSupernovaShipBattle(gameState, playersOverride = gameState.play
   let nextShips = ships;
   let nextPlayers = playersOverride;
   const blockedShipIds = new Set(gameState.supernova?.blockedShipIds ?? []);
+  const blockedShipDetails = [...(gameState.supernova?.blockedShipDetails ?? [])];
   const remainingMovementByShipId = { ...(gameState.remainingMovementByShipId ?? {}) };
+  const consequences = {
+    battleType: battle.defenderShipType,
+    lostUpgrade,
+    lostUpgradePlayerId: lostUpgrade ? battle.loserPlayerId : null,
+    upgradeLossSkipped: battle.defenderShipType === "colonyShip" && !lostUpgrade,
+    transferredResourceCount: 0,
+    blockedShipId: null,
+    medalPlayerId: null,
+    destroyedShipId: null
+  };
 
   if (battle.defenderShipType === "battleShip") {
     const loserShipId = attackerWins ? defenderShip.id : attackerShip.id;
@@ -1383,24 +1401,34 @@ function finalizeSupernovaShipBattle(gameState, playersOverride = gameState.play
         : ship);
     }
     nextPlayers = addHalfMedalToPlayer(nextPlayers, winner.id, 1);
+    consequences.medalPlayerId = winner.id;
+    consequences.destroyedShipId = loserShipId;
   } else {
     if (!attackerWins) {
       nextPlayers = addHalfMedalToPlayer(nextPlayers, defender.id, 1);
+      consequences.medalPlayerId = defender.id;
     } else {
       blockedShipIds.add(defenderShip.id);
+      if (!blockedShipDetails.some((entry) => entry.shipId === defenderShip.id)) {
+        blockedShipDetails.push({
+          shipId: defenderShip.id,
+          ownerPlayerId: defender.id,
+          reason: "lostBattleshipCombat",
+          createdTurnKey: battle.turnKey ?? getSupernovaBattleTurnKey(gameState)
+        });
+      }
       remainingMovementByShipId[defenderShip.id] = 0;
+      consequences.blockedShipId = defenderShip.id;
     }
     if (battle.defenderShipType === "tradeShip") {
-      nextPlayers = drawRandomResourcesBetweenPlayers(nextPlayers, battle.loserPlayerId, battle.winnerPlayerId, 2).players;
+      const transfer = drawRandomResourcesBetweenPlayers(nextPlayers, battle.loserPlayerId, battle.winnerPlayerId, 2);
+      nextPlayers = transfer.players;
+      consequences.transferredResourceCount = transfer.drawnResources.length;
     }
   }
 
   nextPlayers = syncPlayersWithBoardAssets(nextPlayers, gameState.board?.structures ?? [], nextShips);
-  const selectedShipId = attackerWins && battle.defenderShipType === "battleShip"
-    ? attackerShip.id
-    : attackerWins
-      ? attackerShip.id
-      : defenderShip.id;
+  const selectedShipId = nextShips.some((ship) => ship.id === attackerShip.id) ? attackerShip.id : null;
   const logEntries = [{
     type: "combat",
     messageKey: "logSupernovaBattleResolved",
@@ -1421,7 +1449,67 @@ function finalizeSupernovaShipBattle(gameState, playersOverride = gameState.play
         upgrade: lostUpgrade
       }
     });
+  } else if (battle.defenderShipType === "colonyShip") {
+    logEntries.push({
+      type: "combat",
+      messageKey: "logSupernovaBattleNoUpgrade",
+      messageParams: {
+        player: getPlayerById(gameState, battle.loserPlayerId)?.name ?? ""
+      }
+    });
   }
+  if (consequences.transferredResourceCount > 0) {
+    logEntries.push({
+      type: "combat",
+      messageKey: "logSupernovaBattleResourcesTransferred",
+      messageParams: {
+        winner: winner.name,
+        loser: getPlayerById(gameState, battle.loserPlayerId)?.name ?? "",
+        count: consequences.transferredResourceCount
+      }
+    });
+  }
+  if (consequences.blockedShipId) {
+    logEntries.push({
+      type: "combat",
+      messageKey: "logSupernovaBattleShipBlocked",
+      messageParams: {
+        player: defender.name,
+        ship: battle.defenderShipType
+      }
+    });
+  }
+  if (consequences.medalPlayerId) {
+    logEntries.push({
+      type: "combat",
+      messageKey: "logSupernovaBattleHalfMedal",
+      messageParams: { player: winner.name }
+    });
+  }
+  if (consequences.destroyedShipId) {
+    logEntries.push({
+      type: "combat",
+      messageKey: "logSupernovaBattleShipDestroyed",
+      messageParams: {
+        player: getPlayerById(gameState, battle.loserPlayerId)?.name ?? ""
+      }
+    });
+  }
+
+  const battleHistoryThisTurn = [
+    ...(gameState.supernova?.battleHistoryThisTurn ?? []),
+    {
+      battleId: battle.id,
+      turnKey: battle.turnKey ?? getSupernovaBattleTurnKey(gameState),
+      attackerShipId: battle.attackerShipId,
+      defenderShipId: battle.defenderShipId,
+      attackerPlayerId: battle.attackerPlayerId,
+      defenderPlayerId: battle.defenderPlayerId,
+      battleType: battle.defenderShipType,
+      winnerPlayerId: battle.winnerPlayerId,
+      loserPlayerId: battle.loserPlayerId
+    }
+  ];
 
   return updateGameState(gameState, {
     players: nextPlayers,
@@ -1429,7 +1517,15 @@ function finalizeSupernovaShipBattle(gameState, playersOverride = gameState.play
     supernova: {
       ...gameState.supernova,
       blockedShipIds: [...blockedShipIds],
-      shipBattle: null
+      blockedShipDetails,
+      battleHistoryThisTurn,
+      shipBattle: {
+        ...battle,
+        stage: "completed",
+        pendingUpgradePlayerId: null,
+        removableUpgradeIds: [],
+        consequences
+      }
     },
     board: {
       ...gameState.board,
@@ -1440,6 +1536,36 @@ function finalizeSupernovaShipBattle(gameState, playersOverride = gameState.play
     },
     logEntries
   });
+}
+
+export function finishSupernovaShipBattle(gameState, { playerId = null } = {}) {
+  const battle = gameState.supernova?.shipBattle;
+  if (!isSupernovaGame(gameState) || battle?.stage !== "completed") return gameState;
+  if (playerId && playerId !== battle.attackerPlayerId) return gameState;
+  return updateGameState(gameState, {
+    supernova: {
+      ...gameState.supernova,
+      shipBattle: null
+    },
+    logEntry: {
+      type: "combat",
+      messageKey: "logSupernovaBattleCompleted",
+      messageParams: {}
+    }
+  });
+}
+
+function getSupernovaBattleTurnKey(gameState) {
+  const activePlayerId = gameState.players?.[gameState.currentPlayerIndex]?.id ?? "unknown";
+  return `${gameState.turnNumber ?? 1}:${activePlayerId}`;
+}
+
+function hasCompletedSupernovaBattleThisTurn(gameState, attackerShipId, defenderShipId, turnKey = getSupernovaBattleTurnKey(gameState)) {
+  return (gameState.supernova?.battleHistoryThisTurn ?? []).some((entry) => (
+    entry.turnKey === turnKey &&
+    entry.attackerShipId === attackerShipId &&
+    entry.defenderShipId === defenderShipId
+  ));
 }
 
 function addHalfMedalToPlayer(players, playerId, amount = 1) {
@@ -1972,6 +2098,15 @@ export function getShipDestinationState(gameState, boardLayout, shipId, targetNo
   if (occupied) {
     const targetShip = getShipAtNode(ships, targetNodeId, shipId);
     if (isSupernovaGame(gameState) && ship.type === "battleShip" && targetShip && targetShip.ownerPlayerId !== ship.ownerPlayerId) {
+      if (hasCompletedSupernovaBattleThisTurn(gameState, ship.id, targetShip.id)) {
+        return {
+          validDestination: false,
+          passable: true,
+          distance,
+          endpointType: "battle",
+          reason: "alreadyBattled"
+        };
+      }
       return {
         validDestination: true,
         passable: true,
@@ -2749,7 +2884,10 @@ export function endCurrentTurn(gameState) {
     ? {
       ...gameState.supernova,
       blockedShipIds: (gameState.supernova?.blockedShipIds ?? [])
-        .filter((shipId) => !endingPlayerShipIds.has(shipId))
+        .filter((shipId) => !endingPlayerShipIds.has(shipId)),
+      blockedShipDetails: (gameState.supernova?.blockedShipDetails ?? [])
+        .filter((entry) => !endingPlayerShipIds.has(entry.shipId)),
+      battleHistoryThisTurn: []
     }
     : null;
 
@@ -3072,6 +3210,8 @@ function createInitialSupernovaState(players, missionCount = supernovaMissionCou
     factoryMajorityCards: Object.fromEntries(supernovaFactoryVictoryCards.map((card) => [card.id, null])),
     pendingFactoryPlacement: null,
     blockedShipIds: [],
+    blockedShipDetails: [],
+    battleHistoryThisTurn: [],
     shipBattle: null
   };
 }
@@ -3136,6 +3276,8 @@ function normalizeSupernovaState(supernova, players = [], ships = []) {
     blockedShipIds: Array.isArray(supernova.blockedShipIds)
       ? supernova.blockedShipIds.filter((shipId) => typeof shipId === "string")
       : [],
+    blockedShipDetails: normalizeSupernovaBlockedShipDetails(supernova.blockedShipDetails, playerIds),
+    battleHistoryThisTurn: normalizeSupernovaBattleHistory(supernova.battleHistoryThisTurn, playerIds),
     shipBattle: normalizeSupernovaShipBattle(supernova.shipBattle, players, ships)
   };
 }
@@ -3150,20 +3292,20 @@ function normalizeSupernovaShipBattle(shipBattle, players = [], ships = []) {
   if (!shipBattle || typeof shipBattle !== "object") return null;
   const playerIds = new Set(players.map((player) => player.id));
   const shipIds = new Set(normalizeShips(ships).map((ship) => ship.id));
+  const stage = ["rolling", "reveal", "upgradeLoss", "completed"].includes(shipBattle.stage)
+    ? shipBattle.stage
+    : "rolling";
   if (
     !playerIds.has(shipBattle.attackerPlayerId) ||
     !playerIds.has(shipBattle.defenderPlayerId) ||
-    !shipIds.has(shipBattle.attackerShipId) ||
-    !shipIds.has(shipBattle.defenderShipId)
+    (stage !== "completed" && (!shipIds.has(shipBattle.attackerShipId) || !shipIds.has(shipBattle.defenderShipId)))
   ) return null;
 
-  const stage = ["rolling", "reveal", "upgradeLoss"].includes(shipBattle.stage)
-    ? shipBattle.stage
-    : "rolling";
   const attackerRoll = normalizeEncounterRollResult(shipBattle.attackerRoll);
   const defenderRoll = normalizeEncounterRollResult(shipBattle.defenderRoll);
   return {
     id: typeof shipBattle.id === "string" ? shipBattle.id : createId("supernova-ship-battle"),
+    turnKey: typeof shipBattle.turnKey === "string" ? shipBattle.turnKey : null,
     stage,
     round: Number.isInteger(shipBattle.round) ? Math.max(1, shipBattle.round) : 1,
     attackerPlayerId: shipBattle.attackerPlayerId,
@@ -3185,7 +3327,63 @@ function normalizeSupernovaShipBattle(shipBattle, players = [], ships = []) {
     pendingUpgradePlayerId: playerIds.has(shipBattle.pendingUpgradePlayerId) ? shipBattle.pendingUpgradePlayerId : null,
     removableUpgradeIds: Array.isArray(shipBattle.removableUpgradeIds)
       ? shipBattle.removableUpgradeIds.filter(isValidUpgradeId)
-      : []
+      : [],
+    consequences: normalizeSupernovaBattleConsequences(shipBattle.consequences, playerIds)
+  };
+}
+
+function normalizeSupernovaBlockedShipDetails(entries, playerIds) {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .filter((entry) => entry && typeof entry.shipId === "string" && playerIds.has(entry.ownerPlayerId))
+    .map((entry) => ({
+      shipId: entry.shipId,
+      ownerPlayerId: entry.ownerPlayerId,
+      reason: entry.reason === "lostBattleshipCombat" ? entry.reason : "lostBattleshipCombat",
+      createdTurnKey: typeof entry.createdTurnKey === "string" ? entry.createdTurnKey : null
+    }));
+}
+
+function normalizeSupernovaBattleHistory(entries, playerIds) {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .filter((entry) => (
+      entry &&
+      typeof entry.battleId === "string" &&
+      typeof entry.turnKey === "string" &&
+      typeof entry.attackerShipId === "string" &&
+      typeof entry.defenderShipId === "string" &&
+      playerIds.has(entry.attackerPlayerId) &&
+      playerIds.has(entry.defenderPlayerId)
+    ))
+    .map((entry) => ({
+      battleId: entry.battleId,
+      turnKey: entry.turnKey,
+      attackerShipId: entry.attackerShipId,
+      defenderShipId: entry.defenderShipId,
+      attackerPlayerId: entry.attackerPlayerId,
+      defenderPlayerId: entry.defenderPlayerId,
+      battleType: ["colonyShip", "tradeShip", "battleShip"].includes(entry.battleType) ? entry.battleType : "colonyShip",
+      winnerPlayerId: playerIds.has(entry.winnerPlayerId) ? entry.winnerPlayerId : null,
+      loserPlayerId: playerIds.has(entry.loserPlayerId) ? entry.loserPlayerId : null
+    }));
+}
+
+function normalizeSupernovaBattleConsequences(consequences, playerIds) {
+  if (!consequences || typeof consequences !== "object") return null;
+  return {
+    battleType: ["colonyShip", "tradeShip", "battleShip"].includes(consequences.battleType)
+      ? consequences.battleType
+      : "colonyShip",
+    lostUpgrade: isValidUpgradeId(consequences.lostUpgrade) ? consequences.lostUpgrade : null,
+    lostUpgradePlayerId: playerIds.has(consequences.lostUpgradePlayerId) ? consequences.lostUpgradePlayerId : null,
+    upgradeLossSkipped: Boolean(consequences.upgradeLossSkipped),
+    transferredResourceCount: Number.isInteger(consequences.transferredResourceCount)
+      ? Math.max(0, consequences.transferredResourceCount)
+      : 0,
+    blockedShipId: typeof consequences.blockedShipId === "string" ? consequences.blockedShipId : null,
+    medalPlayerId: playerIds.has(consequences.medalPlayerId) ? consequences.medalPlayerId : null,
+    destroyedShipId: typeof consequences.destroyedShipId === "string" ? consequences.destroyedShipId : null
   };
 }
 
