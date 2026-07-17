@@ -359,6 +359,32 @@ test("main menu, QR controller lobby, board, and phone menu work", async ({ page
   await controllerOne.getByRole("button", { name: "Bauen" }).click();
   await expect(controllerOne.getByText("Supernova-Fabriken")).toBeVisible();
   await expect(controllerOne.locator(".factory-build-card")).toHaveCount(5);
+  const blueprintSurfaces = controllerOne.locator(".build-controls .blueprint-preview");
+  expect(await blueprintSurfaces.count()).toBeGreaterThanOrEqual(8);
+  const blueprintPresentation = await blueprintSurfaces.evaluateAll((surfaces) => surfaces.map((surface) => {
+    const surfaceStyle = getComputedStyle(surface);
+    const image = surface.querySelector("img");
+    const imageStyle = image ? getComputedStyle(image) : null;
+    return {
+      width: surface.getBoundingClientRect().width,
+      height: surface.getBoundingClientRect().height,
+      borderStyle: surfaceStyle.borderStyle,
+      backgroundColor: surfaceStyle.backgroundColor,
+      imageWidth: image?.getBoundingClientRect().width ?? 0,
+      imageHeight: image?.getBoundingClientRect().height ?? 0,
+      objectFit: imageStyle?.objectFit ?? "",
+      blendMode: imageStyle?.mixBlendMode ?? ""
+    };
+  }));
+  expect(new Set(blueprintPresentation.map(({ backgroundColor }) => backgroundColor)).size).toBe(1);
+  for (const blueprint of blueprintPresentation) {
+    expect(Math.abs(blueprint.width - blueprint.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(blueprint.imageWidth - blueprint.imageHeight)).toBeLessThanOrEqual(1);
+    expect(blueprint.borderStyle).toBe("none");
+    expect(blueprint.objectFit).toBe("contain");
+    expect(blueprint.blendMode).toBe("screen");
+  }
+  await controllerOne.screenshot({ path: "test-results/screenshots/controller-build-blueprints.png", fullPage: true });
   await controllerOne.getByRole("button", { name: "Handeln" }).click();
   await expect(controllerOne.getByRole("heading", { name: "Handeln" })).toBeVisible();
   await expect(controllerOne.getByRole("button", { name: "Spielfeld" })).toBeVisible();

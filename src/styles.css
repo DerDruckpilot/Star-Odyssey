@@ -1327,6 +1327,46 @@ h1 {
   filter: drop-shadow(0 0 7px rgba(125, 211, 252, 0.7));
 }
 
+/* All build previews share one technical projection surface. Screen blending also
+   removes the opaque navy plate from the battleship source without changing it. */
+.blueprint-preview,
+.factory-build-preview.blueprint-preview {
+  box-sizing: border-box;
+  width: 5.8rem;
+  min-width: 5.8rem;
+  height: 5.8rem;
+  min-height: 5.8rem;
+  aspect-ratio: 1;
+  padding: 0.32rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: #011847;
+  box-shadow: inset 0 0 1.35rem rgba(56, 189, 248, 0.18);
+}
+
+.blueprint-preview > .upgrade-card-blueprint,
+.blueprint-preview > .build-action-blueprint,
+.blueprint-preview > .factory-build-blueprint {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  opacity: 0.96;
+  mix-blend-mode: screen;
+  filter:
+    grayscale(0.25)
+    brightness(1.3)
+    contrast(1.18)
+    drop-shadow(0 0 0.32rem rgba(125, 211, 252, 0.58));
+}
+
+.blueprint-preview > img[src$="blueprint-build-battle-ship.png"] {
+  clip-path: inset(8%);
+  transform: scale(1.12);
+}
+
 .factory-number-marker {
   font-size: 19px;
   stroke-width: 4px;

@@ -336,6 +336,27 @@ body {
     drop-shadow(0 0 0.24rem rgba(219, 234, 254, 0.28));
 }
 
+.controller-section .blueprint-preview,
+.controller-section .factory-build-preview.blueprint-preview {
+  width: clamp(4.5rem, 14vw, 5.4rem);
+  min-width: clamp(4.5rem, 14vw, 5.4rem);
+  height: clamp(4.5rem, 14vw, 5.4rem);
+  min-height: clamp(4.5rem, 14vw, 5.4rem);
+}
+
+.controller-section .blueprint-preview > .upgrade-card-blueprint,
+.controller-section .blueprint-preview > .build-action-blueprint,
+.controller-section .blueprint-preview > .factory-build-blueprint {
+  width: 100%;
+  height: 100%;
+  opacity: 0.96;
+  filter:
+    grayscale(0.25)
+    brightness(1.3)
+    contrast(1.18)
+    drop-shadow(0 0 0.32rem rgba(125, 211, 252, 0.58));
+}
+
 .controller-board-fullscreen {
   position: fixed;
   inset: 0;

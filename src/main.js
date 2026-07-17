@@ -4612,7 +4612,7 @@ function renderBuildControls(player = getActivePlayer()) {
     card.className = "upgrade-card upgrade-card--menu build-action-card";
 
     const preview = document.createElement("div");
-    preview.className = "upgrade-card-preview build-action-card-preview";
+    preview.className = "upgrade-card-preview build-action-card-preview blueprint-preview";
 
     const image = document.createElement("img");
     image.className = "upgrade-card-blueprint build-action-blueprint";
@@ -4671,7 +4671,7 @@ function renderBuildControls(player = getActivePlayer()) {
       const card = document.createElement("article");
       card.className = "upgrade-card upgrade-card--menu build-action-card";
       const preview = document.createElement("div");
-      preview.className = "upgrade-card-preview factory-build-preview";
+      preview.className = "upgrade-card-preview factory-build-preview blueprint-preview";
       const image = document.createElement("img");
       image.className = "upgrade-card-blueprint factory-build-blueprint";
       image.src = getFactoryBlueprintAssetPath(factoryType.id) ?? "";
@@ -4954,7 +4954,7 @@ function renderUpgradeControls(player = getActivePlayer()) {
     card.className = "upgrade-card upgrade-card--menu";
 
     const preview = document.createElement("div");
-    preview.className = "upgrade-card-preview";
+    preview.className = "upgrade-card-preview blueprint-preview";
 
     const image = document.createElement("img");
     image.className = "upgrade-card-blueprint";
