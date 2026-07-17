@@ -434,6 +434,7 @@ test("English controllers render localized setup, tabs, factories, and missions"
     await expect(controller.getByText(`Connected as Player ${index + 1}`)).toBeVisible();
     await controller.getByLabel("Name").fill(setup[index].name);
     await controller.getByRole("button", { name: setup[index].color, exact: true }).click();
+    await controller.getByRole("button", { name: "Male", exact: true }).click();
     await controller.getByRole("button", { name: "Ready", exact: true }).click();
   }
 
