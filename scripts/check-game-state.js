@@ -1642,6 +1642,39 @@ assert(
     && savedPirateHelpGame.activeEncounter?.resolution?.completed,
   "Save/load should preserve the applied pirate-help reward without applying it again."
 );
+const repeatedPirateHelpGame = submitEncounterPending(savedPirateHelpGame);
+assert(
+  repeatedPirateHelpGame.players[0].resources.goods === pirateHelpGoodsBefore + 2
+    && repeatedPirateHelpGame.players[0].halfMedals === pirateHelpMedalsBefore + 1,
+  "Repeated encounter submissions must not duplicate an already applied reward."
+);
+
+let failedPirateHelpGame = determineFlightSpeed(encounterBaseState, {
+  balls: ["black", "yellow"],
+  encounterCardId: "spreadsheet-22"
+});
+failedPirateHelpGame = revealPendingFlightEncounter(failedPirateHelpGame);
+failedPirateHelpGame = resolveEncounterChoice(failedPirateHelpGame, { choiceId: "help" });
+failedPirateHelpGame = submitEncounterMothershipRoll(failedPirateHelpGame, "player-1", ["blue", "blue"]);
+failedPirateHelpGame = submitEncounterMothershipRoll(failedPirateHelpGame, "player-2", ["red", "red"]);
+assert(
+  failedPirateHelpGame.activeEncounter?.pendingStep?.type === "shipBlockSelection"
+    && failedPirateHelpGame.activeEncounter?.resultText?.de.includes("darf in dieser Runde nicht fliegen"),
+  "A failed pirate-help fight should show the concrete ship consequence and wait for the mandatory selection."
+);
+assert(
+  !failedPirateHelpGame.activeEncounter?.resolution?.completed,
+  "An encounter with a mandatory consequence must not be completable before that choice."
+);
+const blockedPirateHelpShipId = failedPirateHelpGame.activeEncounter?.pendingStep?.shipIds?.[0];
+if (blockedPirateHelpShipId) {
+  failedPirateHelpGame = submitEncounterPending(failedPirateHelpGame, { shipId: blockedPirateHelpShipId });
+}
+assert(
+  failedPirateHelpGame.activeEncounter?.resolution?.completed
+    && failedPirateHelpGame.remainingMovementByShipId?.[blockedPirateHelpShipId] === 0,
+  "The pirate-help loss should complete only after applying the selected ship block."
+);
 
 let pirateFleeGame = determineFlightSpeed(encounterBaseState, {
   balls: ["black", "yellow"],
