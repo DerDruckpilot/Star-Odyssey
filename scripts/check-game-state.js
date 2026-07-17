@@ -23,6 +23,7 @@ import {
   finishSupernovaShipBattle,
   finishEncounter,
   getEffectiveUpgradeValue,
+  getEndTurnValidation,
   getAvailableBoardActions,
   getBuildableSupernovaFactoryOptions,
   getFriendshipUpgradeBonus,
@@ -785,6 +786,24 @@ if (outpostUnderTest) {
   game = foundTradeStation(game, boardLayout, "player-1-trade-ship-a");
   assert(!game.board.pendingTradeStationPlacement, "Trade station founding should choose a dock automatically.");
   assert((game.board.pendingFriendshipCardSelection?.availableCardIds?.length ?? 0) > 1, "Founding a trade station should start a friendship card choice when multiple cards are available.");
+  const pendingTradeStationChoiceGame = normalizeGameState(JSON.parse(JSON.stringify(game)), {
+    language: "de",
+    playerCount: game.playerCount,
+    boardLayout
+  });
+  assert(
+    pendingTradeStationChoiceGame.board.pendingFriendshipCardSelection?.ownerPlayerId === game.players[0].id,
+    "Save/load should preserve the visible friendship-card choice after founding a trade station."
+  );
+  const blockedTradeStationTurn = getEndTurnValidation(game);
+  assert(
+    blockedTradeStationTurn.ok === false && blockedTradeStationTurn.reason === "pending_friendship_card",
+    "Ending the turn should return the concrete pending friendship-card blocker."
+  );
+  assert(
+    endCurrentTurn(game).currentPlayerIndex === game.currentPlayerIndex,
+    "The turn must remain active while the mandatory friendship-card choice is open."
+  );
   const selectedFriendshipCardId = game.board.pendingFriendshipCardSelection?.availableCardIds?.[0];
   assert(Boolean(selectedFriendshipCardId), "A valid friendship card should be selectable.");
   if (selectedFriendshipCardId) {
@@ -800,6 +819,12 @@ if (outpostUnderTest) {
     "Chosen friendship cards should be removed from the outpost pool."
   );
   assert(!game.board.pendingFriendshipCardSelection, "Friendship card selection should clear after choosing a card.");
+  assert(getEndTurnValidation(game).ok, "Completing the friendship-card choice should immediately release turn completion.");
+  const gameAfterTradeStationTurn = endCurrentTurn(game);
+  assert(
+    gameAfterTradeStationTurn.currentPlayerIndex !== game.currentPlayerIndex,
+    "The next player should become active after the completed trade-station founding flow."
+  );
 
   game = {
     ...game,

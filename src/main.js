@@ -90,6 +90,7 @@ import {
   drawSupply,
   distributeSevenSupply,
   endCurrentTurn,
+  getEndTurnValidation,
   finishSupernovaShipBattle,
   finishEncounter,
   foundColony,
@@ -2376,6 +2377,13 @@ function cancelActiveTradeStationPlacement() {
 function endTurn() {
   if (!state.gameState || state.gameState.phase !== "flight") return;
 
+  const validation = getEndTurnValidation(state.gameState);
+  if (!validation.ok) {
+    state.notice = t(validation.messageKey);
+    render();
+    return;
+  }
+  state.notice = "";
   state.gameState = endCurrentTurn(state.gameState);
   saveCurrentGameState();
   render();
@@ -9243,6 +9251,7 @@ function getLocalControllerPrivateStorageKey(controllerId) {
 
 function getRemoteControllerState() {
   const activePlayer = getActivePlayer();
+  const endTurnValidation = state.gameState ? getEndTurnValidation(state.gameState) : null;
   return {
     language: state.language,
     view: state.view,
@@ -9259,11 +9268,35 @@ function getRemoteControllerState() {
     players: (state.gameState?.players ?? []).map((player) => getRemotePlayerState(player)),
     trade: getRemoteTradeState(),
     encounter: getRemoteEncounterStateForController(),
+    friendshipCardSelection: getRemoteFriendshipCardSelection(),
+    endTurnValidation: endTurnValidation
+      ? {
+        ...endTurnValidation,
+        message: endTurnValidation.messageKey ? t(endTurnValidation.messageKey) : ""
+      }
+      : null,
     supernovaBattle: getRemoteSupernovaBattleState(),
     factoryPlacement: getRemoteFactoryPlacementState(),
     board: getRemoteBoardState(),
     saves: getRemoteSaveList(),
     actions: getRemoteControllerActions()
+  };
+}
+
+function getRemoteFriendshipCardSelection() {
+  const pending = state.gameState?.board?.pendingFriendshipCardSelection;
+  if (!pending) return null;
+  return {
+    ownerPlayerId: pending.ownerPlayerId,
+    outpostId: pending.outpostId,
+    cards: (pending.availableCardIds ?? [])
+      .map((cardId) => getFriendshipCardById(cardId))
+      .filter(Boolean)
+      .map((card) => ({
+        id: card.id,
+        title: getFriendshipCardTitle(card, state.language),
+        summary: getFriendshipCardSummary(card, state.language)
+      }))
   };
 }
 
@@ -9663,6 +9696,7 @@ function getRemoteBoardActionPlayerId() {
 }
 
 function getRemoteBoardMode() {
+  if (state.gameState?.board?.pendingFriendshipCardSelection) return t("chooseFriendshipCardHint");
   const pendingEncounterStep = state.gameState?.activeEncounter?.pendingStep;
   if (state.encounterBoardSelectionActive && pendingEncounterStep?.type === "shipJumpSelection") return t("selectOwnShip");
   if (state.encounterBoardSelectionActive && pendingEncounterStep?.type === "shipBlockSelection") return t("selectOwnShip");
@@ -9816,6 +9850,20 @@ function getRemoteControllerActions() {
         t("supernovaBattleAcknowledge"),
         {},
         { forPlayerId: shipBattle.attackerPlayerId }
+      ));
+    }
+    return actions;
+  }
+
+  const friendshipCardSelection = state.gameState.board?.pendingFriendshipCardSelection;
+  if (friendshipCardSelection) {
+    for (const cardId of friendshipCardSelection.availableCardIds ?? []) {
+      const card = getFriendshipCardById(cardId);
+      actions.push(createRemoteAction(
+        "friendship.selectCard",
+        card ? getFriendshipCardTitle(card, state.language) : cardId,
+        { cardId },
+        { forPlayerId: friendshipCardSelection.ownerPlayerId }
       ));
     }
     return actions;
@@ -10078,6 +10126,9 @@ function executeRemoteAction(actionId, payload = {}) {
       break;
     case "endTurn":
       if (isRemoteActionPlayerActive(playerId)) endTurn();
+      break;
+    case "friendship.selectCard":
+      if (isRemoteActionPlayerActive(playerId) && payload.cardId) chooseFriendshipCard(payload.cardId);
       break;
     case "save.quick":
       if (isPlayerAdmin(playerId)) saveCurrentGame(t("defaultSaveName"), { returnToSettings: false });

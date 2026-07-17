@@ -49,6 +49,11 @@ const remoteState = {
     requestedResources: { food: 1 },
     activeTradeOffer: null
   },
+  friendshipCardSelection: {
+    ownerPlayerId: "player-1",
+    outpostId: "outpost-1",
+    cards: [{ id: "friend-1", title: "Friendship", summary: "Choose me" }]
+  },
   actions: [
     { id: "public.action", label: "Public" },
     { id: "battle.roll", label: "Alice roll", forPlayerId: "player-1" },
@@ -77,6 +82,7 @@ assert(playerOneView.actions.length === 2, "A controller should receive public a
 assert(playerOneView.actions.some((action) => action.label === "Alice roll"), "Player one should receive its targeted battle action.");
 assert(!playerOneView.actions.some((action) => action.label === "Bob roll"), "Player one must not receive another player's targeted battle action.");
 assert(playerOneView.saves.length === 1, "The admin controller should retain the save list.");
+assert(playerOneView.friendshipCardSelection?.cards?.length === 1, "The awarded friendship-card choice should be visible to its owner.");
 
 const playerTwoView = createControllerViewState(remoteState, "player-2");
 assert(Object.keys(playerTwoView.trade.offeredResources).length === 0, "Other players must not receive a private trade draft.");
@@ -85,6 +91,7 @@ assert(Object.keys(playerTwoView.sevenResolution.discardSelections).join() === "
 assert(playerTwoView.actions.length === 2, "Player two should receive public actions and only its targeted battle action.");
 assert(playerTwoView.actions.some((action) => action.label === "Bob roll"), "Player two should receive its targeted battle action.");
 assert(!playerTwoView.actions.some((action) => action.label === "Alice roll"), "Player two must not receive another player's targeted battle action.");
+assert(playerTwoView.friendshipCardSelection === null, "Friendship-card choices must remain private to the owning controller.");
 
 const baseFlight = {
   activePlayerId: "player-1",

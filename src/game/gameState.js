@@ -2874,9 +2874,7 @@ export function cancelPendingSpaceportUpgrade(gameState) {
 }
 
 export function endCurrentTurn(gameState) {
-  if (isGameOverState(gameState)) return gameState;
-  if (gameState.board?.pendingFriendshipCardSelection) return gameState;
-  if (gameState.supernova?.shipBattle) return gameState;
+  if (!getEndTurnValidation(gameState).ok) return gameState;
   const endingPlayer = gameState.players?.[gameState.currentPlayerIndex];
   const nextPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.playerCount;
   const nextTurnNumber = nextPlayerIndex === 0 ? gameState.turnNumber + 1 : gameState.turnNumber;
@@ -2932,6 +2930,43 @@ export function endCurrentTurn(gameState) {
       }
     }
   });
+}
+
+export function getEndTurnValidation(gameState) {
+  if (!gameState || isGameOverState(gameState)) {
+    return { ok: false, reason: "game_over", messageKey: "endTurnBlockedGameOver" };
+  }
+  if (gameState.phase !== "flight") {
+    return { ok: false, reason: "wrong_phase", messageKey: "endTurnBlockedPhase" };
+  }
+  if (gameState.board?.pendingFriendshipCardSelection) {
+    return {
+      ok: false,
+      reason: "pending_friendship_card",
+      messageKey: "endTurnBlockedFriendshipCard"
+    };
+  }
+  if (gameState.pendingFriendshipAction) {
+    return {
+      ok: false,
+      reason: "pending_friendship_action",
+      messageKey: "endTurnBlockedFriendshipAction"
+    };
+  }
+  if (gameState.board?.pendingTradeStationPlacement) {
+    return {
+      ok: false,
+      reason: "pending_trade_station_placement",
+      messageKey: "endTurnBlockedTradeStationPlacement"
+    };
+  }
+  if (gameState.activeEncounter || gameState.pendingFlightEncounter) {
+    return { ok: false, reason: "pending_encounter", messageKey: "endTurnBlockedEncounter" };
+  }
+  if (gameState.supernova?.shipBattle) {
+    return { ok: false, reason: "pending_ship_battle", messageKey: "endTurnBlockedShipBattle" };
+  }
+  return { ok: true, reason: null, messageKey: null };
 }
 
 export function normalizeGameState(gameState, { language, playerCount, boardLayout }) {

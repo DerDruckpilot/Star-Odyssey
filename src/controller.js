@@ -710,6 +710,10 @@ function renderTurnTab(player) {
     section.append(title, renderSevenResolutionPanel(player));
     return section;
   }
+  if (gameState?.friendshipCardSelection) {
+    section.append(title, renderTurnHint(player), renderFriendshipCardSelectionPanel());
+    return section;
+  }
   if (gameState?.encounter?.active) {
     section.append(title, renderTurnHint(player), renderEncounterPanel());
     return section;
@@ -737,6 +741,32 @@ function renderTurnTab(player) {
   }
   section.append(renderActionGrid(actions));
   return section;
+}
+
+function renderFriendshipCardSelectionPanel() {
+  const selection = gameState?.friendshipCardSelection;
+  const panel = document.createElement("div");
+  panel.className = "selection-panel friendship-card-selection controller-friendship-card-selection";
+  const heading = document.createElement("strong");
+  heading.textContent = t("chooseFriendshipCard");
+  const hint = document.createElement("p");
+  hint.textContent = t("chooseFriendshipCardHint");
+  panel.append(heading, hint);
+
+  const actions = getFilteredActions().filter((action) => action.id === "friendship.selectCard");
+  for (const card of selection?.cards ?? []) {
+    const item = document.createElement("article");
+    item.className = "friendship-card";
+    const title = document.createElement("strong");
+    title.textContent = card.title;
+    const summary = document.createElement("p");
+    summary.textContent = card.summary;
+    const action = actions.find((candidate) => candidate.payload?.cardId === card.id);
+    item.append(title, summary);
+    if (action) item.append(renderActionGrid([action]));
+    panel.append(item);
+  }
+  return panel;
 }
 
 function renderSupernovaBattlePanel(player) {
@@ -1501,6 +1531,9 @@ function renderTurnHint(player) {
     : t("controllerOtherPlayerTurn", { player: gameState?.activePlayerName || t("controllerOtherPlayer") });
   wrapper.append(createMetaItem(t("phase"), gameState?.phaseLabel || "-"));
   wrapper.append(createMetaItem(t("status"), activeText));
+  if (isSelectedPlayerActive() && gameState?.endTurnValidation?.ok === false && gameState.endTurnValidation.message) {
+    wrapper.append(createMetaItem(t("endTurn"), gameState.endTurnValidation.message));
+  }
   return wrapper;
 }
 
@@ -2062,6 +2095,9 @@ function renderBoardFullscreen() {
 
 function getBoardContextActions() {
   if (!isSelectedPlayerActive()) return [];
+  if (gameState?.friendshipCardSelection) {
+    return getFilteredActions().filter((action) => action.id === "friendship.selectCard");
+  }
   const selectedShipId = gameState?.flight?.selectedShipId;
   if (!selectedShipId) return [];
   return getFilteredActions().filter((action) => (
@@ -2526,6 +2562,7 @@ function attachBoardGestures(viewport, content) {
 
 function getControllerBoardModeLabel() {
   if (!gameState?.board) return t("boardViewOnly");
+  if (gameState.friendshipCardSelection) return t("chooseFriendshipCardHint");
   if (gameState.phase === "flight" && !gameState.encounter?.active) return getControllerFlightMovementStatus();
   if (canUseBoardSelection()) return gameState.board.mode || t("encounterSelectTargetPoint");
   if (gameState.phase === "flight" && gameState.flight?.activePlayerName) {

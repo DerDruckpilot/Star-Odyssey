@@ -1154,6 +1154,18 @@ test("board tab exposes and executes the selected trade ship outpost action", as
     };
   }, setup)).toEqual({ stationCount: 1, shipStillPresent: false });
   await expect(foundAction).toHaveCount(0);
+  const friendshipChoice = controller.locator(".controller-board-context-actions button").first();
+  await expect(friendshipChoice).toBeVisible();
+  await friendshipChoice.click();
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null");
+    return saved?.board?.pendingFriendshipCardSelection ?? null;
+  })).toBeNull();
+  await controller.locator(".controller-board-back-button").click();
+  const endTurnButton = controller.getByRole("button", { name: "Zug beenden", exact: true });
+  await expect(endTurnButton).toBeVisible();
+  await endTurnButton.click();
+  await expect.poll(() => getLatestPlayerState(controllerStates)?.activePlayerId).toBe("player-2");
   await controller.close();
 });
 

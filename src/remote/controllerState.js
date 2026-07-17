@@ -68,6 +68,11 @@ function getActionView(actions, viewerPlayerId) {
     : [];
 }
 
+function getFriendshipCardSelectionView(selection, viewerPlayerId) {
+  if (!selection || selection.ownerPlayerId !== viewerPlayerId) return null;
+  return selection;
+}
+
 export function createControllerViewState(remoteState, viewerPlayerId) {
   const players = Array.isArray(remoteState?.players) ? remoteState.players : [];
   const adminPlayerId = players[0]?.id ?? null;
@@ -78,6 +83,7 @@ export function createControllerViewState(remoteState, viewerPlayerId) {
     players: players.map((player) => getPlayerView(player, viewerPlayerId)),
     sevenResolution: getSevenResolutionView(remoteState?.sevenResolution, viewerPlayerId),
     trade: getTradeView(remoteState?.trade, viewerPlayerId, remoteState?.activePlayerId),
+    friendshipCardSelection: getFriendshipCardSelectionView(remoteState?.friendshipCardSelection, viewerPlayerId),
     actions: getActionView(remoteState?.actions, viewerPlayerId),
     saves: viewerPlayerId === adminPlayerId ? remoteState?.saves ?? [] : []
   };
