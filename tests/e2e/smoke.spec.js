@@ -1078,11 +1078,17 @@ test("active controller places a Supernova factory on a valid planet", async ({ 
 
   const marker = page.locator(`[data-factory-id][data-planet-id="${setup.planetId}"]`);
   await expect(marker).toHaveCount(1);
+  await expect(marker).toHaveAttribute("data-board-type", "factory");
+  await expect(page.locator(".placement-vfx--factory")).toHaveCount(1);
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null"));
   expect(persisted.supernova.pendingFactoryPlacement).toBeNull();
   expect(persisted.supernova.factories).toHaveLength(1);
   expect(persisted.supernova.factories[0].planetId).toBe(setup.planetId);
   expect(persisted.players[0].resources[setup.resource]).toBe(setup.resourceBefore - setup.resourceCost);
+  await expect(page.locator(".placement-vfx--factory")).toHaveCount(0, { timeout: 2500 });
+  await page.reload();
+  await expect(page.locator(`[data-factory-id][data-planet-id="${setup.planetId}"]`)).toHaveCount(1);
+  await expect(page.locator(".placement-vfx--factory")).toHaveCount(0);
   await controller.close();
 });
 

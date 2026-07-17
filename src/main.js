@@ -2251,6 +2251,7 @@ function placePendingFactoryAt(planetId) {
   const previousGameState = state.gameState;
   state.gameState = buildSupernovaFactory(state.gameState, boardLayout, pending.factoryType, planetId);
   if (state.gameState === previousGameState) return false;
+  queuePlacementVfxForStateChange(previousGameState, state.gameState);
   saveCurrentGameState();
   render();
   return true;
@@ -5609,16 +5610,24 @@ function queuePlacementVfxForStateChange(previousGameState, nextGameState) {
   for (const ship of nextGameState.board?.ships ?? []) {
     if (!previousShipIds.has(ship.id)) queuePlacementVfx("ship", ship);
   }
+
+  const previousFactoryIds = new Set((previousGameState.supernova?.factories ?? []).map((factory) => factory.id));
+  for (const factory of nextGameState.supernova?.factories ?? []) {
+    if (!previousFactoryIds.has(factory.id)) queuePlacementVfx("factory", factory);
+  }
 }
 
 function queuePlacementVfx(targetType, target) {
   const position = targetType === "ship"
     ? getPlacementVfxShipPosition(target)
-    : getPlacementVfxStructurePosition(target);
+    : targetType === "factory"
+      ? getFactoryRenderPlacement(target)
+      : getPlacementVfxStructurePosition(target);
   if (!position) return;
 
   audioManager.play("buildComplete");
   const now = getAnimationNow();
+  const owner = state.gameState?.players?.find((player) => player.id === target.ownerPlayerId);
   placementVfx.items.push({
     id: `placement-vfx-${placementVfx.nextId++}`,
     targetType,
@@ -5626,6 +5635,8 @@ function queuePlacementVfx(targetType, target) {
     objectType: target.type,
     x: position.x,
     y: position.y,
+    playerColor: playerDiceColors[owner?.color] ?? "#7dd3fc",
+    reducedMotion: Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches),
     startTime: now,
     seed: createPlacementVfxSeed(target.id, now)
   });
@@ -5663,7 +5674,7 @@ function startPlacementVfxLoop() {
 function updatePlacementVfx(now) {
   const affectedItems = placementVfx.items.slice();
   placementVfx.currentTime = now;
-  placementVfx.items = placementVfx.items.filter((item) => now - item.startTime < placementVfxDuration);
+  placementVfx.items = placementVfx.items.filter((item) => now - item.startTime < getPlacementVfxDuration(item));
   runtimePerformanceMetrics.placementAnimationFrames += 1;
   updatePlacementVfxDom(affectedItems);
   if (placementVfx.items.length === 0) placementVfx.currentTime = 0;
@@ -5687,6 +5698,8 @@ function updatePlacementVfxDom(affectedItems) {
       updatePlacedShipElement(target, item.targetId);
     } else if (item.targetType === "structure") {
       updatePlacedStructureElement(target, item.targetId);
+    } else if (item.targetType === "factory") {
+      updatePlacedFactoryElement(target, item.targetId);
     }
   }
 }
@@ -5726,6 +5739,18 @@ function updatePlacedStructureElement(group, structureId) {
   image.setAttribute("transform", createPlacementTransform(placement.x, placement.y, placement.rotation, pop));
 }
 
+function updatePlacedFactoryElement(group, factoryId) {
+  const factory = state.gameState?.supernova?.factories?.find((candidate) => candidate.id === factoryId);
+  const placement = factory ? getFactoryRenderPlacement(factory) : null;
+  if (!factory || !placement) return;
+  const pop = getPlacementAssetPop("factory", factory.id);
+  group.setAttribute("opacity", String(pop.opacity));
+  group.setAttribute(
+    "transform",
+    `translate(${placement.x + pop.wobbleX} ${placement.y + pop.wobbleY}) scale(${pop.scale})`
+  );
+}
+
 function getAnimationNow() {
   return animationScheduler.now();
 }
@@ -5737,15 +5762,19 @@ function getPlacementVfxTime() {
 function getActivePlacementVfx(targetType, targetId) {
   const now = getPlacementVfxTime();
   return placementVfx.items
-    .filter((item) => item.targetType === targetType && item.targetId === targetId && now - item.startTime < placementVfxDuration)
+    .filter((item) => item.targetType === targetType && item.targetId === targetId && now - item.startTime < getPlacementVfxDuration(item))
     .at(-1) ?? null;
+}
+
+function getPlacementVfxDuration(item) {
+  return item?.reducedMotion ? 280 : placementVfxDuration;
 }
 
 function getPlacementAssetPop(targetType, targetId) {
   const item = getActivePlacementVfx(targetType, targetId);
   if (!item) return { opacity: 1, scale: 1, wobbleX: 0, wobbleY: 0 };
 
-  const progress = clamp01((getPlacementVfxTime() - item.startTime) / placementVfxDuration);
+  const progress = clamp01((getPlacementVfxTime() - item.startTime) / getPlacementVfxDuration(item));
   const revealStart = 0.72;
   if (progress < revealStart) return { opacity: 0, scale: 0.25, wobbleX: 0, wobbleY: 0 };
 
@@ -7677,16 +7706,10 @@ function renderPlacementVfxDefs() {
       stdDeviation: 5,
       result: "blur"
     }),
-    createSvgElement("feColorMatrix", {
-      in: "blur",
-      type: "matrix",
-      values: "0 0 0 0 0.45 0 0 0 0 0.86 0 0 0 0 1 0 0 0 1 0",
-      result: "glow"
-    }),
     createSvgElement("feMerge")
   );
   filter.querySelector("feMerge").append(
-    createSvgElement("feMergeNode", { in: "glow" }),
+    createSvgElement("feMergeNode", { in: "blur" }),
     createSvgElement("feMergeNode", { in: "SourceGraphic" })
   );
   const coilFilter = createSvgElement("filter", {
@@ -7720,7 +7743,7 @@ function renderPlacementVfxLayer() {
   const now = getPlacementVfxTime();
 
   for (const item of placementVfx.items) {
-    const progress = clamp01((now - item.startTime) / placementVfxDuration);
+    const progress = clamp01((now - item.startTime) / getPlacementVfxDuration(item));
     if (progress >= 1) continue;
     group.append(renderPlacementVfxItem(item, progress));
   }
@@ -7730,8 +7753,10 @@ function renderPlacementVfxLayer() {
 
 function renderPlacementVfxItem(item, progress) {
   const group = createSvgElement("g", {
-    class: `placement-vfx placement-vfx--${item.objectType}`,
-    "data-placement-vfx-id": item.id
+    class: `placement-vfx placement-vfx--${item.objectType} placement-vfx--${item.targetType}`,
+    "data-placement-vfx-id": item.id,
+    "data-placement-vfx-target-type": item.targetType,
+    style: `--placement-color: ${item.playerColor || "#7dd3fc"};`
   });
   const pulse = 1 + Math.sin(progress * Math.PI * 12) * 0.1;
   const coreOpacity = progress < 0.78 ? 1 - progress * 0.45 : Math.max(0, 1 - (progress - 0.78) / 0.12);
@@ -7754,7 +7779,7 @@ function renderPlacementVfxItem(item, progress) {
     opacity: coreOpacity
   }));
 
-  if (progress >= 0.34 && progress <= 0.74) {
+  if (!item.reducedMotion && progress >= 0.34 && progress <= 0.74) {
     renderPlacementLightning(group, item, progress);
     renderPlacementSparks(group, item, progress);
   }
@@ -7974,13 +7999,17 @@ function renderFactoriesLayer() {
     const owner = state.gameState?.players?.find((player) => player.id === factory.ownerPlayerId);
     const factoryType = supernovaFactoryTypes.find((candidate) => candidate.id === factory.type);
     const assetPath = getFactoryAssetPath(factory.type, owner?.color);
+    const pop = getPlacementAssetPop("factory", factory.id);
     const factoryGroup = createSvgElement("g", {
       class: `factory-marker factory-marker--${factory.type}`,
+      "data-board-type": "factory",
+      "data-board-id": factory.id,
       "data-factory-id": factory.id,
       "data-factory-type": factory.type,
       "data-planet-id": factory.planetId,
       "data-owner-player-id": factory.ownerPlayerId,
-      transform: `translate(${placement.x} ${placement.y})`
+      opacity: pop.opacity,
+      transform: `translate(${placement.x + pop.wobbleX} ${placement.y + pop.wobbleY}) scale(${pop.scale})`
     });
     const title = createSvgElement("title");
     title.textContent = `${getSupernovaLocalizedTitle(factoryType, state.language) || factory.type} - ${owner?.name ?? factory.ownerPlayerId}`;

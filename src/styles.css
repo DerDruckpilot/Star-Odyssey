@@ -2047,7 +2047,8 @@ h1 {
 }
 
 .placement-vfx-glow {
-  fill: rgba(125, 211, 252, 0.62);
+  fill: var(--placement-color, #7dd3fc);
+  fill-opacity: 0.62;
 }
 
 .placement-vfx-core,
@@ -2057,13 +2058,15 @@ h1 {
 
 .placement-vfx-flash-ring {
   fill: none;
-  stroke: rgba(186, 230, 253, 0.92);
+  stroke: var(--placement-color, #bae6fd);
+  stroke-opacity: 0.92;
   stroke-width: 5;
 }
 
 .placement-vfx-lightning {
   fill: none;
-  stroke: rgba(224, 242, 254, 0.96);
+  stroke: var(--placement-color, #e0f2fe);
+  stroke-opacity: 0.96;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2.1;
