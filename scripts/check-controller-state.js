@@ -1,5 +1,6 @@
 import { createControllerStatesByPlayerId, createControllerViewState } from "../src/remote/controllerState.js";
 import { getTranslationKeys } from "../src/i18n.js";
+import { getControllerFlightStatus } from "../src/controller-flight-status.js";
 
 function assert(condition, message) {
   if (!condition) {
@@ -84,6 +85,40 @@ assert(Object.keys(playerTwoView.sevenResolution.discardSelections).join() === "
 assert(playerTwoView.actions.length === 2, "Player two should receive public actions and only its targeted battle action.");
 assert(playerTwoView.actions.some((action) => action.label === "Bob roll"), "Player two should receive its targeted battle action.");
 assert(!playerTwoView.actions.some((action) => action.label === "Alice roll"), "Player two must not receive another player's targeted battle action.");
+
+const baseFlight = {
+  activePlayerId: "player-1",
+  activePlayerName: "Alice",
+  hasRolledSpeed: true,
+  movableShipCount: 2,
+  selectedShipId: "ship-1",
+  selectedShipRemaining: 2,
+  selectedShipBlocked: false
+};
+assert(
+  getControllerFlightStatus(baseFlight, "player-1", true).key === "controllerFlightMovementRemainingMany",
+  "The active controller should receive the plural remaining-movement status."
+);
+assert(
+  getControllerFlightStatus({ ...baseFlight, selectedShipRemaining: 1 }, "player-1", true).key === "controllerFlightMovementRemainingOne",
+  "The active controller should receive the singular remaining-movement status."
+);
+assert(
+  getControllerFlightStatus({ ...baseFlight, selectedShipRemaining: 0 }, "player-1", true).key === "controllerFlightNoMovementRemaining",
+  "A fully moved ship should report that no movement remains."
+);
+assert(
+  getControllerFlightStatus({ ...baseFlight, selectedShipBlocked: true }, "player-1", true).key === "controllerFlightShipBlocked",
+  "A blocked ship should report its movement restriction."
+);
+assert(
+  getControllerFlightStatus({ ...baseFlight, selectedShipId: null }, "player-1", true).key === "controllerFlightSelectOwnShip",
+  "The active controller should be prompted to select a ship."
+);
+assert(
+  getControllerFlightStatus(baseFlight, "player-2", false).key === "controllerFlightWait",
+  "Inactive controllers should retain the neutral flight wait status."
+);
 
 const statesByPlayerId = createControllerStatesByPlayerId(remoteState);
 assert(statesByPlayerId["player-1"].viewerPlayerId === "player-1", "Player one should receive its personalized state.");

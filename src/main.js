@@ -9231,6 +9231,11 @@ function getRemoteFlightStateForController() {
   const movableShips = getMovableShipsForActivePlayer();
   const reachableNodes = selectedShip ? [...getReachableNodeMap().values()] : [];
   const totalSpeed = Number(state.gameState.flightSpeedTotal);
+  const selectedShipRemaining = selectedShip ? getShipRemainingMovement(selectedShip.id) : null;
+  const selectedShipTotal = selectedShip && Number.isFinite(totalSpeed) ? Math.max(0, totalSpeed) : null;
+  const selectedShipBlocked = Boolean(
+    selectedShip && (state.gameState.supernova?.blockedShipIds ?? []).includes(selectedShip.id)
+  );
   return {
     hasRolledSpeed: Boolean(state.gameState.hasRolledFlightSpeed),
     totalSpeed: Number.isFinite(totalSpeed) ? totalSpeed : null,
@@ -9239,7 +9244,13 @@ function getRemoteFlightStateForController() {
     movableShipCount: movableShips.length,
     movableShipIds: movableShips.map((ship) => ship.id),
     selectedShipId: selectedShip?.id ?? null,
-    selectedShipRemaining: selectedShip ? getShipRemainingMovement(selectedShip.id) : null,
+    selectedShipType: selectedShip?.type ?? null,
+    selectedShipTotal,
+    selectedShipUsed: selectedShip && selectedShipTotal !== null && selectedShipRemaining !== null
+      ? Math.max(0, selectedShipTotal - selectedShipRemaining)
+      : null,
+    selectedShipRemaining,
+    selectedShipBlocked,
     reachableNodeIds: reachableNodes.map((node) => node.id),
     turnHint: getControllerFlightTurnHint(),
     boardHint: getControllerFlightBoardHint(),
@@ -9591,7 +9602,12 @@ function getControllerFlightBoardHint() {
   if (state.gameState.activeEncounter) return t("boardViewOnly");
   if (getSelectedShip()) {
     const remaining = getShipRemainingMovement(getSelectedShip().id);
-    return `${t("controllerFlightBoardChooseTarget")} ${t("remainingMovement")}: ${remaining}`;
+    if ((state.gameState.supernova?.blockedShipIds ?? []).includes(getSelectedShip().id)) {
+      return t("controllerFlightShipBlocked");
+    }
+    if (remaining <= 0) return t("controllerFlightNoMovementRemaining");
+    const key = remaining === 1 ? "controllerFlightMovementRemainingOne" : "controllerFlightMovementRemainingMany";
+    return t(key).replace("{count}", remaining);
   }
   if (getMovableShipsForActivePlayer().length > 0) return t("controllerFlightBoardChooseShip");
   return t("controllerFlightNoMovableShips");

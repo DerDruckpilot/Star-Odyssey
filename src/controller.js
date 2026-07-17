@@ -9,6 +9,7 @@ import {
 } from "./data/supernova.js";
 import { mothershipUpgradeSlots, upgradeMenuAssetPaths, upgradeMenuOrder } from "./data/upgradeVisuals.js";
 import { getText } from "./i18n.js";
+import { getControllerFlightStatus } from "./controller-flight-status.js";
 
 const root = document.querySelector("#controller-root");
 const params = new URLSearchParams(window.location.search);
@@ -2473,6 +2474,7 @@ function attachBoardGestures(viewport, content) {
 
 function getControllerBoardModeLabel() {
   if (!gameState?.board) return t("boardViewOnly");
+  if (gameState.phase === "flight" && !gameState.encounter?.active) return getControllerFlightMovementStatus();
   if (canUseBoardSelection()) return gameState.board.mode || t("encounterSelectTargetPoint");
   if (gameState.phase === "flight" && gameState.flight?.activePlayerName) {
     return gameState.flight.waitHint || t("controllerFlightWait", { playerName: gameState.flight.activePlayerName });
@@ -2484,6 +2486,11 @@ function getControllerBoardModeLabel() {
     return t("controllerOtherPlayerTurn", { player: gameState.activePlayerName || t("controllerOtherPlayer") });
   }
   return t("boardViewOnly");
+}
+
+function getControllerFlightMovementStatus() {
+  const status = getControllerFlightStatus(gameState?.flight, selectedPlayerId, isSelectedPlayerActive());
+  return status.fallback || t(status.key, status.replacements);
 }
 
 function isPlacementBoardMode() {
