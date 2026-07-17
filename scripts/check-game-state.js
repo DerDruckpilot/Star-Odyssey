@@ -2687,7 +2687,8 @@ assert(
 
 let noUpgradeColonyBattle = createSupernovaBattleMovementState("colonyShip", {
   attackerUpgrades: { cannon: 2 },
-  defenderUpgrades: { drive: 0, cargo: 0, cannon: 0 }
+  defenderUpgrades: { drive: 0, cargo: 0, cannon: 0 },
+  defenderFriendshipCards: ["wise-cannon-boost"]
 });
 const noUpgradeColonyTarget = noUpgradeColonyBattle.board.ships.find((ship) => ship.id === "battle-defender")?.locationId;
 noUpgradeColonyBattle = moveShip(noUpgradeColonyBattle, boardLayout, "battle-attacker", noUpgradeColonyTarget);
@@ -2697,7 +2698,7 @@ noUpgradeColonyBattle = completeSupernovaShipBattleReveal(noUpgradeColonyBattle)
 assert(
   noUpgradeColonyBattle.supernova?.shipBattle?.stage === "completed" &&
     noUpgradeColonyBattle.supernova.shipBattle.consequences?.upgradeLossSkipped,
-  "Colony combat should complete cleanly when the loser has no physical upgrade to remove."
+  "Friendship-card upgrades must not be offered or removed as physical mothership upgrades."
 );
 
 let tradeBattleGame = createSupernovaBattleMovementState("tradeShip", {

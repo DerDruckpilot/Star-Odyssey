@@ -90,6 +90,7 @@ import {
   drawSupply,
   distributeSevenSupply,
   endCurrentTurn,
+  finishSupernovaShipBattle,
   finishEncounter,
   foundColony,
   foundTradeStation,
@@ -3247,6 +3248,8 @@ function renderSupernovaShipBattleModal() {
     const pendingPlayer = state.gameState.players.find((player) => player.id === battle.pendingUpgradePlayerId);
     status.textContent = t("supernovaBattleWaitingForUpgrade")
       .replace("{player}", pendingPlayer?.name ?? "");
+  } else if (battle.stage === "completed") {
+    status.textContent = getSupernovaBattleOutcomeText(battle);
   } else if (!battle.winnerPlayerId) {
     status.textContent = t("supernovaBattleTie");
   } else {
@@ -3257,8 +3260,64 @@ function renderSupernovaShipBattleModal() {
       .replace("{defense}", battle.defenderStrength ?? "-");
   }
   panel.append(status);
+  if (battle.stage === "completed") {
+    panel.append(createButton(t("supernovaBattleAcknowledge"), finishDisplayedSupernovaBattle, "menu-button"));
+  }
   overlay.append(panel);
   return overlay;
+}
+
+function getSupernovaBattleOutcomeText(battle) {
+  if (!battle?.winnerPlayerId) return "";
+  const attacker = state.gameState?.players?.find((player) => player.id === battle.attackerPlayerId);
+  const defender = state.gameState?.players?.find((player) => player.id === battle.defenderPlayerId);
+  const winner = state.gameState?.players?.find((player) => player.id === battle.winnerPlayerId);
+  const loser = state.gameState?.players?.find((player) => player.id === battle.loserPlayerId);
+  const consequences = battle.consequences ?? {};
+  const parts = [formatLocalizedText("supernovaBattleOutcomeRoll", {
+    winner: winner?.name ?? "",
+    attack: battle.attackerStrength ?? "-",
+    defense: battle.defenderStrength ?? "-"
+  })];
+
+  if (consequences.lostUpgrade) {
+    parts.push(formatLocalizedText("supernovaBattleOutcomeUpgradeLost", {
+      player: loser?.name ?? "",
+      upgrade: consequences.lostUpgrade
+    }));
+  } else if (consequences.upgradeLossSkipped) {
+    parts.push(formatLocalizedText("supernovaBattleOutcomeNoUpgrade", { player: loser?.name ?? "" }));
+  }
+  if (consequences.transferredResourceCount !== undefined && battle.defenderShipType === "tradeShip") {
+    parts.push(formatLocalizedText("supernovaBattleOutcomeResources", {
+      winner: winner?.name ?? "",
+      loser: loser?.name ?? "",
+      count: consequences.transferredResourceCount
+    }));
+  }
+  if (consequences.blockedShipId) {
+    parts.push(formatLocalizedText("supernovaBattleOutcomeBlocked", {
+      player: defender?.name ?? "",
+      ship: battle.defenderShipType
+    }));
+  }
+  if (consequences.medalPlayerId) {
+    parts.push(formatLocalizedText("supernovaBattleOutcomeMedal", { player: winner?.name ?? "" }));
+  }
+  if (consequences.destroyedShipId) {
+    parts.push(formatLocalizedText("supernovaBattleOutcomeDestroyed", {
+      player: loser?.name ?? ""
+    }));
+  }
+  return parts.filter(Boolean).join(" ");
+}
+
+function finishDisplayedSupernovaBattle() {
+  const nextGameState = finishSupernovaShipBattle(state.gameState);
+  if (nextGameState === state.gameState) return;
+  state.gameState = nextGameState;
+  saveCurrentGameState();
+  render();
 }
 
 function renderSupernovaBattlePlayer(playerId, roll, strength, roleLabel) {
@@ -5174,6 +5233,13 @@ function formatLogEntry(entry) {
   return Object.entries(entry.messageParams ?? {}).reduce(
     (text, [key, value]) => text.replaceAll(`{${key}}`, formatMessageParam(key, value)),
     template
+  );
+}
+
+function formatLocalizedText(key, params = {}) {
+  return Object.entries(params).reduce(
+    (text, [paramKey, value]) => text.replaceAll(`{${paramKey}}`, formatMessageParam(paramKey, value)),
+    t(key)
   );
 }
 
@@ -9214,8 +9280,21 @@ function getRemoteSupernovaBattleState() {
     attackerStrength: battle.attackerStrength,
     defenderStrength: battle.defenderStrength,
     winnerPlayerId: battle.winnerPlayerId,
+    loserPlayerId: battle.loserPlayerId,
     pendingUpgradePlayerId: battle.pendingUpgradePlayerId,
-    removableUpgradeIds: battle.removableUpgradeIds ?? []
+    removableUpgradeIds: battle.removableUpgradeIds ?? [],
+    outcomeText: battle.stage === "completed" ? getSupernovaBattleOutcomeText(battle) : "",
+    consequences: battle.stage === "completed"
+      ? {
+        battleType: battle.consequences?.battleType ?? battle.defenderShipType,
+        lostUpgrade: battle.consequences?.lostUpgrade ?? null,
+        upgradeLossSkipped: Boolean(battle.consequences?.upgradeLossSkipped),
+        transferredResourceCount: battle.consequences?.transferredResourceCount ?? 0,
+        blockedShipId: battle.consequences?.blockedShipId ?? null,
+        medalPlayerId: battle.consequences?.medalPlayerId ?? null,
+        destroyedShipId: battle.consequences?.destroyedShipId ?? null
+      }
+      : null
   };
 }
 
@@ -9248,6 +9327,9 @@ function getRemoteFlightStateForController() {
   const selectedShipBlocked = Boolean(
     selectedShip && (state.gameState.supernova?.blockedShipIds ?? []).includes(selectedShip.id)
   );
+  const selectedShipBlockReason = selectedShip
+    ? (state.gameState.supernova?.blockedShipDetails ?? []).find((entry) => entry.shipId === selectedShip.id)?.reason ?? null
+    : null;
   return {
     hasRolledSpeed: Boolean(state.gameState.hasRolledFlightSpeed),
     totalSpeed: Number.isFinite(totalSpeed) ? totalSpeed : null,
@@ -9263,6 +9345,7 @@ function getRemoteFlightStateForController() {
       : null,
     selectedShipRemaining,
     selectedShipBlocked,
+    selectedShipBlockReason,
     reachableNodeIds: reachableNodes.map((node) => node.id),
     turnHint: getControllerFlightTurnHint(),
     boardHint: getControllerFlightBoardHint(),
@@ -9615,7 +9698,11 @@ function getControllerFlightBoardHint() {
   if (getSelectedShip()) {
     const remaining = getShipRemainingMovement(getSelectedShip().id);
     if ((state.gameState.supernova?.blockedShipIds ?? []).includes(getSelectedShip().id)) {
-      return t("controllerFlightShipBlocked");
+      const blockReason = (state.gameState.supernova?.blockedShipDetails ?? [])
+        .find((entry) => entry.shipId === getSelectedShip().id)?.reason;
+      return t(blockReason === "lostBattleshipCombat"
+        ? "controllerFlightShipBlockedByBattle"
+        : "controllerFlightShipBlocked");
     }
     if (remaining <= 0) return t("controllerFlightNoMovementRemaining");
     const key = remaining === 1 ? "controllerFlightMovementRemainingOne" : "controllerFlightMovementRemainingMany";
@@ -9705,6 +9792,13 @@ function getRemoteControllerActions() {
           { forPlayerId: shipBattle.pendingUpgradePlayerId }
         ));
       }
+    } else if (shipBattle.stage === "completed") {
+      actions.push(createRemoteAction(
+        "supernova.battle.finish",
+        t("supernovaBattleAcknowledge"),
+        {},
+        { forPlayerId: shipBattle.attackerPlayerId }
+      ));
     }
     return actions;
   }
@@ -10033,6 +10127,15 @@ function executeRemoteAction(actionId, payload = {}) {
         playerId,
         upgrade: payload.upgrade
       });
+      if (nextGameState !== state.gameState) {
+        state.gameState = nextGameState;
+        saveCurrentGameState();
+        render();
+      }
+      break;
+    }
+    case "supernova.battle.finish": {
+      const nextGameState = finishSupernovaShipBattle(state.gameState, { playerId });
       if (nextGameState !== state.gameState) {
         state.gameState = nextGameState;
         saveCurrentGameState();

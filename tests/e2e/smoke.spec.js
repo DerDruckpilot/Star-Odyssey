@@ -1138,7 +1138,7 @@ test("board tab exposes and executes the selected trade ship outpost action", as
   await controller.locator(`[data-board-type="ship"][data-board-id="${setup.shipId}"]`).click({ force: true });
   await expect.poll(() => getLatestPlayerState(controllerStates)?.flight?.selectedShipId).toBe(setup.shipId);
   await expect.poll(() => getLatestPlayerState(controllerStates)?.actions
-    ?.filter((action) => action.id === "found.tradeStation"))
+    ?.filter((action) => action.id === "found.tradeStation"), { timeout: 10000 })
     .toEqual([expect.objectContaining({ payload: { shipId: setup.shipId } })]);
   const foundAction = controller.getByRole("button", { name: "Handelsstation gründen", exact: true });
   await expect(foundAction).toBeVisible();
@@ -1489,8 +1489,21 @@ test("both controllers must roll before a Supernova ship battle is shown", async
   await expect(page.locator(".supernova-battle-ball-pocket")).toHaveCount(2);
   await expect.poll(async () => page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null");
+    return state?.supernova?.shipBattle?.stage ?? null;
+  }), { timeout: 10000 }).toBe("completed");
+  await expect(page.locator(".supernova-battle-status")).toContainText("Rohstoffe");
+  await expect(page.locator(".supernova-battle-status")).toContainText("nächsten eigenen Runde nicht fliegen");
+  await expect(reconnectedAttacker.locator(".controller-supernova-battle-panel")).toContainText("Rohstoffe");
+  await expect(defenderController.locator(".controller-supernova-battle-panel")).toContainText("nächsten eigenen Runde nicht fliegen");
+
+  const completedState = await page.evaluate(() => JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null"));
+  expect(completedState.supernova.battleHistoryThisTurn).toHaveLength(1);
+  expect(completedState.supernova.shipBattle.consequences.blockedShipId).toBe("battle-e2e-defender");
+  await reconnectedAttacker.getByRole("button", { name: "Kampfergebnis bestätigen" }).click();
+  await expect.poll(async () => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null");
     return state?.supernova?.shipBattle ?? null;
-  }), { timeout: 10000 }).toBeNull();
+  })).toBeNull();
 
   const resolvedState = await page.evaluate(() => JSON.parse(localStorage.getItem("star-odyssey-current-game") ?? "null"));
   expect(resolvedState.flightSpeedTotal).toBe(initialFlightSpeed);

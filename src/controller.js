@@ -761,7 +761,9 @@ function renderSupernovaBattlePanel(player) {
 
   if (!isParticipant) {
     const waiting = document.createElement("p");
-    waiting.textContent = t("controllerBattleObserver", { attacker: battle.attackerName });
+    waiting.textContent = battle.stage === "completed" && battle.outcomeText
+      ? battle.outcomeText
+      : t("controllerBattleObserver", { attacker: battle.attackerName });
     panel.append(waiting);
     return panel;
   }
@@ -800,6 +802,22 @@ function renderSupernovaBattlePanel(player) {
     if (mustChoose) {
       const actions = getFilteredActions().filter((action) => action.id === "supernova.battle.chooseUpgrade");
       panel.append(renderActionGrid(actions));
+    }
+    return panel;
+  }
+
+  if (battle.stage === "completed") {
+    const status = document.createElement("p");
+    status.className = "encounter-prompt";
+    status.textContent = battle.outcomeText || t("controllerBattleCompleted");
+    panel.append(status);
+    if (isAttacker) {
+      const finishAction = findAction("supernova.battle.finish");
+      if (finishAction) panel.append(renderActionGrid([finishAction]));
+    } else {
+      const waiting = document.createElement("p");
+      waiting.textContent = t("controllerBattleWaitingForAttacker");
+      panel.append(waiting);
     }
   }
   return panel;
