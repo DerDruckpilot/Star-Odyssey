@@ -94,6 +94,9 @@ async function run() {
   await manager.preload(["focus", "engine"]);
   assert.equal(FakeAudio.instances.length, baseInstanceCount, "bereits geladene Sounds werden wiederverwendet");
 
+  assert.equal(await manager.unlock(), true, "eine Nutzereingabe schaltet vorgeladene Sounds frei");
+  assert.equal(manager.getStats().unlocked, true);
+
   const voice = manager.play("focus");
   assert.ok(voice);
   assert.equal(voice.paused, false);

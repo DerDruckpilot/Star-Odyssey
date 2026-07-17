@@ -10186,7 +10186,14 @@ function handleAudioActivation(event) {
   audioManager.play(control.dataset.sound || "uiConfirm");
 }
 
+function requestAudioUnlock() {
+  void audioManager.unlock();
+}
+
 document.addEventListener("keydown", handleRemoteKeydown);
+document.addEventListener("keydown", requestAudioUnlock, { capture: true });
+document.addEventListener("pointerdown", requestAudioUnlock, { capture: true, passive: true });
+document.addEventListener("touchstart", requestAudioUnlock, { capture: true, passive: true });
 document.addEventListener("click", handleAudioActivation, true);
 document.addEventListener("focusin", handleAudioFocus);
 document.addEventListener("focusin", () => {
@@ -10216,7 +10223,8 @@ startupRetryButton?.addEventListener("click", () => {
 
 globalThis.__starOdysseyAudio = {
   getSettings: () => audioManager.getSettings(),
-  getStats: () => audioManager.getStats()
+  getStats: () => audioManager.getStats(),
+  unlock: () => audioManager.unlock()
 };
 
 void bootstrapApplication();

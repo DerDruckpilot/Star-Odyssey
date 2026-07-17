@@ -102,6 +102,7 @@ test("sound assets preload in phases and settings persist", async ({ page }) => 
   await expect.poll(() => page.evaluate(() => window.__starOdysseyAudio?.getStats().ready)).toBe(5);
 
   await page.getByRole("button", { name: "Einstellungen", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__starOdysseyAudio?.getStats().unlocked)).toBe(true);
   const volume = page.getByRole("slider", { name: "Lautstärke", exact: true });
   await volume.fill("35");
   await page.getByRole("button", { name: "Soundeffekte an", exact: true }).click();

@@ -74,6 +74,8 @@ export class AudioManager {
     this.assets = new Map();
     this.activeVoices = new Set();
     this.channels = new Map();
+    this.unlocked = false;
+    this.unlockPromise = null;
   }
 
   getSettings() {
@@ -123,6 +125,7 @@ export class AudioManager {
       ready: statuses.filter((status) => status === "ready").length,
       failed: statuses.filter((status) => status === "error").length,
       activeVoices: this.activeVoices.size,
+      unlocked: this.unlocked,
       settings: this.getSettings()
     };
   }
@@ -214,6 +217,35 @@ export class AudioManager {
     };
   }
 
+  unlock() {
+    if (this.unlocked) return Promise.resolve(true);
+    if (this.unlockPromise) return this.unlockPromise;
+    const base = [...this.assets.values()].find((asset) => asset.status === "ready" && asset.audio)?.audio;
+    if (!base) return Promise.resolve(false);
+
+    const probe = base.cloneNode(true);
+    probe.muted = true;
+    probe.volume = 0;
+    probe.currentTime = 0;
+    let playResult;
+    try {
+      playResult = probe.play?.();
+    } catch {
+      return Promise.resolve(false);
+    }
+    this.unlockPromise = Promise.resolve(playResult)
+      .then(() => {
+        probe.pause?.();
+        this.unlocked = true;
+        return true;
+      })
+      .catch(() => false)
+      .finally(() => {
+        this.unlockPromise = null;
+      });
+    return this.unlockPromise;
+  }
+
   play(id, { volume = 1, playbackRate = 1, loop = false, channel = null } = {}) {
     if (!this.settings.enabled) return null;
     const definition = this.definitions[id];
@@ -245,7 +277,12 @@ export class AudioManager {
 
     try {
       const playResult = audio.play?.();
-      playResult?.catch?.(() => cleanup());
+      playResult?.then?.(() => {
+        this.unlocked = true;
+      }).catch?.(() => {
+        this.unlocked = false;
+        cleanup();
+      });
     } catch {
       cleanup();
       return null;
